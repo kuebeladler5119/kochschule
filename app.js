@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.7.0';
-const APP_BUILD = '202611112123';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.8.0';
+const APP_BUILD = '202611112151';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -398,7 +398,7 @@ function zutatenListe(r, p, mitStatus = true, anpassbar = false) {
     const name = z.zutat && Z[z.zutat] ? `<a href="#/zutat/${esc(z.zutat)}">${esc(z.text)}</a>` : esc(z.text);
     const geaendert = z._m && Math.abs(z._m - 1) > 1e-9 ? ` <span class="chip akzent" title="Original: ${esc(fmtMenge(z._orig * f, z.einheit) + ' ' + z.einheit)}">geändert</span>` : '';
     const knopf = anpassbar && z.menge != null ? `<button class="zeilen-knopf" data-a="anp-start" data-r="${esc(r.id)}" data-i="${zi}" aria-label="Menge von ${esc(z.text)} ändern und Rezept anpassen">${ico('stift', 'klein')}</button>` : '';
-    return `<li><span class="menge">${menge}</span><span>${name}${geaendert}</span><span>${status}${knopf}</span>${zus ? `<span class="zus">${esc(zus)}</span>` : ''}</li>`;
+    return `<li><span class="menge">${menge}</span><span>${name}${geaendert}</span><span>${status}${knopf}</span>${zus ? `<span class="zus">${esc(zus).replace(/\s*\((?:Vorschlag, )?ungeprüft\)/g, ' <span class="ug">ungeprüft</span>')}</span>` : ''}</li>`;
   }).join('')}</ul>`;
 }
 function vorratEinheit(zid) { const v = D.vorrat.find(x => x.zutat === zid && x.menge != null && x.menge !== ''); return v ? v.einheit : null; }
