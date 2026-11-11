@@ -16,7 +16,7 @@
     --akzent: #e0805f; --akzent-hell: #3a251d; --akzent-text: #1a1411; --salbei: #8fb58b; --salbei-hell: #22301f;
     --bernstein: #e2b356; --bernstein-hell: #352a15; --rot: #ff9384; --rot-hell: #3b201c; --blau: #8ab6df; --blau-hell: #1c2833;
     --schatten: 0 1px 2px rgba(0, 0, 0, .3); }
-  body.kochen { --papier: #fbf8f3; --flaeche: #ffffff; --flaeche2: #f3ede4; --tinte: #2a231e; --leise: #6b6158; --linie: #e6ddd1; --rand: #8f8070; --akzent: #a8432a; --akzent-hell: #f6e4dc; --akzent-text: #ffffff; --salbei: #4d6b4b; --salbei-hell: #e4ece2; --bernstein: #8a5a00; --bernstein-hell: #fbefd6; --rot: #a3261b; --rot-hell: #fbe3df; --blau: #2f5a80; --blau-hell: #e3ecf5; color-scheme: light; }
+  body.kochen.koch-hell { --papier: #fbf8f3; --flaeche: #ffffff; --flaeche2: #f3ede4; --tinte: #2a231e; --leise: #6b6158; --linie: #e6ddd1; --rand: #8f8070; --akzent: #a8432a; --akzent-hell: #f6e4dc; --akzent-text: #ffffff; --salbei: #4d6b4b; --salbei-hell: #e4ece2; --bernstein: #8a5a00; --bernstein-hell: #fbefd6; --rot: #a3261b; --rot-hell: #fbe3df; --blau: #2f5a80; --blau-hell: #e3ecf5; color-scheme: light; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -254,3 +254,7 @@ body.kochen .timerleiste { bottom: calc(var(--nav-h) + 72px + env(safe-area-inse
 .spur.mini i { display: block; height: 100%; border-radius: 3px; background: var(--salbei); }
 table.mikro td { vertical-align: top; }
 .spur.mini { background: var(--flaeche2); border-radius: 3px; overflow: hidden; }
+/* Kochmodus Dunkel auf Wunsch (Standard: hell, wählbar Hell/Dunkel/System) */
+body.kochen.koch-dunkel { --papier: #171412; --flaeche: #211d1a; --flaeche2: #2a2521; --tinte: #f1e9e1; --leise: #b2a69b; --linie: #3a332e; --rand: #8a7c70; --akzent: #e0805f; --akzent-hell: #3a251d; --akzent-text: #1a1411; --salbei: #8fb58b; --salbei-hell: #22301f; --bernstein: #e2b356; --bernstein-hell: #352a15; --rot: #ff9384; --rot-hell: #3b201c; --blau: #8ab6df; --blau-hell: #1c2833; color-scheme: dark; }
+.kochfarbe { display: inline-flex; gap: 4px; margin-left: 6px; } .kochfarbe button { min-height: 32px; padding: 4px 10px; font-size: .8rem; }
+.kochfarbe button[aria-pressed="true"] { background: var(--tinte); color: var(--papier); border-color: var(--tinte); }

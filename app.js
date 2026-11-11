@@ -4,7 +4,7 @@
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
 const APP_VERSION = '2.0.0';
-const APP_BUILD = '202611111639';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_BUILD = '202611111648';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -283,6 +283,8 @@ function route() {
   const h = location.hash.replace(/^#\/?/, '') || 'entdecken';
   const [seite, a, b] = h.split('/');
   document.body.classList.toggle('kochen', seite === 'kochen');
+  const kf = (D.einstellungen && D.einstellungen.kochmodus_farbe) || 'hell';   // Standard hell, wählbar
+  document.body.classList.toggle('koch-hell', kf === 'hell'); document.body.classList.toggle('koch-dunkel', kf === 'dunkel');
   // Neue Nutzer (leerer Speicher) sehen einmal die Einrichtung – bestehende nie erzwungen
   if (istNeu && !D.einstellungen.einrichtung && seite !== 'einrichtung' && !sessionStorage.getItem('einr-gezeigt-' + PROFIL)) { try { sessionStorage.setItem('einr-gezeigt-' + PROFIL, '1'); } catch (e) { /* */ } location.replace('#/einrichtung/0'); return; }
   $$('.nav a').forEach(n => n.classList.toggle('aktiv', n.dataset.nav === seite || (['rezept', 'kochen', 'fertig'].includes(seite) && n.dataset.nav === 'entdecken')));
@@ -449,7 +451,8 @@ function vKochen(id) {
   const zeit = (sf.felder.find(x => x[0].startsWith('Zeit')) || [])[1] || '';
   const mz = zeit.match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*Min/);
   const letzter = i === r.schritte.length - 1;
-  return `<div class="koch"><p class="leise klein"><a href="#/rezept/${esc(r.id)}">← ${esc(r.titel)}</a> · ${esc(zahlDE(Number(fort.portionen), 1))} Portionen${f !== 1 || r.angepasst ? ' · Mengen im Schritt umgerechnet' : ''}${r.angepasst ? ` · <b>angepasst:</b> ${esc(r.angepasst.beschreibung || '')} – maßgeblich ist die Zutatenliste` : ''}</p>
+  return `<div class="koch"><p class="leise klein"><a href="#/rezept/${esc(r.id)}">← ${esc(r.titel)}</a> · ${esc(zahlDE(Number(fort.portionen), 1))} Portionen${f !== 1 || r.angepasst ? ' · Mengen im Schritt umgerechnet' : ''}${r.angepasst ? ` · <b>angepasst:</b> ${esc(r.angepasst.beschreibung || '')} – maßgeblich ist die Zutatenliste` : ''}
+    <span class="kochfarbe" role="group" aria-label="Darstellung im Kochmodus">${[['hell', 'Hell'], ['dunkel', 'Dunkel'], ['system', 'System']].map(([k, n]) => `<button class="klein" data-a="kochfarbe" data-v="${k}" aria-pressed="${((D.einstellungen.kochmodus_farbe || 'hell') === k)}">${n}</button>`).join('')}</span></p>
   <div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / r.schritte.length)}%"></i></div>
   <p class="leise klein">Schritt ${i + 1} von ${r.schritte.length} · ${esc(s.phase || '')}</p>
   <h1>${s.nr != null ? s.nr + ' · ' : ''}${inline(s.titel)}</h1>
@@ -780,6 +783,7 @@ document.addEventListener('click', ev => {
   const f = filterZustand;
   switch (a) {
     case 'undo': rueckgaengig(); break;
+    case 'kochfarbe': aendere(null, d => { d.einstellungen.kochmodus_farbe = v; }); break;
     case 'update-jetzt': updateAnwenden(); break;
     case 'update-suchen': updateSuchen(true); break;
     case 'bereich': f.bereich = v; route(); break;
