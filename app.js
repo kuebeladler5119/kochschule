@@ -1,10 +1,13 @@
-/* Kochschule – Webapp v1 (Kochen + Ernährung)
-   Keine Server, keine KI. Katalog: data/katalog.js (öffentlich). Persönliche Daten: localStorage dieses Geräts. */
+/* Kochschule – Webapp v2 (Kochen + Ernährung)
+   Keine Server, keine KI. Katalog: data/katalog.js (öffentlich). Persönliche Daten: localStorage dieses Geräts.
+   Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
-const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {} };
-const APP_VERSION = '1.1.0';
-// Getrennte Profile (z. B. ?profil=test) nutzen eigene Speicherschlüssel – Testdaten berühren echte Daten nie.
-const PROFIL = (new URLSearchParams(location.search).get('profil') || '').replace(/[^a-z0-9-]/gi, '').slice(0, 20);
+const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
+const APP_VERSION = '2.0.0';
+const APP_BUILD = '202611111539';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
+// Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
+const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
 const SPEICHER = 'kochschule.daten.v1' + (PROFIL ? '.' + PROFIL : '');
 const TIMER_SPEICHER = 'kochschule.timer.v1' + (PROFIL ? '.' + PROFIL : '');
 const ZWISCHEN_SPEICHER = SPEICHER + '.zwischenstaende';
@@ -40,29 +43,67 @@ const LAGER = { vorratsschrank: 'Vorratsschrank', kuehlschrank: 'Kühlschrank', 
 
 /* ---------- Persönliche Daten ---------- */
 function leer() {
-  return { schema: 1, angelegt: heute(),
-    einstellungen: { ausschluesse: null, geraete: null, geraete_hinweise: {}, grundvorrat: null, portionen: 2, hilfen_offen: true, ziele: null },
+  return { schema: SCHEMA, angelegt: heute(),
+    einstellungen: { ausschluesse: null, geraete: null, geraete_hinweise: {}, grundvorrat: null, portionen: 2, hilfen_offen: true, ziele: { modus: 'keine' },
+      person: {}, ernaehrungsweise: null, allergien: [], abneigungen: {}, budget: null, kochzeit: null, einrichtung: null },
     vorrat: [], auswahl: [], planung: { tage: '' }, einkauf: { abgehakt: {}, bestaetigt: {} },
-    restportionen: [], tagebuch: [], kochprotokolle: [], fortschritt: {}, letzter_export: null };
+    restportionen: [], tagebuch: [], kochprotokolle: [], fortschritt: {}, tage: {}, lebensmittel: [], anpassungen: {}, varianten: {}, letzter_export: null, geschrieben_von: null };
 }
-let ladeProblem = null;
+/* Datenformat-Updates: je Schritt eine Funktion „von Schema n auf n+1“. Vorher wird der unveränderte Stand
+   als Zwischenstand gesichert. Nie Felder löschen, die eine ältere Version noch braucht. */
+const MIGRATIONEN = {
+  // 1 → 2: Vermerk, mit welcher App-Version zuletzt gespeichert wurde; Kochfortschritt bekommt Zeitstempel
+  1: d => { d.geschrieben_von = null; Object.values(d.fortschritt || {}).forEach(f => { if (f && typeof f === 'object') { f.schritt = Number(f.schritt) || 0; if (!f.aktualisiert) f.aktualisiert = f.start || null; } }); },
+  // 2 → 3: Profil/Ziele/Ernährung. Bestehende Nutzer werden NIE zur Einrichtung gezwungen; alte manuelle Ziele bleiben erhalten.
+  2: d => {
+    const e = d.einstellungen = d.einstellungen || {};
+    const alt = e.ziele;
+    if (alt && !alt.modus && ['kcal', 'protein', 'kh', 'fett'].some(k => alt[k] != null)) e.ziele = { modus: 'manuell', manuell: { kcal: alt.kcal ?? null, protein: alt.protein ?? null, kh: alt.kh ?? null, fett: alt.fett ?? null, ballaststoffe: null }, quelle: alt.quelle || '', geaendert_am: alt.gesetzt_am || null };
+    else if (!alt || !alt.modus) e.ziele = { modus: 'keine' };
+    e.person = e.person || {}; e.allergien = e.allergien || []; e.abneigungen = e.abneigungen || {};
+    if (e.einrichtung == null) e.einrichtung = 'bestehend';
+    d.tage = d.tage || {}; d.lebensmittel = d.lebensmittel || [];
+    (d.tagebuch || []).forEach(t => { if (!t.einheit) t.einheit = 'Portion'; });
+  }
+};
+function aufSchemaBringen(d) {
+  if (!d || typeof d !== 'object' || typeof d.schema !== 'number' || d.schema < 1) return null;
+  if (d.schema > SCHEMA) throw new Error('neuer');
+  while (d.schema < SCHEMA) { MIGRATIONEN[d.schema](d); d.schema += 1; }
+  return Object.assign(leer(), d, { einstellungen: Object.assign(leer().einstellungen, d.einstellungen || {}), einkauf: Object.assign(leer().einkauf, d.einkauf || {}) });
+}
+let ladeProblem = null, schreibschutz = false, migriert = null, istNeu = false;
 function laden() {
   let roh = null;
   try { roh = localStorage.getItem(SPEICHER); } catch (e) { ladeProblem = 'Speicher nicht lesbar: ' + e.message; return leer(); }
-  if (!roh) return leer();
-  try { const d = JSON.parse(roh); if (d && d.schema === 1) return Object.assign(leer(), d, { einstellungen: Object.assign(leer().einstellungen, d.einstellungen || {}), einkauf: Object.assign(leer().einkauf, d.einkauf || {}) }); } catch (e) { console.warn(e); }
+  if (!roh) { istNeu = true; return leer(); }
+  let d = null; try { d = JSON.parse(roh); } catch (e) { console.warn(e); }
+  if (d && typeof d.schema === 'number' && d.schema > SCHEMA) {
+    // Daten einer neueren App-Version (z. B. zweiter, noch alter Tab): anzeigen, aber nichts überschreiben
+    schreibschutz = true;
+    ladeProblem = 'Deine Daten stammen von einer neueren App-Version. Bitte unter Mehr aktualisieren – bis dahin speichert diese Version nichts.';
+    return Object.assign(leer(), d, { einstellungen: Object.assign(leer().einstellungen, d.einstellungen || {}), einkauf: Object.assign(leer().einkauf, d.einkauf || {}) });
+  }
+  try {
+    const von = d && d.schema;
+    const neu = aufSchemaBringen(d);
+    if (neu) { if (von < SCHEMA) { zwischenstandRoh(`vor Datenformat-Update (Schema ${von} → ${SCHEMA})`, roh); migriert = von; } return neu; }
+  } catch (e) { console.warn(e); }
   // Unbekanntes Format: niemals verwerfen, ohne vorher eine unveränderte Kopie abzulegen
   const sk = SPEICHER + '.unlesbar-' + Date.now(); try { localStorage.setItem(sk, roh); } catch (e) { /* */ }
   ladeProblem = 'Gespeicherte Daten hatten ein unbekanntes Format. Eine unveränderte Kopie liegt im Browser unter „' + sk + '“. Bitte den Browser-Speicher nicht löschen.';
   return leer();
 }
 function zwischenstaende() { try { return JSON.parse(localStorage.getItem(ZWISCHEN_SPEICHER)) || []; } catch (e) { return []; } }
-function zwischenstand(grund) {
-  try { const z = zwischenstaende(); z.unshift({ zeit: new Date().toISOString(), grund, daten: JSON.stringify(D) }); localStorage.setItem(ZWISCHEN_SPEICHER, JSON.stringify(z.slice(0, 6))); } catch (e) { console.warn('Zwischenstand', e); }
+function zwischenstandRoh(grund, daten) {
+  try { const z = zwischenstaende(); z.unshift({ zeit: new Date().toISOString(), grund, daten }); localStorage.setItem(ZWISCHEN_SPEICHER, JSON.stringify(z.slice(0, 6))); } catch (e) { console.warn('Zwischenstand', e); }
 }
+function zwischenstand(grund) { zwischenstandRoh(grund, JSON.stringify(D)); }
 let D = laden();
 let speicherFehler = false;
 function speichern() {
+  if (schreibschutz) { toast('Nicht gespeichert: Bitte zuerst die App aktualisieren (Mehr).'); navZaehler(); return; }
+  D.geschrieben_von = { version: APP_VERSION, build: APP_BUILD };
   try { localStorage.setItem(SPEICHER, JSON.stringify(D)); speicherFehler = false; } catch (e) { speicherFehler = true; toast('Speichern fehlgeschlagen – bitte jetzt exportieren.'); }
   navZaehler();
 }
@@ -175,16 +216,8 @@ function rezeptInfo(r) {
   const kat = arr(m.kategorien);
   return { veg, pruefen, kat, aktiv: Number(m.zeit_aktiv_min) || null, gesamt: Number(m.zeit_gesamt_min) || null, schwierigkeit: Number(m.schwierigkeit) || null };
 }
-function ausgeschlossen(r) {
-  const aus = D.einstellungen.ausschluesse; if (!aus || !aus.length) return [];
-  const treffer = [];
-  for (const zr of r.zutaten) {
-    const z = Z[zr.zutat]; if (!z) continue;
-    const gruppen = [z.tier_herkunft, ...(z.ausschluss_gruppen || [])];
-    if (gruppen.some(g => aus.includes(g))) { if (!zr.ersatz || zr.bedarf === 'notwendig') treffer.push(z.name); }
-  }
-  return treffer;
-}
+/* Harte Filter: Ausschlüsse, Ernährungsweise, Allergien, „esse ich nie“ (Logik in ernaehrung.js) */
+function ausgeschlossen(r) { return rezeptPruefung(r).hart; }
 function geraeteFehlen(r) {
   const g = D.einstellungen.geraete; if (!g) return null;
   return arr(r.meta.geraete_noetig).filter(x => !g.includes(x));
@@ -229,100 +262,105 @@ function bewerte(r, filter) {
   const lk = letzteKochung(r.id);
   if (lk) { const tage = -tageBis(lk.datum); gruende.push(['', tage === 0 ? 'heute gekocht' : `zuletzt vor ${tage} Tagen gekocht`]); if (tage < 4) punkte -= 10; if (lk.nochmal === 'ja') { gruende.push(['gut', 'wolltest du wieder kochen']); punkte += 10; } if (lk.nochmal === 'nein') punkte -= 15; }
   else if (filter.richtung.includes('lernen')) { gruende.push(['info', 'neu für dich']); punkte += 5; }
-  const z = D.einstellungen.ziele; const np = r.naehrwerte.pro_portion;
+  const z = aktuelleZiele(); const np = r.naehrwerte.pro_portion;
   if (z && z.kcal && np.kcal != null) {
-    const s = tagesSumme(heute()); const rest = z.kcal - s.kcal;
-    if (s.eintraege && np.kcal <= rest) { gruende.push(['info', `passt in dein restliches Tagesziel (laut bisherigem Protokoll)`]); punkte += 5; }
+    const s = tagesSumme(heute()); const rest = Number(z.kcal) - s.kcal;
+    if (s.eintraege && np.kcal <= rest) { gruende.push(['info', `passt in dein restliches Tagesziel (laut Protokoll)`]); punkte += 5; }
   }
+  const pr = rezeptPruefung(r);
+  if (pr.malus) { punkte -= pr.malus; gruende.push(['', 'enthält ' + pr.abneigung.join(', ')]); }
+  if (pr.warn.length) gruende.unshift(['warn', 'Allergene: Etikett prüfen']);
+  const kz = Number(D.einstellungen.kochzeit); if (kz && info.aktiv && info.aktiv <= kz) punkte += 5;
   for (const rt of filter.richtung) if (passtRichtung(r, info, rt)) punkte += 15;
   return { info, gruende, punkte, fehlend };
 }
-function passtRichtung(r, info, rt) {
-  if (rt === 'schnell') return info.gesamt != null && info.gesamt <= 30;
-  if (rt === 'wenig') return info.aktiv != null && info.aktiv <= 20 && (info.schwierigkeit || 1) <= 2;
-  if (rt === 'fitness') return info.kat.includes('fitness');
-  if (rt === 'lernen') return info.kat.includes('lerngericht');
-  if (rt === 'anspruchsvoll') return info.kat.includes('restaurant') || (info.schwierigkeit || 0) >= 3;
-  return true;
-}
+function passtRichtung(r, info, rt) { return EIGENSCHAFT[rt] ? EIGENSCHAFT[rt][2](r, info) : true; }
 
 /* ---------- Router ---------- */
-const filterZustand = { bereich: '', richtung: [], maxGesamt: '', maxAktiv: '', vorkochen: false, veg: false, suche: '', ohneGeraete: false };
+const filterZustand = { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '', ohneGeraete: false };
 function route() {
+  rezepteAktualisieren();   // angepasste Mengen (nur für diesen Kochvorgang) wirken überall über R
   const h = location.hash.replace(/^#\/?/, '') || 'entdecken';
   const [seite, a, b] = h.split('/');
   document.body.classList.toggle('kochen', seite === 'kochen');
-  $$('.nav a').forEach(n => n.classList.toggle('aktiv', n.dataset.nav === seite || (seite === 'rezept' && n.dataset.nav === 'entdecken')));
+  // Neue Nutzer (leerer Speicher) sehen einmal die Einrichtung – bestehende nie erzwungen
+  if (istNeu && !D.einstellungen.einrichtung && seite !== 'einrichtung' && !sessionStorage.getItem('einr-gezeigt-' + PROFIL)) { try { sessionStorage.setItem('einr-gezeigt-' + PROFIL, '1'); } catch (e) { /* */ } location.replace('#/einrichtung/0'); return; }
+  $$('.nav a').forEach(n => n.classList.toggle('aktiv', n.dataset.nav === seite || (['rezept', 'kochen', 'fertig'].includes(seite) && n.dataset.nav === 'entdecken')));
   const app = $('#app');
-  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo };
+  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile };
   const fn = views[seite] || vEntdecken;
   app.innerHTML = fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
-  navZaehler(); zeichneTimer();
+  if (location.hash !== route.letzte) { route.letzte = location.hash; window.scrollTo(0, 0); }   // neue Seite oben beginnen, Neuzeichnen derselben Seite behält die Position
+  ungespeichert = false;
+  navZaehler(); zeichneTimer(); updateLeiste();
 }
-function navZaehler() { const n = D.auswahl.length; const el = $('#nav-auswahl'); if (el) { el.hidden = !n; el.textContent = n; } $('#kopf-info').textContent = PROFIL ? `Profil „${PROFIL}“ – getrennte Daten` : speicherFehler ? '⚠ nicht gespeichert' : (D.restportionen.filter(p => p.portionen > 0).length ? `${D.restportionen.reduce((s, p) => s + (p.portionen > 0 ? p.portionen : 0), 0)} Restportionen` : ''); }
+function navZaehler() { const n = D.auswahl.length; const el = $('#nav-auswahl'); if (el) { el.hidden = !n; el.textContent = n; } const teile = []; if (speicherFehler) teile.push('⚠ nicht gespeichert');
+  if (PROFIL || profilListe().length > 1) teile.push(profilName(PROFIL));
+  const rp = D.restportionen.reduce((s, p) => s + (p.portionen > 0 ? p.portionen : 0), 0); if (rp) teile.push(`${zahlDE(rp, 1)} Restportionen`);
+  $('#kopf-info').textContent = teile.join(' · '); }
 
 /* ---------- Entdecken ---------- */
 function vEntdecken() {
   const f = filterZustand;
-  const liste = K.rezepte.map(r => ({ r, b: bewerte(r, f), aus: ausgeschlossen(r), ger: geraeteFehlen(r) })).filter(({ r, b, aus, ger }) => {
-    if (aus.length) return false;
-    if (ger && ger.length && !f.ohneGeraete) return false;
-    if (f.bereich && r.meta.bereich !== f.bereich && !arr(r.meta.bereiche).includes(f.bereich)) return false;
-    for (const rt of f.richtung) if (!passtRichtung(r, b.info, rt)) return false;
-    if (f.maxGesamt && !(b.info.gesamt && b.info.gesamt <= Number(f.maxGesamt))) return false;
-    if (f.maxAktiv && !(b.info.aktiv && b.info.aktiv <= Number(f.maxAktiv))) return false;
-    if (f.vorkochen && r.meta.vorkochen_kuehlschrank !== 'ja') return false;
-    if (f.veg && !b.info.veg) return false;
-    if (f.suche) { const q = f.suche.toLowerCase(); if (!(r.titel.toLowerCase().includes(q) || r.zutaten.some(z => (z.text || '').toLowerCase().includes(q)))) return false; }
-    return true;
-  });
+  // Persönliche Ausschlüsse gelten immer; die gewählten Filter kommen zusätzlich dazu
+  const alle = K.rezepte.map(r0 => { const r = R[r0.id]; return { r, b: bewerte(r, f), aus: ausgeschlossen(r), ger: geraeteFehlen(r) }; });
+  alle.forEach(x => { x.info = x.b.info; });
+  const persoenlichOk = x => !x.aus.length && (f.ohneGeraete || !(x.ger && x.ger.length));
+  const kandidaten = alle.filter(persoenlichOk);
+  const liste = kandidaten.filter(x => filterPasst(x.r, x.info, f));
+  const filterOhnePersoenlich = alle.filter(x => filterPasst(x.r, x.info, f));
+  const persoenlichAus = filterOhnePersoenlich.filter(x => x.aus.length).length;
+  const geraeteAus = filterOhnePersoenlich.filter(x => !x.aus.length && x.ger && x.ger.length).length;
   const sortiert = D.vorrat.length || f.richtung.length ? liste.sort((x, y) => y.b.punkte - x.b.punkte) : liste.sort((x, y) => BEREICHE.findIndex(b => b[0] === x.r.meta.bereich) - BEREICHE.findIndex(b => b[0] === y.r.meta.bereich));
-  const versteckt = K.rezepte.length - liste.length;
-  const setup = (D.einstellungen.ausschluesse == null) ? `<div class="hinweis">Noch keine persönlichen Einstellungen. <a href="#/einstellungen">Ausschlüsse, Geräte und Grundvorrat festlegen</a> oder <a href="#/daten">Profil-Datei importieren</a>.</div>` : '';
-  return `<h1>Was koche ich?</h1>${setup}
-  <div class="chips" role="group" aria-label="Bereich">${[['', 'Alle'], ...BEREICHE].filter(([id]) => !id || K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id))).map(([id, n]) => `<button class="filterchip" data-a="bereich" data-v="${id}" aria-pressed="${f.bereich === id}">${esc(n)}</button>`).join('')}</div>
-  <div class="chips" role="group" aria-label="Richtung" style="margin-top:8px">${RICHTUNGEN.map(([id, n]) => `<button class="filterchip" data-a="richtung" data-v="${id}" aria-pressed="${f.richtung.includes(id)}">${esc(n)}</button>`).join('')}</div>
-  <details class="filter"${f.maxGesamt || f.maxAktiv || f.vorkochen || f.veg || f.suche ? ' open' : ''}><summary>Mehr Filter</summary>
+  const e = D.einstellungen;
+  const setup = (!e.einrichtung || e.einrichtung === 'bestehend') && !e.person.ziel ? `<div class="hinweis"><b>Passt die App zu dir?</b> In einer kurzen, freiwilligen Einrichtung legst du Ziel, Ernährungsweise, Allergien und Geräte fest. <a href="#/einrichtung/0">Jetzt einrichten</a></div>` : '';
+  return `<div class="seitenkopf"><h1>Kochbuch</h1></div><p class="unterzeile">${K.rezepte.length} Rezepte mit Anleitung Schritt für Schritt – was passt heute?</p>${setup}
+  <div class="filterleiste" role="group" aria-label="Bereich">${[['', 'Alle'], ...BEREICHE].filter(([id]) => !id || K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id))).map(([id, n]) => `<button class="filterchip" data-a="bereich" data-v="${id}" aria-pressed="${f.bereich === id}">${esc(n)}</button>`).join('')}</div>
+  ${kuechenLeisteHtml(f)}
+  <div class="filterleiste" role="group" aria-label="Eigenschaften (alle müssen passen)">${EIGENSCHAFTEN.map(([id, n]) => `<button class="filterchip" data-a="richtung" data-v="${id}" aria-pressed="${f.richtung.includes(id)}"${EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : ''}>${esc(n)}</button>`).join('')}</div>
+  <details class="filter"${f.maxGesamt || f.maxAktiv || f.suche || f.ohneGeraete ? ' open' : ''}><summary>Mehr Filter</summary>
     <div class="zeile">
       <label class="feld"><span>Gesamtzeit höchstens</span><select data-f="maxGesamt"><option value="">egal</option>${[20, 30, 45, 60, 90, 180].map(n => `<option ${String(f.maxGesamt) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="feld"><span>Aktive Zeit höchstens</span><select data-f="maxAktiv"><option value="">egal</option>${[10, 15, 20, 30, 45, 60].map(n => `<option ${String(f.maxAktiv) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="feld"><span>Suche</span><input data-f="suche" value="${esc(f.suche)}" placeholder="Gericht oder Zutat"></label>
     </div>
-    <div class="knopfreihe"><label><input type="checkbox" data-f="vorkochen" ${f.vorkochen ? 'checked' : ''}> zum Vorkochen geeignet</label>
-    <label><input type="checkbox" data-f="veg" ${f.veg ? 'checked' : ''}> vegetarisch</label>
-    <label><input type="checkbox" data-f="ohneGeraete" ${f.ohneGeraete ? 'checked' : ''}> auch ohne passende Geräte zeigen</label></div>
+    <div class="knopfreihe"><label><input type="checkbox" data-f="ohneGeraete" ${f.ohneGeraete ? 'checked' : ''}> auch Rezepte zeigen, für die ein Gerät fehlt</label></div>
+    <p class="leise klein">Mehrere Küchen = aus einer davon. Eigenschaften müssen alle zutreffen. Proteinreich: ${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}. Günstig: ${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}.</p>
   </details>
-  <p class="leise">${sortiert.length} Rezepte${versteckt ? ` · ${versteckt} ausgeblendet (Filter, Ausschlüsse oder Geräte)` : ''}${D.vorrat.length ? ' · sortiert nach Vorrat und Wunsch' : ''}</p>
-  <div class="raster">${sortiert.map(({ r, b, ger }) => rezeptKarte(r, b, ger)).join('') || '<p class="leer">Nichts passt – Filter lockern.</p>'}</div>`;
+  ${filterKopfHtml(f, sortiert.length, persoenlichAus, geraeteAus)}${D.vorrat.length && sortiert.length ? '<p class="leise klein">sortiert nach Vorrat und Wunsch</p>' : ''}
+  ${sortiert.length ? `<div class="raster">${sortiert.map(({ r, b, ger }) => rezeptKarte(r, b, ger)).join('')}</div>` : lockerungenHtml(f, kandidaten)}`;
 }
 function rezeptKarte(r, b, ger) {
   const inAuswahl = D.auswahl.some(a => a.rezept === r.id);
-  const np = r.naehrwerte.pro_portion;
-  return `<div class="karte"><a class="rk" href="#/rezept/${esc(r.id)}">
-    <span class="leise klein">${esc(BEREICH_NAME[r.meta.bereich] || '')}${r.meta.kueche ? ' · ' + esc(r.meta.kueche) : ''}</span>
+  const np = r.naehrwerte.pro_portion; const i = b.info;
+  const gruende = b.gruende.filter(([, t]) => !/^aktiv /.test(t)).slice(0, 2);
+  return `<article class="rezeptkarte"><a class="rk" href="#/rezept/${esc(r.id)}">${bildHtml(r)}
     <h3>${esc(r.titel)}</h3>
-    <span class="chips">${b.gruende.slice(0, 4).map(([k, t]) => `<span class="chip ${k}">${esc(t)}</span>`).join('')}${ger && ger.length ? `<span class="chip warn">Gerät fehlt: ${esc(ger.map(g => GERAETE[g] || g).join(', '))}</span>` : ''}</span>
-    <span class="leise klein">${np.kcal != null ? `≈ ${zahlDE(np.kcal)} kcal · ${zahlDE(np.protein)} g Eiweiß pro Portion` : 'Nährwerte unvollständig'} · ${pruefText(r.meta.pruefstand)}</span></a>
-    <div class="knopfreihe"><button class="klein" data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? '✓ in Auswahl' : '+ Auswahl'}</button></div></div>`;
+    <span class="meta">${i.gesamt ? `<span>${ico('uhr', 'klein')} ${i.aktiv ? i.aktiv + ' / ' : ''}${i.gesamt} Min.</span>` : ''}${np.kcal != null ? `<span>${zahlDE(np.kcal)} kcal · ${zahlDE(np.protein)} g Protein</span>` : ''}<span>${esc([BEREICH_NAME[r.meta.bereich] || '', ...rezeptKuechen(r).map(k => KUECHE_NAME[k])].filter(Boolean).join(' · '))}</span>${r.angepasst ? '<span class="chip akzent">angepasst</span>' : ''}</span>
+    ${gruende.length || (ger && ger.length) ? `<span class="chips gruende">${gruende.map(([k, t]) => `<span class="chip ${k}">${esc(t)}</span>`).join('')}${ger && ger.length ? `<span class="chip warn">Gerät fehlt: ${esc(ger.map(g => GERAETE[g] || g).join(', '))}</span>` : ''}</span>` : ''}</a>
+    <button class="merken" data-a="auswahl-toggle" data-v="${esc(r.id)}" aria-pressed="${inAuswahl}" aria-label="${inAuswahl ? 'Aus der Auswahl entfernen' : 'Zur Auswahl hinzufügen'}">${inAuswahl ? ico('haken', 'klein') + ' Ausgewählt' : ico('plus', 'klein') + ' Auswahl'}</button></article>`;
 }
 const pruefText = p => p === 'quellen_geprueft' ? 'quellengeprüft, nicht erprobt' : 'Entwurf, nicht erprobt';
 
 /* ---------- Rezept ---------- */
 const portionenWahl = {};
 function standardPortionen(r) { const a = D.auswahl.find(x => x.rezept === r.id); if (a) return a.jetzt + a.vorkochen; return portionenWahl[r.id] || Number(r.meta.portionen) || D.einstellungen.portionen || 2; }
-function zutatenListe(r, p, mitStatus = true) {
+function zutatenListe(r, p, mitStatus = true, anpassbar = false) {
   const f = faktor(r, p);
-  return `<ul class="zliste">${r.zutaten.map(z => {
+  return `<ul class="zliste">${r.zutaten.map((z, zi) => {
     const menge = z.menge != null ? `${fmtMenge(z.menge * f, z.einheit)} ${esc(z.einheit)}` : esc([z.menge_text, z.einheit].filter(Boolean).join(' '));
     let status = '';
     if (mitStatus && z.zutat) {
       if (z.bedarf === 'grundvorrat') { const gv = D.einstellungen.grundvorrat; status = gv && gv.includes(z.zutat) ? '<span class="status-ja">Grundvorrat</span>' : '<span class="status-nein">Grundvorrat?</span>'; }
       else if (D.vorrat.length) { const v = vorratMenge(z.zutat); status = v.vorhanden ? `<span class="status-ja">${v.unbekannt ? 'im Vorrat' : (z.menge != null && z.einheit === vorratEinheit(z.zutat) && v.menge < z.menge * f ? 'zu wenig' : 'im Vorrat')}</span>` : '<span class="status-nein">fehlt</span>'; }
     }
-    const zus = [z.alltagsmass && z.alltagsmass !== z.menge_text ? z.alltagsmass : '', z.zustand, z.vorbereitung, z.bedarf === 'optional' ? 'optional' : '', z.ersatz && z.ersatz !== '–' ? 'Ersatz: ' + z.ersatz : ''].filter(Boolean).join(' · ');
+    const fz = f * (z._m || 1);   // Alltagsmaße gelten für das Original – bei anderer Menge als solche kennzeichnen
+    const zus = [z.alltagsmass && z.alltagsmass !== z.menge_text ? (Math.abs(fz - 1) > 0.01 ? `im Original ${z.alltagsmass}` : z.alltagsmass) : '', z.zustand, z.vorbereitung, z.bedarf === 'optional' ? 'optional' : '', z.ersatz && z.ersatz !== '–' ? 'Ersatz: ' + z.ersatz : ''].filter(Boolean).join(' · ');
     const name = z.zutat && Z[z.zutat] ? `<a href="#/zutat/${esc(z.zutat)}">${esc(z.text)}</a>` : esc(z.text);
-    return `<li><span class="menge">${menge}</span><span>${name}</span><span>${status}</span>${zus ? `<span class="zus">${esc(zus)}</span>` : ''}</li>`;
+    const geaendert = z._m && Math.abs(z._m - 1) > 1e-9 ? ` <span class="chip akzent" title="Original: ${esc(fmtMenge(z._orig * f, z.einheit) + ' ' + z.einheit)}">geändert</span>` : '';
+    const knopf = anpassbar && z.menge != null ? `<button class="zeilen-knopf" data-a="anp-start" data-r="${esc(r.id)}" data-i="${zi}" aria-label="Menge von ${esc(z.text)} ändern und Rezept anpassen">${ico('stift', 'klein')}</button>` : '';
+    return `<li><span class="menge">${menge}</span><span>${name}${geaendert}</span><span>${status}${knopf}</span>${zus ? `<span class="zus">${esc(zus)}</span>` : ''}</li>`;
   }).join('')}</ul>`;
 }
 function vorratEinheit(zid) { const v = D.vorrat.find(x => x.zutat === zid && x.menge != null && x.menge !== ''); return v ? v.einheit : null; }
@@ -338,7 +376,8 @@ function naehrBox(r, portionen) {
     ${n.ohne.length ? `<li>Nicht enthalten: ${esc(n.ohne.join(', '))}</li>` : ''}
     ${n.mit_optional.length ? `<li>Enthalten, obwohl optional: ${esc(n.mit_optional.join(', '))}</li>` : ''}
     ${n.annahmen.length ? `<li>Annahmen: ${esc(n.annahmen.join('; '))}</li>` : ''}
-    <li>Summe ÷ ${esc(r.meta.portionen)} Portionen. Genauer wird es, wenn du das fertige Gericht wiegst.</li></ul></details>`;
+    ${r.angepasst ? '<li><b>Angepasste Mengen:</b> Beiträge der geänderten Zutaten mit den übernommenen (gerundeten) Mengen neu berechnet; die Liste oben zeigt die Originalmengen.</li>' : ''}
+    <li>Summe ÷ ${esc(zahlDE(Number(r.meta.portionen), 1))} Portionen. Genauer wird es, wenn du das fertige Gericht wiegst.</li></ul></details>`;
 }
 function vorkochBox(r) {
   const m = r.meta;
@@ -346,11 +385,11 @@ function vorkochBox(r) {
   const tk = m.vorkochen_tiefkuehl === 'ja' ? `Tiefkühler: ja${m.tk_max_monate ? `, ${esc(m.tk_max_monate)} Monate ${inline(String(m.tk_beleg || ''))}` : ', Dauer nicht belegt'}` : m.vorkochen_tiefkuehl === 'nein' ? 'Tiefkühler: nicht geeignet' : 'Tiefkühler: Eignung und Dauer unbekannt';
   return `<ul class="klein"><li>${kuehl}</li><li>${tk}</li>${m.portionen_pro_durchgang ? `<li>Pfanne/Topf fasst ca. ${esc(m.portionen_pro_durchgang)} Portionen pro Durchgang – mehr Portionen brauchen mehr Durchgänge.</li>` : ''}</ul>`;
 }
-function schrittFelder(mdText, f) {
+function schrittFelder(mdText, f, r) {
   const zeilen = mdText.split('\n'); const felder = []; let i = 0;
   while (i < zeilen.length && /^- \*\*[^*]+:\*\*/.test(zeilen[i])) { const m = zeilen[i].match(/^- \*\*([^*]+):\*\*\s*(.*)$/); felder.push([m[1], m[2]]); i++; }
   const rest = zeilen.slice(i).join('\n');
-  const dl = felder.length ? `<dl class="felder">${felder.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${inline(k === 'Zutaten' ? skaliereText(v, f) : v)}</dd>`).join('')}</dl>` : '';
+  const dl = felder.length ? `<dl class="felder">${felder.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${inline(k === 'Zutaten' ? skaliereZutatenText(r, v, f) : v)}</dd>`).join('')}</dl>` : '';
   return { dl, rest, felder };
 }
 function vRezept(id) {
@@ -359,29 +398,33 @@ function vRezept(id) {
   const fort = D.fortschritt[r.id];
   const inAuswahl = D.auswahl.some(a => a.rezept === r.id);
   const quelle = m.herkunft_quelle ? inline(String(m.herkunft_quelle)) : '';
-  const schritte = r.schritte.map((s, ix) => { const sf = schrittFelder(s.md, f); return `<div class="schritt"><h3>${s.nr != null ? s.nr + ' · ' : ''}${inline(s.titel)}</h3>${sf.dl}${md(sf.rest)}</div>`; }).join('');
+  const schritte = r.schritte.map((s, ix) => { const sf = schrittFelder(s.md, f, r); return `<div class="schritt"><span class="nr" aria-hidden="true">${s.nr != null ? s.nr : '·'}</span><div><h3>${inline(s.titel)}</h3>${sf.dl}${md(sf.rest)}</div></div>`; }).join('');
   const abschnitte = r.abschnitte.map(a => `<h2>${inline(a.titel)}</h2>${md(a.md)}`).join('');
+  const pr = rezeptPruefung(r);
   return `<article class="rezept">
-  <p class="leise klein"><a href="#/entdecken">← Entdecken</a></p>
-  <div class="rezept-kopf"><span class="leise klein">${esc(BEREICH_NAME[m.bereich] || '')}${m.kueche ? ' · ' + esc(m.kueche) : ''}</span><h1>${esc(r.titel)}</h1>
-  <div class="chips">${info.aktiv ? `<span class="chip">aktiv ${info.aktiv} Min.</span>` : ''}${info.gesamt ? `<span class="chip">gesamt ${info.gesamt} Min.</span>` : ''}${info.schwierigkeit ? `<span class="chip">Schwierigkeit ${info.schwierigkeit}/5</span>` : ''}${info.veg ? '<span class="chip gut">vegetarisch</span>' : ''}<span class="chip warn">${pruefText(m.pruefstand)}</span>${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div></div>
-  ${aus.length ? `<div class="hinweis gefahr">Enthält ausgeschlossene Zutaten: ${esc(aus.join(', '))}</div>` : ''}
+  <p class="klein"><a class="knopf still klein" href="#/entdecken">${ico('zurueck', 'klein')} Kochbuch</a></p>
+  ${bildHtml(r, 'hero')}
+  <div class="rezept-kopf" style="margin-top:14px"><span class="ueber">${esc(BEREICH_NAME[m.bereich] || '')}${m.kueche ? ' · ' + esc(m.kueche) : ''}</span><h1>${esc(r.titel)}</h1>
+  <div class="eckdaten">${info.aktiv ? `<span>${ico('hand', 'klein')} ${info.aktiv} Min. aktiv</span>` : ''}${info.gesamt ? `<span>${ico('uhr', 'klein')} ${info.gesamt} Min. gesamt</span>` : ''}${info.schwierigkeit ? `<span>${ico('flamme', 'klein')} Schwierigkeit ${info.schwierigkeit} von 5</span>` : ''}<span>${ico('portion', 'klein')} ${esc(m.portionen)} Portionen im Original</span></div>
+  <div class="chips">${info.veg ? `<span class="chip gut">${istVegan(r) ? 'vegan' : 'vegetarisch'}</span>` : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}<span class="chip">${pruefText(m.pruefstand)}</span>${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div></div>
+  ${aus.length ? `<div class="hinweis gefahr">Passt nicht zu deinem Profil: ${esc(aus.join(', '))}</div>` : ''}
+  ${pr.warn.length ? `<div class="hinweis warn"><b>Allergene:</b> ${esc(pr.warn.join(' · '))}. Die App kann Verträglichkeit nicht garantieren.</div>` : ''}
   ${ger && ger.length ? `<div class="hinweis warn">Laut deinen Einstellungen fehlt: ${esc(ger.map(g => GERAETE[g] || g).join(', '))}</div>` : ''}
   ${fort ? `<div class="hinweis">Kochfortschritt gespeichert: Schritt ${fort.schritt + 1} von ${r.schritte.length} (${esc(fort.portionen)} Portionen). <a href="#/kochen/${esc(r.id)}">Weiter kochen</a> · <button class="klein" data-a="fortschritt-weg" data-v="${esc(r.id)}">verwerfen</button></div>` : ''}
   <div class="zweispaltig"><div class="seite">
     <div class="karte"><div class="zeile" style="justify-content:space-between"><strong>Portionen</strong>
       <span class="stepper"><button data-a="port" data-v="-1" data-r="${esc(r.id)}" aria-label="weniger">−</button><output>${p}</output><button data-a="port" data-v="1" data-r="${esc(r.id)}" aria-label="mehr">+</button></span></div>
       ${f !== 1 ? `<p class="leise klein">Rezept ist für ${esc(m.portionen)} Portionen geschrieben; Mengen sind ×${zahlDE(f, 2)} umgerechnet.${m.portionen_pro_durchgang && p > m.portionen_pro_durchgang ? ` <b>Mehr Durchgänge nötig</b> (ca. ${esc(m.portionen_pro_durchgang)} Portionen pro Durchgang) – aktive Zeit steigt.` : ''}</p>` : ''}
-      <h2 style="margin-top:.6em">Zutaten</h2>${zutatenListe(r, p)}
-      <div class="knopfreihe"><a class="knopf haupt" href="#/kochen/${esc(r.id)}">▶ Geführt kochen</a><button data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? '✓ in Auswahl' : '+ Zur Auswahl'}</button></div>
+      <h2 style="margin-top:.6em">Zutaten</h2>${anpassungBannerHtml(r)}${anpassPanelHtml(r)}${zutatenListe(r, p, true, !anpassDialog)}<p class="leise klein">${ico('stift', 'klein')} bei einer Zutat: Menge ändern (z. B. ganze Packung) und das Rezept anpassen.</p>
+      <div class="knopfreihe"><a class="knopf haupt" href="#/kochen/${esc(r.id)}">${ico('flamme', 'klein')} Geführt kochen</a><button data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? ico('haken', 'klein') + ' In der Auswahl' : ico('plus', 'klein') + ' Zur Auswahl'}</button><button class="still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">Als gegessen buchen</button></div>
     </div>
     <div class="karte"><h3 style="margin-top:0">Nährwerte</h3>${naehrBox(r, p)}</div>
     <div class="karte"><h3 style="margin-top:0">Vorkochen</h3>${vorkochBox(r)}</div>
     <div class="karte klein"><h3 style="margin-top:0">Geräte</h3><p>${esc(arr(m.geraete_noetig).map(g => GERAETE[g] || g).join(', ') || '–')}${arr(m.geraete_optional).length ? `<br><span class="leise">optional: ${esc(arr(m.geraete_optional).map(g => GERAETE[g] || g).join(', '))}</span>` : ''}</p>${geraeteHinweise(r)}
-      <h3>Herkunft</h3><p>${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p></div>
+      <h3>Herkunft</h3>${herkunftHtml(r)}<p>${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p></div>
   </div><div>
     ${md(r.einleitung)}
-    <h2>Schritt für Schritt</h2><div class="schritt-liste">${schritte}</div>
+    <h2>Schritt für Schritt</h2>${r.angepasst ? '<p class="hinweis klein">Mengen in den Schritten sind umgerechnet, soweit sie eindeutig einer Zutat zugeordnet werden können. Stück- und Alltagsangaben im Fließtext (z. B. „2 Zehen“) beziehen sich auf das Original – maßgeblich ist die Zutatenliste. Garzeiten und Temperaturen gelten unverändert; nach den Erkennungsmerkmalen garen.</p>' : ''}<div class="schritt-liste">${schritte}</div>
     ${abschnitte}
   </div></div></article>`;
 }
@@ -401,11 +444,11 @@ function vKochen(id) {
   let fort = D.fortschritt[r.id];
   if (!fort) { fort = { schritt: 0, portionen: standardPortionen(r), start: new Date().toISOString() }; D.fortschritt[r.id] = fort; speichern(); }
   const i = Math.min(fort.schritt, r.schritte.length - 1), s = r.schritte[i], f = faktor(r, fort.portionen);
-  const sf = schrittFelder(s.md, f);
+  const sf = schrittFelder(s.md, f, r);
   const zeit = (sf.felder.find(x => x[0].startsWith('Zeit')) || [])[1] || '';
   const mz = zeit.match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*Min/);
   const letzter = i === r.schritte.length - 1;
-  return `<div class="koch"><p class="leise klein"><a href="#/rezept/${esc(r.id)}">← ${esc(r.titel)}</a> · ${esc(fort.portionen)} Portionen${f !== 1 ? ' · Mengen im Schritt umgerechnet' : ''}</p>
+  return `<div class="koch"><p class="leise klein"><a href="#/rezept/${esc(r.id)}">← ${esc(r.titel)}</a> · ${esc(zahlDE(Number(fort.portionen), 1))} Portionen${f !== 1 || r.angepasst ? ' · Mengen im Schritt umgerechnet' : ''}${r.angepasst ? ` · <b>angepasst:</b> ${esc(r.angepasst.beschreibung || '')} – maßgeblich ist die Zutatenliste` : ''}</p>
   <div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / r.schritte.length)}%"></i></div>
   <p class="leise klein">Schritt ${i + 1} von ${r.schritte.length} · ${esc(s.phase || '')}</p>
   <h1>${s.nr != null ? s.nr + ' · ' : ''}${inline(s.titel)}</h1>
@@ -469,10 +512,12 @@ vFertig.danach = (id) => {
       abzug.forEach((z, ix) => { if (!form['abzug-an-' + ix] || !form['abzug-an-' + ix].checked) return; let rest = Number(form['abzug-' + ix].value) || 0; abgezogen.push({ zutat: z.zutat, menge: rest, einheit: z.einheit });
         for (const v of d.vorrat.filter(v => v.zutat === z.zutat && v.menge != null && v.menge !== '' && v.einheit === z.einheit).sort((a, b) => (b.geoeffnet ? 1 : 0) - (a.geoeffnet ? 1 : 0))) { const nimm = Math.min(rest, Number(v.menge)); v.menge = Math.round((Number(v.menge) - nimm) * 10) / 10; rest -= nimm; if (rest <= 0) break; }
         d.vorrat = d.vorrat.filter(v => !(v.zutat === z.zutat && v.menge !== null && v.menge !== '' && Number(v.menge) <= 0)); });
-      d.kochprotokolle.push({ id: kid, rezept: r.id, rezept_version: r.meta.version || 1, datum: heute(), portionen_gekocht: g, portionen_direkt_gegessen: e, vorrat_abzug: abgezogen.length ? 'bestaetigt' : 'keiner', abgezogen, nochmal: form.nochmal.value, eindruck: form.eindruck.value, notiz: form.notiz.value, naehr_pro_portion: r.naehrwerte.pro_portion, naehr_status: r.naehrwerte.status });
-      if (e > 0) d.tagebuch.push({ id: uid('mz'), datum: heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'frisch', rezept: r.id, titel: r.titel, portionen: e, naehr: mal(r.naehrwerte.pro_portion, e), status: r.naehrwerte.status, kochprotokoll: kid });
-      if (g - e > 0) { const gr = restGrenze(r, lager); d.restportionen.push({ id: uid('rest'), kochprotokoll: kid, rezept: r.id, titel: r.titel, portionen: g - e, lagerort: lager, gekocht_am: heute(), verbrauchen_bis: gr.bis, grenze_beleg: gr.beleg, naehr_pro_portion: r.naehrwerte.pro_portion, status: r.naehrwerte.status }); }
+      d.kochprotokolle.push({ id: kid, rezept: r.id, rezept_version: r.meta.version || 1, datum: heute(), portionen_gekocht: g, portionen_direkt_gegessen: e, vorrat_abzug: abgezogen.length ? 'bestaetigt' : 'keiner', abgezogen, nochmal: form.nochmal.value, eindruck: form.eindruck.value, notiz: form.notiz.value, naehr_pro_portion: r.naehrwerte.pro_portion, naehr_status: r.naehrwerte.status, angepasst: r.angepasst ? { mengen: r.angepasst.mengen, portionen: r.angepasst.portionen, beschreibung: r.angepasst.beschreibung } : null });
+      if (e > 0) { const ein = rezeptEintrag(r, e, 'frisch', { kochprotokoll: kid }); ein.datum = heute(); d.tagebuch.push(ein); }
+      if (g - e > 0) { const gr = restGrenze(r, lager); d.restportionen.push({ id: uid('rest'), kochprotokoll: kid, rezept: r.id, rezept_version: r.meta.version || 1, titel: r.titel, portionen: g - e, lagerort: lager, gekocht_am: heute(), verbrauchen_bis: gr.bis, grenze_beleg: gr.beleg, naehr_pro_portion: r.naehrwerte.pro_portion, mikro_pro_portion: r.naehrwerte.mikro_pro_portion || null, status: r.naehrwerte.status }); }
       delete d.fortschritt[r.id];
+      if (d.anpassungen) delete d.anpassungen[r.id];   // Anpassung galt nur für diesen Kochvorgang; Varianten bleiben
+      delete portionenWahl[r.id];
       if (form.ausAuswahl && form.ausAuswahl.checked) d.auswahl = d.auswahl.filter(a => a.rezept !== r.id);
     }, { neuZeichnen: false });
     location.hash = '#/vorrat';
@@ -625,11 +670,21 @@ vTagebuch.danach = () => { const f = $('#tb-form'); if (!f) return; f.addEventLi
 
 /* ---------- Mehr, Einstellungen, Daten ---------- */
 function vMehr() {
-  return `<h1>Mehr</h1><div class="raster">
-  <a class="karte rk" href="#/tagebuch"><h3>🍽 Gegessen</h3><span class="leise">Tagebuch: Kalorien und Makros, schnell erneut eintragen</span></a>
-  <a class="karte rk" href="#/einstellungen"><h3>⚙ Einstellungen</h3><span class="leise">Ausschlüsse, Geräte, Grundvorrat, Ernährungsziele</span></a>
-  <a class="karte rk" href="#/daten"><h3>💾 Daten sichern</h3><span class="leise">Export, Wiederherstellung, Profil-Import${D.letzter_export ? ' · letzter Export ' + esc(datumDE(D.letzter_export.slice(0, 10))) : ' · noch nie exportiert'}</span></a>
-  <a class="karte rk" href="#/info"><h3>ℹ Über diese App</h3><span class="leise">Prüfstand, Quellen, Techniken, Katalogversion</span></a></div>`;
+  const p = D.einstellungen.person || {}; const z = aktuelleZiele();
+  const eintrag = (href, titel, text) => `<li><a href="${href}" style="display:flex;justify-content:space-between;gap:12px;text-decoration:none;color:inherit;padding:4px 0"><span><b>${titel}</b><br><span class="leise klein">${text}</span></span>${ico('weiter')}</a></li>`;
+  return `<div class="seitenkopf"><h1>Profil</h1><span class="chip">${esc(profilName(PROFIL))}</span></div>
+  <ul class="eintraege">
+    ${eintrag('#/ziele', 'Ziele', z ? `${z.herkunft}: ${z.kcal ? zahlDE(z.kcal) + ' kcal' : ''}${z.protein ? ' · ' + zahlDE(z.protein) + ' g Protein' : ''}` : 'keine Ziele – optional')}
+    ${eintrag('#/einrichtung/0', 'Persönliche Angaben', `${p.ziel ? ZIELE[p.ziel][0] : 'nicht eingerichtet'} · Ernährungsweise: ${esc((WEISEN.find(w => w[0] === (D.einstellungen.ernaehrungsweise || 'alles')) || [])[1] || 'Alles')}${(D.einstellungen.allergien || []).length ? ' · Allergien: ' + D.einstellungen.allergien.length : ''}`)}
+    ${eintrag('#/einstellungen', 'Küche und Einstellungen', 'Geräte, Geräte-Hinweise, Grundvorrat, Ausschlüsse, Anzeige')}
+    ${eintrag('#/profile', 'Profile auf diesem Gerät', `${profilListe().length} Profil(e) · getrennte Daten, kein Passwortschutz`)}
+    ${eintrag('#/daten', 'Daten sichern', `Export, Wiederherstellung, Zwischenstände${D.letzter_export ? ' · letzter Export ' + esc(datumDE(D.letzter_export.slice(0, 10))) : ' · noch nie exportiert'}`)}
+    ${eintrag('#/info', 'Über diese App', 'Prüfstand, Quellen, Techniken, Bildnachweise')}
+  </ul>
+  <div class="karte"><h3 style="margin-top:0">App-Version</h3>
+    <p>Installiert: <b id="app-version">${esc(APP_VERSION)}</b> <span class="leise klein">· Stand ${esc(buildText(APP_BUILD))}</span></p>
+    <p class="leise klein" id="update-status">${updateStatusText()}</p>
+    <div class="knopfreihe" id="update-knoepfe">${updateKnoepfe()}</div></div>`;
 }
 function vEinstellungen() {
   const e = D.einstellungen;
@@ -649,9 +704,7 @@ function vEinstellungen() {
   <div class="karte"><h2 style="margin-top:0">Grundvorrat</h2><p class="leise klein">${e.grundvorrat == null ? 'Noch nicht erfasst – die Einkaufsliste fragt dann kurz nach.' : 'Gilt als vorhanden, ohne Menge.'}</p>
     ${grund.map(g => `<label style="display:flex"><input type="checkbox" name="gv" value="${esc(g)}" ${(e.grundvorrat || []).includes(g) ? 'checked' : ''}> ${esc(Z[g] ? Z[g].name : g)}</label>`).join('')}
     <label style="display:flex;margin-top:8px"><input type="checkbox" name="gv_erfasst" ${e.grundvorrat != null ? 'checked' : ''}> Grundvorrat ist erfasst</label></div>
-  <div class="karte"><h2 style="margin-top:0">Ernährungsziele (optional)</h2><p class="leise klein">Nur wenn du selbst Werte festlegst. Die App schlägt keine Ziele vor.</p>
-    <div class="zeile">${[['kcal', 'kcal/Tag'], ['protein', 'Eiweiß g/Tag'], ['kh', 'Kohlenhydrate g/Tag'], ['fett', 'Fett g/Tag']].map(([k, n]) => `<label class="feld"><span>${n}</span><input type="number" name="ziel_${k}" min="0" value="${esc(z[k] || '')}" style="width:7em"></label>`).join('')}</div>
-    <label class="feld"><span>Herkunft der Ziele (z. B. Fitnessprojekt, Datum)</span><input name="ziel_quelle" value="${esc(z.quelle || '')}"></label></div>
+  <p class="leise klein">Ernährungsweise, Allergien und Abneigungen: <a href="#/einrichtung/3">Persönliche Angaben</a> · Ziele: <a href="#/ziele">Ziele</a></p>
   <div class="karte"><h2 style="margin-top:0">Anzeige</h2>
     <label class="feld"><span>Standard-Portionen</span><input type="number" name="portionen" min="1" max="12" value="${e.portionen}" style="width:6em"></label>
     <label style="display:flex"><input type="checkbox" name="hilfen" ${e.hilfen_offen ? 'checked' : ''}> Anfängerhilfen im Rezept aufgeklappt</label></div>
@@ -660,16 +713,16 @@ function vEinstellungen() {
 vEinstellungen.danach = () => { const f = $('#einst-form'); f.addEventListener('submit', ev => { ev.preventDefault();
   const werte = n => $$(`input[name="${n}"]:checked`, f).map(x => x.value);
   aendere('Einstellungen gespeichert', d => { const e = d.einstellungen; e.ausschluesse = werte('aus'); e.geraete = f.ger_erfasst.checked ? werte('ger') : null; e.grundvorrat = f.gv_erfasst.checked ? werte('gv') : null;
-    const zi = {}; ['kcal', 'protein', 'kh', 'fett'].forEach(k => { const v = f['ziel_' + k].value; if (v !== '') zi[k] = Number(v); }); if (Object.keys(zi).length) { zi.quelle = f.ziel_quelle.value; zi.gesetzt_am = heute(); e.ziele = zi; } else e.ziele = null;
     const gh = Object.assign({}, e.geraete_hinweise || {}); ['kochfeld', 'pfanne', 'backofen', 'reiskocher', 'kernthermometer'].forEach(g => { const v = f['hinweis_' + g].value.trim(); if (v) gh[g] = v; else delete gh[g]; }); e.geraete_hinweise = gh;
     e.portionen = Number(f.portionen.value) || 2; e.hilfen_offen = f.hilfen.checked; }); }); };
 
-function exportDaten() { return { art: 'kochschule-export', schema: 1, app_version: APP_VERSION, katalog_version: K.version, exportiert_am: new Date().toISOString(), daten: D }; }
+function exportDaten() { return { art: 'kochschule-export', schema: SCHEMA, app_version: APP_VERSION, katalog_version: K.version, exportiert_am: new Date().toISOString(), daten: D }; }
 function importiere(obj) {
   if (!obj || typeof obj !== 'object') throw new Error('Keine gültige Datei.');
   if (obj.art === 'kochschule-privat-import') { const e = obj.einstellungen || {}; return { text: `Profil-Import: Ausschlüsse ${(e.ausschluesse || []).join(', ') || '–'}, ${(e.geraete || []).length} Geräte, ${Object.keys(e.geraete_hinweise || {}).length} Geräte-Hinweise. Vorrat, Tagebuch und alle anderen Daten bleiben unverändert.`, anwenden: d => { if (e.ausschluesse) d.einstellungen.ausschluesse = e.ausschluesse; if (e.geraete) d.einstellungen.geraete = e.geraete; if (e.geraete_hinweise) d.einstellungen.geraete_hinweise = Object.assign({}, d.einstellungen.geraete_hinweise || {}, e.geraete_hinweise); } }; }
-  if (obj.art !== 'kochschule-export' || obj.schema !== 1 || !obj.daten || obj.daten.schema !== 1) throw new Error('Unbekanntes Format (erwartet: kochschule-export, Schema 1).');
-  const x = obj.daten; return { text: `Sicherung vom ${String(obj.exportiert_am).slice(0, 16).replace('T', ' ')}: ${x.vorrat.length} Vorrat, ${x.restportionen.length} Restportionen, ${x.tagebuch.length} Tagebucheinträge, ${x.kochprotokolle.length} Kochprotokolle, ${x.auswahl.length} in Auswahl. Ersetzt alle Daten auf diesem Gerät.`, anwenden: d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), x); } };
+  if (obj.art !== 'kochschule-export' || !obj.daten || typeof obj.daten.schema !== 'number') throw new Error('Unbekanntes Format (erwartet: kochschule-export).');
+  if (obj.daten.schema > SCHEMA) throw new Error('Die Datei stammt von einer neueren App-Version – bitte zuerst die App aktualisieren (Mehr).');
+  const x = aufSchemaBringen(JSON.parse(JSON.stringify(obj.daten))); if (!x) throw new Error('Unbekanntes Datenformat.'); return { text: `Sicherung vom ${String(obj.exportiert_am).slice(0, 16).replace('T', ' ')}: ${x.vorrat.length} Vorrat, ${x.restportionen.length} Restportionen, ${x.tagebuch.length} Tagebucheinträge, ${x.kochprotokolle.length} Kochprotokolle, ${x.auswahl.length} in Auswahl. Ersetzt alle Daten auf diesem Gerät.`, anwenden: d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), x); } };
 }
 function vDaten() {
   return `<h1>Daten sichern</h1>
@@ -694,7 +747,9 @@ function vInfo() {
   const n = K.rezepte.length;
   return `<h1>Über diese App</h1><div class="karte"><p>Katalog ${esc(K.version)} (${esc(K.erstellt)}) · ${n} Rezepte · ${K.techniken.length} Techniken · ${K.zutaten.length} Zutaten · App ${APP_VERSION}</p>
   <p class="leise klein">Alle Rezepte sind <b>Entwürfe</b>: quellenbasiert, aber noch von niemandem in dieser Form gekocht. „Quellengeprüft“ heißt nicht „erprobt“. Nährwerte sind Schätzungen aus allgemeinen BLS-4.0-Werten. Sicherheitsangaben stammen aus gelesenen Quellen (vor allem BfR); Zeiten sind Orientierung.</p></div>
-  <h2>Techniken</h2><div class="raster">${K.techniken.map(t => `<a class="karte rk" href="#/technik/${esc(t.id)}"><h3>${esc(t.titel)}</h3></a>`).join('')}</div>`;
+  <h2>Techniken</h2><div class="raster">${K.techniken.map(t => `<a class="karte rk" href="#/technik/${esc(t.id)}"><h3>${esc(t.titel)}</h3></a>`).join('')}</div>
+  <h2>Bildnachweise</h2><p class="leise klein">Die Fotos sind <b>Beispielfotos</b> freier Lizenz von Wikimedia Commons, auf 800 px verkleinert. Sie zeigen ein ähnliches Gericht, nicht das Ergebnis dieses Rezepts. Rezepte ohne passendes freies Foto zeigen eine gestaltete Tellergrafik.</p>
+  <ul class="klein">${K.rezepte.filter(r => r.meta.bild).map(r => `<li><a href="#/rezept/${esc(r.id)}">${esc(kurztitel(r.titel))}</a>: ${bildNachweisHtml(r.meta)}</li>`).join('') || '<li class="leise">keine</li>'}</ul>`;
 }
 function vTechnik(id) { const t = T[id]; if (!t) return '<p class="leer">Technik nicht gefunden.</p>'; return `<p class="leise klein"><a href="javascript:history.back()">← zurück</a></p><h1>${esc(t.titel)}</h1>${md(t.md.replace(/^# .*\n/, ''))}`; }
 function vZutat(id) { const z = Z[id]; if (!z) return '<p class="leer">Zutat nicht gefunden.</p>'; const v = vorratMenge(id);
@@ -722,6 +777,8 @@ document.addEventListener('click', ev => {
   const f = filterZustand;
   switch (a) {
     case 'undo': rueckgaengig(); break;
+    case 'update-jetzt': updateAnwenden(); break;
+    case 'update-suchen': updateSuchen(true); break;
     case 'bereich': f.bereich = v; route(); break;
     case 'richtung': f.richtung = f.richtung.includes(v) ? f.richtung.filter(x => x !== v) : [...f.richtung, v]; route(); break;
     case 'auswahl-toggle': { ev.preventDefault(); const r = R[v]; const drin = D.auswahl.some(x => x.rezept === v);
@@ -730,7 +787,7 @@ document.addEventListener('click', ev => {
     case 'aw': aendere(null, d => { const x = d.auswahl[Number(b.dataset.ix)]; x[b.dataset.k] = Math.max(b.dataset.k === 'jetzt' ? 0 : 0, x[b.dataset.k] + Number(v)); if (x.jetzt + x.vorkochen < 1) x.jetzt = 1; }); break;
     case 'port': { const r = R[b.dataset.r]; const a2 = D.auswahl.find(x => x.rezept === r.id); const neu = Math.max(1, standardPortionen(r) + Number(v));
       if (a2) aendere(null, () => { const diff = neu - (a2.jetzt + a2.vorkochen); a2.jetzt = Math.max(1, a2.jetzt + diff); }); else { portionenWahl[r.id] = neu; route(); } break; }
-    case 'schritt': { const id = location.hash.split('/')[2]; const r = R[decodeURIComponent(id)]; const fo = D.fortschritt[r.id]; fo.schritt = Math.max(0, Math.min(r.schritte.length - 1, fo.schritt + Number(v))); speichern(); route(); window.scrollTo(0, 0); break; }
+    case 'schritt': { const id = location.hash.split('/')[2]; const r = R[decodeURIComponent(id)]; const fo = D.fortschritt[r.id]; fo.schritt = Math.max(0, Math.min(r.schritte.length - 1, fo.schritt + Number(v))); fo.aktualisiert = new Date().toISOString(); speichern(); route(); window.scrollTo(0, 0); break; }
     case 'fertig': location.hash = '#/fertig/' + encodeURIComponent(v); break;
     case 'fortschritt-weg': aendere('Kochfortschritt verworfen', d => { delete d.fortschritt[v]; }); break;
     case 'timer': { const min = Number(b.dataset.min); timer.push({ id: uid('t'), name: b.dataset.name || 'Timer', ende: Date.now() + min * 60000 }); timerSpeichern(); zeichneTimer(); toast(`Timer ${min} Min. läuft (nur bei geöffneter App zuverlässig)`); break; }
@@ -744,7 +801,7 @@ document.addEventListener('click', ev => {
     case 'tage': break;
     case 'vorrat-weg': aendere('Aus dem Vorrat entfernt', d => { d.vorrat = d.vorrat.filter(x => x.id !== v); }); break;
     case 'rest-essen': { const p = D.restportionen.find(x => x.id === v); if (p.verbrauchen_bis && tageBis(p.verbrauchen_bis) < 0 && !confirm('Die Aufbewahrungsgrenze ist überschritten. Trotzdem als gegessen eintragen?')) break;
-      aendere('1 Restportion gegessen und eingetragen', d => { const q = d.restportionen.find(x => x.id === v); q.portionen = Math.max(0, q.portionen - 1); d.tagebuch.push({ id: uid('mz'), datum: heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'restportion', restportion: q.id, rezept: q.rezept, titel: q.titel, portionen: 1, naehr: mal(q.naehr_pro_portion, 1), status: q.status }); }); break; }
+      aendere('1 Restportion gegessen und eingetragen', d => { const q = d.restportionen.find(x => x.id === v); q.portionen = Math.max(0, q.portionen - 1); d.tagebuch.push({ id: uid('mz'), datum: (location.hash.startsWith('#/tagebuch') && typeof tbDatum === 'string' && tbDatum) ? tbDatum : heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'restportion', restportion: q.id, rezept: q.rezept, titel: q.titel, portionen: 1, einheit: 'Portion', naehr: mal(q.naehr_pro_portion, 1), mikro: q.mikro_pro_portion ? JSON.parse(JSON.stringify(q.mikro_pro_portion)) : null, status: q.status }); }); break; }
     case 'rest-weg': aendere('Restportion als verworfen markiert', d => { const q = d.restportionen.find(x => x.id === v); q.verworfen = q.portionen; q.portionen = 0; }); break;
     case 'rest-tk': aendere('Als eingefroren markiert', d => { const q = d.restportionen.find(x => x.id === v); const r = R[q.rezept]; q.lagerort = 'tiefkuehler'; q.eingefroren_am = heute(); const gr = r ? restGrenze(r, 'tiefkuehler') : { bis: null, beleg: 'Tiefkühl-Dauer nicht belegt' }; q.verbrauchen_bis = gr.bis; q.grenze_beleg = gr.beleg; }); break;
     case 'tb-weg': aendere('Eintrag gelöscht', d => { d.tagebuch = d.tagebuch.filter(x => x.id !== v); }); break;
@@ -753,7 +810,7 @@ document.addEventListener('click', ev => {
     case 'export-kopie': navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(exportDaten())).then(() => { aendere('Export als Text kopiert', d => { d.letzter_export = new Date().toISOString(); }); }, () => toast('Kopieren nicht erlaubt')); break;
     case 'import-text': try { importAnwenden(JSON.parse($('#import-text').value)); } catch (e) { toast('Import fehlgeschlagen: ' + e.message); } break;
     case 'persist': navigator.storage && navigator.storage.persist ? navigator.storage.persist().then(ok => { toast(ok ? 'Dauerhafter Speicher gewährt' : 'Browser hat abgelehnt – regelmäßig exportieren'); route(); }) : toast('Nicht unterstützt'); break;
-    case 'zs-zurueck': { const z = zwischenstaende()[Number(v)]; if (z && confirm('Diesen Zwischenstand wiederherstellen? Der aktuelle Stand wird vorher ebenfalls als Zwischenstand gesichert.')) { zwischenstand('vor Wiederherstellung'); const alt = JSON.parse(z.daten); aendere('Zwischenstand wiederhergestellt', d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), alt); }); } break; }
+    case 'zs-zurueck': { const z = zwischenstaende()[Number(v)]; if (z && confirm('Diesen Zwischenstand wiederherstellen? Der aktuelle Stand wird vorher ebenfalls als Zwischenstand gesichert.')) { let alt; try { alt = aufSchemaBringen(JSON.parse(z.daten)); } catch (e) { alt = null; } if (!alt) { toast('Dieser Zwischenstand passt nicht zu dieser App-Version.'); break; } zwischenstand('vor Wiederherstellung'); aendere('Zwischenstand wiederhergestellt', d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), alt); }); } break; }
     case 'alles-loeschen': if (confirm('Wirklich alle persönlichen Daten auf diesem Gerät löschen? Vorher wird ein Zwischenstand angelegt (unter „Zwischenstände“ wiederherstellbar, solange der Browser-Speicher nicht gelöscht wird).')) zwischenstand('vor Alles löschen'), aendere('Alle Daten gelöscht', d => { const n = leer(); Object.keys(d).forEach(k => delete d[k]); Object.assign(d, n); }); break;
   }
 });
@@ -767,11 +824,84 @@ window.addEventListener('hashchange', () => { route(); if (!location.hash.starts
 window.addEventListener('storage', e => { if (e.key === SPEICHER) { D = laden(); route(); } });
 document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible' && location.hash.startsWith('#/kochen') && !wakeLock && 'wakeLock' in navigator) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* */ } } });
 
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-  const hatteSteuerung = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW', e));
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hatteSteuerung) toast('Neue App-Version geladen – deine Daten bleiben erhalten. Einmal neu laden, um sie zu nutzen.'); });
+/* ---------- App-Updates ----------
+   Beim Öffnen und bei jeder Rückkehr in die App (mit Internet) wird nach einer veröffentlichten Version gesucht.
+   Eine gefundene Version lädt im Hintergrund und wartet; gewechselt wird nur nach Tippen auf „Jetzt aktualisieren“
+   (oder beim nächsten kompletten Neustart der App). Während des Kochens wird der Hinweis nicht gezeigt. */
+const SW_OK = 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+const UP = { reg: null, wartend: null, neu: null, geprueft: null, fehler: false, sucht: false, wechsel: false };
+let ungespeichert = false;
+function buildText(b) { const m = String(b || '').match(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)$/); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : String(b || '–'); }
+function updateStatusText() {
+  if (!SW_OK) return 'Automatische Updates und Offline-Nutzung sind in diesem Browser nicht verfügbar.';
+  if (UP.wartend && !UP.still) return `Update verfügbar${UP.neu && UP.neu.version ? ': Version ' + esc(UP.neu.version) : ''}${UP.neu && UP.neu.build ? ' (' + esc(buildText(UP.neu.build)) + ')' : ''}. Deine Daten bleiben erhalten.`;
+  if (!navigator.onLine) return 'Offline – du nutzt die installierte Version. Nach Updates wird gesucht, sobald wieder Internet da ist.';
+  if (UP.sucht) return 'Suche nach Updates …';
+  if (UP.fehler) return 'Update-Suche gerade nicht möglich – die installierte Version funktioniert weiter.';
+  return UP.geprueft ? `Aktuell. Zuletzt geprüft ${UP.geprueft.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}.` : 'Noch nicht geprüft.';
 }
+function updateKnoepfe() { if (!SW_OK) return ''; return UP.wartend && !UP.still ? '<button class="haupt" data-a="update-jetzt">Jetzt aktualisieren</button>' : '<button data-a="update-suchen">Nach Updates suchen</button>'; }
+function updateLeiste() {
+  const el = $('#update'); if (!el) return;
+  const seite = (location.hash.replace(/^#\/?/, '') || 'entdecken').split('/')[0];
+  const zeigen = !!UP.wartend && !UP.still && seite !== 'kochen' && seite !== 'fertig';   // nie mitten im Kochen
+  if (zeigen && el.hidden) el.innerHTML = '<span>Update verfügbar</span><button class="haupt" data-a="update-jetzt">Jetzt aktualisieren</button>';
+  el.hidden = !zeigen;
+  const st = $('#update-status'); if (st) st.innerHTML = updateStatusText();
+  const kn = $('#update-knoepfe'); if (kn) kn.innerHTML = updateKnoepfe();
+}
+function wartendPruefen() {
+  const w = UP.reg && UP.reg.waiting;
+  if (!w || !navigator.serviceWorker.controller) return;
+  if (w !== UP.wartend) {
+    UP.wartend = w; UP.neu = null;
+    // Läuft der Code dieser Version schon (Umstieg vom alten Verfahren), still aktivieren – kein Hinweis, kein Neuladen
+    const ch = new MessageChannel(); ch.port1.onmessage = e => { UP.neu = e.data; if (e.data && e.data.build === APP_BUILD) { UP.still = true; w.postMessage({ typ: 'aktivieren' }); } updateLeiste(); };
+    w.postMessage({ typ: 'version' }, [ch.port2]);
+  }
+  updateLeiste();
+}
+let letzteSuche = 0;
+async function updateSuchen(manuell = false) {
+  if (!UP.reg) return;
+  if (!manuell && Date.now() - letzteSuche < 60000) return;
+  if (!navigator.onLine) { updateLeiste(); if (manuell) toast('Offline – die installierte Version läuft weiter.'); return; }
+  letzteSuche = Date.now(); UP.sucht = true; updateLeiste();
+  try { await UP.reg.update(); UP.fehler = false; UP.geprueft = new Date(); } catch (e) { UP.fehler = true; }
+  UP.sucht = false;
+  // Eine gefundene Version lädt noch – „installed“ meldet sich über updatefound/statechange
+  wartendPruefen(); updateLeiste();
+  if (manuell && !UP.wartend && !UP.reg.installing) toast(UP.fehler ? 'Gerade keine Verbindung zum Update-Server.' : 'Du hast die aktuelle Version.');
+}
+function updateAnwenden() {
+  if (!UP.wartend || UP.still) return;
+  if (ungespeichert && !confirm('Auf dieser Seite gibt es noch nicht gespeicherte Eingaben. Sie gehen beim Aktualisieren verloren.\n\nTrotzdem jetzt aktualisieren?')) return;
+  UP.wechsel = true;
+  UP.wartend.postMessage({ typ: 'aktivieren' });
+  setTimeout(() => { if (UP.wechsel) location.reload(); }, 4000);   // falls controllerchange ausbleibt
+}
+if (SW_OK) {
+  const hatteSteuerung = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    UP.reg = reg; wartendPruefen();
+    const beobachte = n => { if (n) n.addEventListener('statechange', () => { if (n.state === 'installed') wartendPruefen(); }); };
+    beobachte(reg.installing); reg.addEventListener('updatefound', () => beobachte(reg.installing));
+    updateSuchen();
+  }).catch(e => console.warn('SW', e));
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (UP.wechsel) { UP.wechsel = false; location.reload(); return; }
+    if (UP.still) { UP.still = false; UP.wartend = null; UP.neu = null; updateLeiste(); return; }
+    // in einem anderen Tab aktualisiert: diese Seite läuft noch mit der alten Version
+    if (hatteSteuerung) { UP.wartend = null; updateLeiste(); toast('Neue App-Version ist aktiv. Bitte neu laden, sobald es passt – deine Daten bleiben erhalten.'); }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') updateSuchen(); });
+  window.addEventListener('online', () => updateSuchen());
+  window.addEventListener('offline', updateLeiste);
+  setInterval(() => { if (document.visibilityState === 'visible') updateSuchen(); }, 30 * 60000);
+}
+// Ungespeicherte Eingaben merken (Formulare; Filter und Haken speichern sofort und zählen nicht)
+document.addEventListener('input', ev => { const el = ev.target; if (el.closest && el.closest('#app') && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !(el.dataset && (el.dataset.f || el.dataset.a)) && el.type !== 'file') ungespeichert = true; });
+if (migriert) { speichern(); setTimeout(() => toast(`Datenformat aktualisiert – deine Daten sind übernommen (Sicherung unter Mehr › Daten sichern › Zwischenstände).`), 300); }
 if (ladeProblem) setTimeout(() => toast(ladeProblem), 500);
 window.KS = { D: () => D, exportDaten, importiere, einkaufsPosten, bewerte, R, Z };
 route();

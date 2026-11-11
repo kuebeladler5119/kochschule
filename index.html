@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#b4532a">
+<meta name="theme-color" content="#fbf8f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171412" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex, nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,21 +16,46 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-buch" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 7h7M9 10.5h5"/></symbol>
+  <symbol id="i-liste" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></symbol>
+  <symbol id="i-tasche" viewBox="0 0 24 24"><path d="M5 8h14l-1.2 12.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></symbol>
+  <symbol id="i-glas" viewBox="0 0 24 24"><path d="M7 4h10M8 4v2.5c0 .8-1 1.5-1 3V19a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9.5c0-1.5-1-2.2-1-3V4"/><path d="M7 13h10"/></symbol>
+  <symbol id="i-tagebuch" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><circle cx="12" cy="13" r="4"/><path d="M3 4v5M5 4v5M4 9v11M20.5 4c-1.5 1.5-1.5 5 0 6.5V20"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-uhr" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V5a1.5 1.5 0 0 1 3 0v6M14 11V6.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5a6 6 0 0 1-5.2-3l-1.8-3.2a1.5 1.5 0 0 1 2.5-1.6L8 15"/></symbol>
+  <symbol id="i-flamme" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-4-3-6-4-10-1.5 2-2 3.5-2 5-1-1-2-2.5-2-4-3 2.5-6 6-6 9a7 7 0 0 0 7 7z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-zurueck" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-weiter" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+  <symbol id="i-haken" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-portion" viewBox="0 0 24 24"><path d="M3 13h18a9 9 0 0 1-18 0z"/><path d="M8 9c0-2 2-2 2-4M13 9c0-2 2-2 2-4"/></symbol>
+  <symbol id="i-blatt" viewBox="0 0 24 24"><path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/></symbol>
+  <symbol id="i-kuehl" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M6 10h12M9 6v2M9 13v3"/></symbol>
+  <symbol id="i-suche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/></symbol>
+  <symbol id="i-stift" viewBox="0 0 24 24"><path d="M4 20l1-4.5L15.5 5a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8L8.5 19z"/><path d="M13.5 7l3.5 3.5M4 20h5"/></symbol>
+  <symbol id="i-leer"viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8 15c1-1.2 2.3-1.8 4-1.8s3 .6 4 1.8M9 9.5h.01M15 9.5h.01"/></symbol>
+</svg>
 <header class="kopf">
-  <a href="#/entdecken" class="marke">Kochschule</a>
+  <a href="#/entdecken" class="marke">Koch<span>schule</span></a>
   <span id="kopf-info" class="kopf-info"></span>
+  <a href="#/mehr" class="kopf-knopf" aria-label="Profil, Ziele und Einstellungen"><svg class="ico"><use href="#i-person"/></svg></a>
+  <div id="update" class="updateleiste" role="status" hidden></div>
 </header>
 <main id="app" class="inhalt" tabindex="-1"><p class="laden">Lade …</p></main>
 <div id="timerleiste" class="timerleiste" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <nav class="nav" aria-label="Hauptnavigation">
-  <a href="#/entdecken" data-nav="entdecken"><span class="ni">🔎</span>Entdecken</a>
-  <a href="#/auswahl" data-nav="auswahl"><span class="ni">🗂</span>Auswahl<b id="nav-auswahl" class="zaehler" hidden></b></a>
-  <a href="#/einkauf" data-nav="einkauf"><span class="ni">🛒</span>Einkauf</a>
-  <a href="#/vorrat" data-nav="vorrat"><span class="ni">🥫</span>Vorrat</a>
-  <a href="#/mehr" data-nav="mehr"><span class="ni">☰</span>Mehr</a>
+  <a href="#/entdecken" data-nav="entdecken"><svg class="ico" aria-hidden="true"><use href="#i-buch"/></svg>Kochbuch</a>
+  <a href="#/auswahl" data-nav="auswahl"><svg class="ico" aria-hidden="true"><use href="#i-liste"/></svg>Auswahl<b id="nav-auswahl" class="zaehler" hidden></b></a>
+  <a href="#/einkauf" data-nav="einkauf"><svg class="ico" aria-hidden="true"><use href="#i-tasche"/></svg>Einkauf</a>
+  <a href="#/vorrat" data-nav="vorrat"><svg class="ico" aria-hidden="true"><use href="#i-glas"/></svg>Vorrat</a>
+  <a href="#/tagebuch" data-nav="tagebuch"><svg class="ico" aria-hidden="true"><use href="#i-tagebuch"/></svg>Tagebuch</a>
 </nav>
 <script src="data/katalog.js"></script>
+<script src="ernaehrung.js"></script>
+<script src="rezepte.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
