@@ -4,9 +4,9 @@
    - Die App startet immer aus dem Offline-Speicher dieser Version (schnell, offline, alle Dateien passen zusammen).
    - Eine neue Version wird im Hintergrund vollständig geladen und wartet dann. Aktiv wird sie erst,
      wenn die Seite „aktivieren“ schickt (Knopf „Jetzt aktualisieren“) oder wenn die App ganz geschlossen war. */
-const VERSION = '202611111801';
+const VERSION = '202611111812';
 const CACHE = 'kochschule-' + VERSION;
-const DATEIEN = ['./', 'index.html', 'app.css', 'ernaehrung.js', 'rezepte.js', 'tracking.js', 'app.js', 'data/katalog.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+const DATEIEN = ['./', 'index.html', 'app.css', 'ernaehrung.js', 'rezepte.js', 'tracking.js', 'training.js', 'app.js', 'data/katalog.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 // Rezeptfotos (vom Build eingetragen, nur mit Lizenznachweis) – werden mit der Version offline gespeichert
 const BILDER = ['bilder/rez-bibimbap-rinderhack.jpg', 'bilder/rez-chili-con-carne.jpg', 'bilder/rez-dal-rote-linsen.jpg', 'bilder/rez-honig-knoblauch-haehnchen.jpg', 'bilder/rez-miso-suppe.jpg', 'bilder/rez-overnight-oats.jpg', 'bilder/rez-oyakodon.jpg', 'bilder/rez-panna-cotta-agar.jpg', 'bilder/rez-rosmarinkartoffeln.jpg', 'bilder/rez-rotes-thai-curry.jpg', 'bilder/rez-seehecht-grenobloise.jpg', 'bilder/rez-shakshuka.jpg', 'bilder/rez-sommerrollen-garnelen.jpg', 'bilder/rez-tomaten-bruschetta.jpg', 'bilder/rez-tomaten-ruehrei.jpg', 'bilder/rez-tomatensauce-hazan.jpg', 'bilder/rez-tzatziki.jpg'];
 

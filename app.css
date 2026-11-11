@@ -258,3 +258,11 @@ table.mikro td { vertical-align: top; }
 body.kochen.koch-dunkel { --papier: #171412; --flaeche: #211d1a; --flaeche2: #2a2521; --tinte: #f1e9e1; --leise: #b2a69b; --linie: #3a332e; --rand: #8a7c70; --akzent: #e0805f; --akzent-hell: #3a251d; --akzent-text: #1a1411; --salbei: #8fb58b; --salbei-hell: #22301f; --bernstein: #e2b356; --bernstein-hell: #352a15; --rot: #ff9384; --rot-hell: #3b201c; --blau: #8ab6df; --blau-hell: #1c2833; color-scheme: dark; }
 .kochfarbe { display: inline-flex; gap: 4px; margin-left: 6px; } .kochfarbe button { min-height: 32px; padding: 4px 10px; font-size: .8rem; }
 .kochfarbe button[aria-pressed="true"] { background: var(--tinte); color: var(--papier); border-color: var(--tinte); }
+.tr-saetze { width: 100%; border-collapse: collapse; }
+.tr-saetze th { font: 600 .74rem var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--leise); text-align: left; padding: 4px; }
+.tr-saetze td { padding: 4px; vertical-align: middle; }
+.tr-saetze input { width: 4.6em; min-height: 40px; padding: 6px 8px; }
+.tr-saetze select { min-height: 40px; padding: 4px 6px; }
+.tr-saetze tr.erledigt td { background: var(--salbei-hell); }
+.tr-liste { list-style: none; padding: 0; }
+.nav a { min-width: 0; }
