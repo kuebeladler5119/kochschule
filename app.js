@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.4.1';
-const APP_BUILD = '202611112009';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.5.0';
+const APP_BUILD = '202611112020';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -656,7 +656,34 @@ function vVorrat() {
   </form>
   <datalist id="zutaten-liste">${K.zutaten.map(z => `<option value="${esc(z.name)}">`).join('')}</datalist>
   ${gruppen || '<p class="leise">Noch leer. Der Vorrat hilft bei Vorschlägen und kürzt die Einkaufsliste – er ist aber keine Pflicht.</p>'}
-  <p class="leise klein">MHD ist kein Wegwerfdatum (nach Ablauf prüfen). Nach dem Verbrauchsdatum nicht mehr verwenden.</p></div>`;
+  <p class="leise klein">MHD ist kein Wegwerfdatum (nach Ablauf prüfen). Nach dem Verbrauchsdatum nicht mehr verwenden.</p></div>
+  ${vorratRezepteHtml()}`;
+}
+/* „Was kann ich damit kochen?“ – Rezepte zu Vorratszutaten; persönliche Ausschlüsse gelten immer */
+let vorratFokus = null;
+function vorratRezepte(zid) {
+  return K.rezepte.map(r0 => R[r0.id]).filter(r => r && !ausgeschlossen(r).length && (zid ? r.zutaten.some(z => z.zutat === zid) : r.zutaten.some(z => z.zutat && vorratMenge(z.zutat).vorhanden))).map(r => {
+    const notw = r.zutaten.filter(z => z.zutat && z.bedarf === 'notwendig');
+    const fehlt = [...new Set(notw.filter(z => !vorratMenge(z.zutat).vorhanden).map(z => Z[z.zutat] ? Z[z.zutat].name : z.text))];
+    let menge = '';
+    if (zid) {
+      const zeilen = r.zutaten.filter(z => z.zutat === zid && z.menge != null && z.menge !== ''); const einh = zeilen.length ? zeilen[0].einheit : null;
+      const bedarf = zeilen.filter(z => z.einheit === einh).reduce((s, z) => s + Number(z.menge), 0); const v = vorratMenge(zid);
+      if (einh && bedarf > 0) menge = `${zahlDE(bedarf)} ${einh} nötig` + (vorratEinheit(zid) === einh && !v.unbekannt ? (v.menge >= bedarf ? ' – Vorrat reicht' : ` – im Vorrat ${zahlDE(v.menge)} ${einh}`) : '');
+    }
+    return { r, fehlt, menge };
+  }).sort((a, b) => a.fehlt.length - b.fehlt.length || a.r.titel.localeCompare(b.r.titel, 'de'));
+}
+function vorratRezepteHtml() {
+  if (!D.vorrat.length) return '';
+  const optionen = [...new Set(D.vorrat.map(v => v.zutat))].filter(id => Z[id]).sort((a, b) => Z[a].name.localeCompare(Z[b].name, 'de'));
+  const zid = optionen.includes(vorratFokus) ? vorratFokus : null; const liste = vorratRezepte(zid);
+  const zeige = zid ? liste.slice(0, 12) : liste.filter(x => x.fehlt.length <= 2).slice(0, 8);
+  return `<div class="karte"><h2 style="margin-top:0">Was kann ich damit kochen?</h2>
+    <div class="filterleiste" role="group" aria-label="Zutat aus dem Vorrat wählen"><button class="filterchip" data-a="vorrat-fokus" data-v="" aria-pressed="${!zid}">ganzer Vorrat</button>${optionen.map(id => `<button class="filterchip" data-a="vorrat-fokus" data-v="${esc(id)}" aria-pressed="${zid === id}">${esc(Z[id].name)}</button>`).join('')}</div>
+    ${zeige.length ? `<ul class="zliste">${zeige.map(x => `<li><span class="menge">${x.fehlt.length ? x.fehlt.length + ' fehlt' : 'alles da'}</span><span><a href="#/rezept/${esc(x.r.id)}">${esc(x.r.titel)}</a><br><span class="leise klein">${x.fehlt.length ? 'fehlt: ' + esc(x.fehlt.slice(0, 4).join(', ')) + (x.fehlt.length > 4 ? ' …' : '') : 'alles Notwendige im Vorrat'}${x.menge ? ' · ' + esc(x.menge) + ' (Rezept für ' + esc(x.r.meta.portionen || '?') + ' Portionen)' : ''}</span></span></li>`).join('')}</ul>`
+      : `<p class="leise">${zid ? 'Kein Rezept mit dieser Zutat, das zu den persönlichen Ausschlüssen passt.' : 'Noch kein Rezept, bei dem höchstens zwei notwendige Zutaten fehlen – eine Zutat oben antippen zeigt alle Rezepte damit.'}</p>`}
+    <p class="leise klein">Zählt nur notwendige Zutaten; persönliche Ausschlüsse gelten immer. Grundzutaten wie Salz oder Öl erscheinen als fehlend, wenn sie nicht im Vorrat stehen. Abgelaufene Verbrauchsdaten zählen nicht als vorhanden.</p></div>`;
 }
 function vorratZeile(v) {
   const z = Z[v.zutat]; const name = z ? z.name : v.zutat; const marken = [];
@@ -828,6 +855,7 @@ document.addEventListener('click', ev => {
     case 'liste-kopieren': { const t = einkaufsPosten().filter(p => p.bedarf !== 'grundvorrat' && !(p.vorrat && p.vorrat.vorhanden && !p.pruefen && p.fehlt <= 0)).map(p => `- ${p.name}: ${p.menge ? fmtMenge(p.fehlt, p.einheit) + ' ' + p.einheit : p.texte.join(' + ')}`).join('\n');
       navigator.clipboard ? navigator.clipboard.writeText('Einkaufsliste\n' + t).then(() => toast('Kopiert'), () => toast('Kopieren nicht erlaubt')) : toast('Kopieren nicht unterstützt'); break; }
     case 'tage': break;
+    case 'vorrat-fokus': vorratFokus = v || null; route(); break;
     case 'vorrat-weg': aendere('Aus dem Vorrat entfernt', d => { d.vorrat = d.vorrat.filter(x => x.id !== v); }); break;
     case 'rest-essen': { const p = D.restportionen.find(x => x.id === v); if (p.verbrauchen_bis && tageBis(p.verbrauchen_bis) < 0 && !confirm('Die Aufbewahrungsgrenze ist überschritten. Trotzdem als gegessen eintragen?')) break;
       const menge = Math.min(Number(b.dataset.p) || 1, p.portionen); aendere(`${zahlDE(menge, 2)} Restportion gegessen und eingetragen – Zutaten wurden beim Kochen schon abgezogen`, d => { const q = d.restportionen.find(x => x.id === v); q.portionen = Math.max(0, Math.round((q.portionen - menge) * 100) / 100); d.tagebuch.push({ id: uid('mz'), datum: (location.hash.startsWith('#/tagebuch') && typeof tbDatum === 'string' && tbDatum) ? tbDatum : heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'restportion', mahlzeit: typeof neuerEintragSlot === 'function' ? neuerEintragSlot() : undefined, restportion: q.id, rezept: q.rezept, titel: q.titel, portionen: menge, einheit: 'Portion', naehr: mal(q.naehr_pro_portion, menge), mikro: q.mikro_pro_portion ? JSON.parse(JSON.stringify(q.mikro_pro_portion)) : null, status: q.status }); if (menge !== 1 && d.tagebuch[d.tagebuch.length - 1].mikro) { const e = d.tagebuch[d.tagebuch.length - 1]; e.mikro = Object.fromEntries(Object.entries(e.mikro).map(([k, x]) => [k, { w: x.w == null ? null : Math.round(x.w * menge * 1000) / 1000, abdeckung: x.abdeckung }])); } }); break; }
