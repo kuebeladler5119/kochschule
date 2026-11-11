@@ -297,7 +297,7 @@ document.addEventListener('click', ev => {
     case 'tb-kopie-ab': tbKopieVon = null; route(); break;
     case 'tb-korb-add': { const t = b.dataset.t; const eingabe = Number(String(($(`[data-gramm="${v}"]`) || {}).value || '').replace(',', '.')); let k = null;
       if (t === 'rezept') { const r = R[v]; if (r) k = { name: kurztitel(r.titel), menge: Number(b.dataset.p) || 1, einheit: 'Portion(en)' }; }
-      else if (t === 'lm') { const z = Z[v]; if (z) k = { name: z.name, menge: eingabe > 0 ? eingabe : 100, einheit: 'g' }; }
+      else if (t === 'lm') { const z = Z[v]; if (z) k = { name: z.name, menge: eingabe > 0 ? eingabe : 100, einheit: ($(`[data-einheit="${v}"]`) || {}).value || 'g' }; }
       else { const l = (D.lebensmittel || []).find(x => x.id === v); if (l) k = { name: l.name, menge: eingabe > 0 ? eingabe : (l.portion || 100), einheit: l.bezug === '100ml' ? 'ml' : 'g' }; }
       if (!k) return; tbKorb.push(Object.assign({ typ: t, id: v }, k)); korbNeuZeichnen(); toast(`${k.name} auf der Sammelliste`); break; }
     case 'tb-korb-weg': tbKorb.splice(Number(v), 1); korbNeuZeichnen(); break;
@@ -305,7 +305,7 @@ document.addEventListener('click', ev => {
     case 'tb-korb-buchen': { const liste = tbKorb.filter(k => k.menge > 0); if (!liste.length) { toast('Bitte Mengen größer als 0 eingeben'); return; } tbKorb = [];
       aendere(`${liste.length} Einträge eingetragen`, d => { liste.forEach(k => { let e = null;
         if (k.typ === 'rezept' && R[k.id]) e = rezeptEintrag(R[k.id], k.menge);
-        else if (k.typ === 'lm' && Z[k.id]) e = lebensmittelEintrag(Z[k.id], k.menge);
+        else if (k.typ === 'lm' && Z[k.id]) e = lebensmittelEintrag(Z[k.id], k.menge, k.einheit === 'ml' ? 'ml' : 'g');
         else { const l = (d.lebensmittel || []).find(x => x.id === k.id); if (l) e = eigenerEintrag(l, k.menge); }
         if (e) d.tagebuch.push(e); }); }); break; }
     case 'tb-slot-kopie': { const quelle = D.tagebuch.filter(e => e.datum === tbDatum && eintragSlot(e) === v);

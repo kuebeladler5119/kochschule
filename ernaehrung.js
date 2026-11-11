@@ -271,12 +271,18 @@ function rezeptEintrag(r, portionen, quelle = 'rezept', extra = {}) {
   const e = Object.assign({ id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle, mahlzeit: neuerEintragSlot(), rezept: r.id, rezept_version: r.meta.version || 1, titel: r.titel, portionen, einheit: 'Portion', naehr: Object.assign({}, pp), mikro: JSON.parse(JSON.stringify(mp)), status: r.naehrwerte.status }, extra);
   eintragSkalieren(e, portionen); return e;
 }
-function lebensmittelEintrag(z, gramm) {
+/* Datenquelle eines allgemeinen Werts: BLS 4.0 (Vorrang) oder USDA FoodData Central, wo der BLS keinen passenden Eintrag hat */
+const quelleText = code => !code ? 'keine Nährwerte' : /^USDA-/.test(code) ? 'USDA FoodData Central ' + code.slice(5) : 'BLS ' + code;
+const istFluessig = z => !!(z && (z.fluessig || z.dichte));
+/* Menge in g oder ml; ml wird über die belegte Dichte (sonst Näherung 1 g/ml, gekennzeichnet) in g umgerechnet – Werte gelten je 100 g */
+function lebensmittelEintrag(z, menge, einheit = 'g') {
   const code = Object.keys(z.bls || {})[0]; const w = code ? z.bls[code].werte : {};
   const naehr = {}; ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz'].forEach(k => { naehr[k] = w[k] == null ? null : w[k] / 100; });
   const mikro = {}; Object.keys(K.naehrstoffe || {}).forEach(k => { mikro[k] = { w: w[k] == null ? null : w[k] / 100, abdeckung: w[k] == null ? 0 : 100 }; });
-  const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'lebensmittel', mahlzeit: neuerEintragSlot(), zutat: z.id, titel: z.name, gramm, einheit: 'g', naehr, mikro, status: code ? 'vollstaendig' : 'unvollstaendig', datenquelle: code ? 'BLS ' + code + ' (allgemeiner Wert)' : 'keine Nährwerte' };
-  eintragSkalieren(e, gramm); return e;
+  const ml = einheit === 'ml'; const d = ml ? (Number(z.dichte) || 1) : 1;
+  const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'lebensmittel', mahlzeit: neuerEintragSlot(), zutat: z.id, titel: z.name, gramm: menge, einheit: ml ? 'ml' : 'g', naehr, mikro, status: code ? 'vollstaendig' : 'unvollstaendig', datenquelle: code ? quelleText(code) + ' (allgemeiner Wert)' : 'keine Nährwerte' };
+  if (ml) { e.dichte = d; e.dichte_basis = z.dichte ? (z.dichte_quelle || 'belegte Dichte') : 'Näherung 1 g/ml (keine belegte Dichte)'; }
+  eintragSkalieren(e, menge * d); return e;
 }
 function eigenerEintrag(l, gramm) {
   const naehr = {}; ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz'].forEach(k => { naehr[k] = l.naehr[k] == null ? null : l.naehr[k] / 100; });
@@ -335,7 +341,8 @@ function tbTreffer() {
       <br>Genauer: <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a> – dort auch Barcode-Abfrage bei Open Food Facts. Oder unten einen freien Eintrag machen.</div>`;
   }
   return `<ul class="eintraege">${rz.map(r => `<li><span>${esc(r.titel)}<br><span class="leise klein">Rezept · ${r.naehrwerte.pro_portion.kcal != null ? zahlDE(r.naehrwerte.pro_portion.kcal) + ' kcal/Portion' : 'kcal unbekannt'}</span></span><span><button class="klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">1 Portion</button> <button class="klein still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="0.5">½</button> <button class="klein still" data-a="tb-korb-add" data-t="rezept" data-v="${esc(r.id)}" data-p="1" aria-label="${esc(r.titel)} auf die Sammelliste">+ Liste</button></span></li>`).join('')}
-    ${zt.map(z => `<li><span>${esc(z.name)}<br><span class="leise klein">allgemeiner BLS-Wert · ${zahlDE(z.bls[Object.keys(z.bls)[0]].werte.kcal)} kcal/100 g</span></span><span class="zeile" style="gap:6px"><input type="number" min="1" value="100" aria-label="Gramm ${esc(z.name)}" data-gramm="${esc(z.id)}" style="width:5.5em" inputmode="decimal"><button class="klein" data-a="tb-lm" data-v="${esc(z.id)}">g eintragen</button><button class="klein still" data-a="tb-korb-add" data-t="lm" data-v="${esc(z.id)}" aria-label="${esc(z.name)} auf die Sammelliste">+ Liste</button></span></li>`).join('')}
+    ${zt.map(z => { const c = Object.keys(z.bls)[0]; const fl = istFluessig(z);
+      return `<li><span>${esc(z.name)}<br><span class="leise klein">allgemeiner Wert (${/^USDA-/.test(c) ? 'USDA' : 'BLS'}) · ${zahlDE(z.bls[c].werte.kcal)} kcal/100 g${fl ? (z.dichte ? ` · ${zahlDE(z.dichte, 2)} g/ml` : ' · ml ≈ g (Näherung)') : ''}</span></span><span class="zeile" style="gap:6px"><input type="number" min="1" value="${fl ? 200 : 100}" aria-label="Menge ${esc(z.name)}" data-gramm="${esc(z.id)}" style="width:5.5em" inputmode="decimal">${fl ? `<select data-einheit="${esc(z.id)}" aria-label="Einheit"><option value="ml" selected>ml</option><option value="g">g</option></select>` : '<span>g</span>'}<button class="klein" data-a="tb-lm" data-v="${esc(z.id)}">eintragen</button><button class="klein still" data-a="tb-korb-add" data-t="lm" data-v="${esc(z.id)}" aria-label="${esc(z.name)} auf die Sammelliste">+ Liste</button></span></li>`; }).join('')}
     ${eg.map(l => `<li><span>${esc(l.name)}${l.marke ? ' · ' + esc(l.marke) : ''}<br><span class="leise klein">eigenes Produkt · ${l.naehr.kcal != null ? zahlDE(l.naehr.kcal) + ' kcal/100 ' + (l.bezug === '100ml' ? 'ml' : 'g') : 'kcal unbekannt'}</span></span><span class="zeile" style="gap:6px"><input type="number" min="1" value="${esc(l.portion || 100)}" data-gramm="${esc(l.id)}" style="width:5.5em" inputmode="decimal"><button class="klein" data-a="tb-eigen" data-v="${esc(l.id)}">eintragen</button><button class="klein still" data-a="tb-korb-add" data-t="eigen" data-v="${esc(l.id)}" aria-label="${esc(l.name)} auf die Sammelliste">+ Liste</button></span></li>`).join('')}</ul>
     <p class="leise klein">„+ Liste“ sammelt mehrere Lebensmittel; oben in der Sammelliste lassen sich Mengen anpassen und alle auf einmal eintragen.</p>`;
 }
@@ -367,7 +374,7 @@ document.addEventListener('click', ev => {
     case 'tb-tag': tbDatum = plusTage(tbDatum || heute(), Number(v)); if (tbDatum > heute()) tbDatum = heute(); location.hash = '#/tagebuch/' + tbDatum; break;
     case 'tb-vollstaendig': aendere(null, d => { d.tage = d.tage || {}; d.tage[tbDatum] = Object.assign({}, d.tage[tbDatum], { vollstaendig: b.checked }); }); break;
     case 'tb-rezept': { const r = R[v]; aendere(`${kurztitel(r.titel)} eingetragen`, d => d.tagebuch.push(rezeptEintrag(r, Number(b.dataset.p) || 1))); break; }
-    case 'tb-lm': { const z = Z[v]; const g = Number(($(`[data-gramm="${v}"]`) || {}).value) || 100; aendere(`${z.name} eingetragen`, d => d.tagebuch.push(lebensmittelEintrag(z, g))); break; }
+    case 'tb-lm': { const z = Z[v]; const g = Number(String(($(`[data-gramm="${v}"]`) || {}).value || '').replace(',', '.')) || 100; const einh = ($(`[data-einheit="${v}"]`) || {}).value || 'g'; aendere(`${z.name} eingetragen`, d => d.tagebuch.push(lebensmittelEintrag(z, g, einh))); break; }
     case 'tb-eigen': { const l = (D.lebensmittel || []).find(x => x.id === v); const g = Number(($(`[data-gramm="${v}"]`) || {}).value) || 100; aendere(`${l.name} eingetragen`, d => d.tagebuch.push(eigenerEintrag(l, g))); break; }
     case 'tb-menge': { aendere(null, d => { const e = d.tagebuch.find(x => x.id === v); const dir = Number(b.dataset.d);
       if (e.einheit === 'Portion' || !e.einheit) { const alt = e.portionen || 1; let neu = Math.max(0.25, Math.round((alt + dir * 0.25) * 100) / 100); const q = e.restportion ? d.restportionen.find(x => x.id === e.restportion) : null; if (q && neu - alt > q.portionen) neu = alt; if (q) q.portionen = Math.round((q.portionen - (neu - alt)) * 100) / 100; eintragSkalieren(e, neu / alt); e.portionen = neu; }
