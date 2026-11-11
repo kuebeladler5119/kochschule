@@ -147,11 +147,13 @@ const rirText = l => { const r = l.map(s => s.rir === '' || s.rir == null ? '?' 
 const sitzungText = h => `${datumDE(h.datum)}: ${h.saetze.map(s => (s.wdh || '?') + '×' + (s.kg !== '' && s.kg != null ? zahlDE(Number(s.kg), 2) : '–')).join(', ')} kg (${rirText(h.saetze)})${h.saetze.length < h.geplant ? `, ${h.geplant - h.saetze.length} Satz ausgelassen` : ''}`;
 function progressionsVorschlag(u, eId) {
   const info = ueb(u.uebung); const hist = vergleichbareEinheiten(u.uebung, u.variante, eId).slice(0, 3);
-  const von = Number(u.wdh_von) || null, bis = Number(u.wdh_bis) || von; const schritt = Number(u.schritt_kg) || Number(info.schritt_kg) || null;
+  const von = Number(u.wdh_von) || null, bis = Number(u.wdh_bis) || von; const eigenerSchritt = Number(u.schritt_kg) || Number(info.schritt_kg) || null; const schritt = eigenerSchritt || Number(info.gewichtsschritt_kg_vorschlag) || null;
   const zeitbasiert = /plank|halten|unterarmstütz/i.test(info.name + ' ' + info.id);
   if (zeitbasiert) return { art: 'manuell', titel: 'Zeitbasierte Übung – selbst entscheiden', begruendung: 'Für Halteübungen gibt es hier keine Regel.', daten: '', unsicherheit: '' };
   if (!hist.length) return { art: 'start', titel: 'Noch keine eigene Leistung an diesem Gerät', begruendung: u.referenz_kg ? `Die Referenz ${kgText(u.referenz_kg)} ist eine alte Angabe, keine bestätigte Leistung. Mit einem vorsichtigen Satz beginnen und selbst einschätzen.` : 'Gewicht selbst wählen; ab der zweiten vergleichbaren Einheit gibt es Vorschläge.', daten: u.variante ? 'Variante: ' + u.variante : '', unsicherheit: 'Ohne Leistungsdaten keine Empfehlung.' };
   const l = hist[0]; const pause = tageZwischen(l.datum, heute());
+  const akt = trDaten().einheiten.find(x => x.id === eId); const ck = (akt && akt.check) || {};
+  if (ck.beschwerden === 'ja' || ck.kater === 'stark') return { art: 'halten', titel: 'Heute nicht steigern', begruendung: `Im Kurz-Check ${ck.beschwerden === 'ja' ? 'Beschwerden' : 'starker Muskelkater'} angegeben – Gewicht halten oder leichter; bei Schmerzen die Übung abbrechen.`, daten: 'Kurz-Check dieser Einheit', unsicherheit: '' };
   if (pause > 14) return { art: 'wiedereinstieg', titel: `Seit ${pause} Tagen nicht trainiert`, begruendung: 'Erste Einheit als Standortbestimmung: Gewicht selbst wählen, die alte Last nicht automatisch übernehmen. Kraft kommt nach kurzen Pausen meist rasch zurück.', daten: 'Zuletzt ' + sitzungText(l), unsicherheit: 'Für die Lastreduktion beim Wiedereinstieg gibt es keine belegten Prozentwerte.' };
   if (l.beschwerde) return { art: 'beschwerde', titel: 'Nicht steigern – zuletzt Beschwerden notiert', begruendung: 'Last halten oder senken bzw. eine schmerzfreie Alternative wählen. Bei anhaltenden Beschwerden ärztlich oder physiotherapeutisch abklären lassen.', daten: sitzungText(l), unsicherheit: '' };
   if (l.qualitaet === 'unsauber') return { art: 'halten', titel: 'Gewicht halten', begruendung: 'Ausführung zuletzt als unsauber markiert – erst die Technik festigen.', daten: sitzungText(l), unsicherheit: '' };
@@ -160,7 +162,7 @@ function progressionsVorschlag(u, eId) {
   const unsicher = rirUnbekannt ? 'RIR nicht eingetragen – die Anstrengung ist unbekannt; der Vorschlag stützt sich nur auf Gewicht und Wiederholungen.' : 'RIR ist eine grobe Selbsteinschätzung (im Mittel etwa ±1 Wiederholung).';
   if (hist.length >= 2 && zielErreicht(hist[0], bis) && zielErreicht(hist[1], bis) && hist[0].top === hist[1].top && hist[0].top > 0) {
     const neu = schritt ? hist[0].top + schritt : null;
-    return { art: 'steigern', kg: neu, titel: neu ? `Gewicht auf ${kgText(neu)} erhöhen` : 'Kleinste verfügbare Gewichtsstufe erhöhen', begruendung: `In den letzten 2 vergleichbaren Einheiten alle Arbeitssätze mit ${bis} Wdh. bei ${kgText(hist[0].top)} geschafft. Danach wieder Wiederholungen aufbauen; Sätze und Anstrengung bleiben gleich.`, daten: hist.slice(0, 2).map(sitzungText).join(' · '), unsicherheit: unsicher + (schritt ? '' : ' Kleinster Gewichtsschritt nicht hinterlegt (Routine: „Gewichtsschritt“).') + (hist[0].vorschlag && hist[0].vorschlag.art === 'steigern' && hist[0].vorschlag.entscheidung === 'beibehalten' ? ' Beim letzten Mal hast du „Beibehalten“ gewählt.' : '') };
+    return { art: 'steigern', kg: neu, titel: neu ? `Gewicht auf ${kgText(neu)} erhöhen` : 'Kleinste verfügbare Gewichtsstufe erhöhen', begruendung: `In den letzten 2 vergleichbaren Einheiten alle Arbeitssätze mit ${bis} Wdh. bei ${kgText(hist[0].top)} geschafft. Danach wieder Wiederholungen aufbauen; Sätze und Anstrengung bleiben gleich.`, daten: hist.slice(0, 2).map(sitzungText).join(' · '), unsicherheit: unsicher + (eigenerSchritt ? '' : schritt ? ` Schritt ${zahlDE(schritt, 2)} kg ist ein allgemeiner Vorschlag aus der Übungsbibliothek – an deinem Gerät kann er anders sein (Routine: „Gewichtsschritt“).` : ' Kleinster Gewichtsschritt nicht hinterlegt (Routine: „Gewichtsschritt“).') + (hist[0].vorschlag && hist[0].vorschlag.art === 'steigern' && hist[0].vorschlag.entscheidung === 'beibehalten' ? ' Beim letzten Mal hast du „Beibehalten“ gewählt.' : '') };
   }
   const wdhErreicht = l.saetze.length >= l.geplant && l.saetze.length && l.saetze.every(s => Number(s.wdh) >= bis && (Number(s.kg) || 0) === l.top);
   if (wdhErreicht && !zielErreicht(l, bis)) return { art: 'halten', titel: 'Gewicht halten', begruendung: `Alle Sätze mit ${bis} Wdh., aber mindestens einer mit RIR 0 (am Limit). Weniger RIR ist kein Ziel an sich – erst wenn das Ziel mit etwas Reserve gelingt, steigern.`, daten: sitzungText(l), unsicherheit: unsicher };
@@ -179,6 +181,35 @@ function vorschlagHtml(u, ui, e) {
   return `<details class="vorschlag v-${esc(v.art)}"${ent ? '' : ' open'}><summary><b>Vorschlag:</b> ${esc(v.titel)}${ent ? ` <span class="chip">${esc({ uebernommen: 'übernommen', beibehalten: 'beibehalten', selbst: 'selbst geändert' }[ent] || ent)}</span>` : ''}</summary>
     <p class="klein" style="margin:.3em 0">${esc(v.begruendung)}</p>${v.daten ? `<p class="leise klein" style="margin:.2em 0">Daten: ${esc(v.daten)}</p>` : ''}${v.unsicherheit ? `<p class="leise klein" style="margin:.2em 0">Unsicher: ${esc(v.unsicherheit)}</p>` : ''}
     ${ent ? '' : `<div class="knopfreihe">${aenderbar ? `<button class="klein haupt" data-a="tr-v-ok" data-u="${ui}">Übernehmen</button>` : ''}<button class="klein" data-a="tr-v-nein" data-u="${ui}">Beibehalten</button><button class="klein still" data-a="tr-v-selbst" data-u="${ui}">Selbst ändern</button></div>`}</details>`;
+}
+
+/* ---------- Gerät besetzt: Alternativen nach hinterlegter Alternative, Bewegungsmuster, Muskelgruppe ---------- */
+function tauschHtml(u, ui, info) {
+  const alle = alleUebungen().filter(x => x.id !== u.uebung); const gr = uebGruppen(info);
+  const alt = arr(info.alternativen).map(a => alle.find(x => x.id === a)).filter(Boolean);
+  const muster = info.bewegungsmuster && info.bewegungsmuster !== 'isolation' ? alle.filter(x => x.bewegungsmuster === info.bewegungsmuster && !alt.includes(x)) : [];
+  const gruppe = alle.filter(x => !alt.includes(x) && !muster.includes(x) && uebGruppen(x).some(g => gr.includes(g)));
+  const opt = (l, n) => l.length ? `<optgroup label="${n}">${l.map(x => `<option value="${esc(x.id)}">${esc(x.name)}${x.quelle === 'eigen' ? ' (eigene)' : ''}</option>`).join('')}</optgroup>` : '';
+  return `<div class="zeile"><select data-tr-tausch="${ui}"><option value="">– Ersatz wählen –</option>${opt(alt, 'Hinterlegte Alternativen')}${opt(muster, 'Gleiches Bewegungsmuster')}${opt(gruppe, 'Gleiche Muskelgruppe')}${opt(alle.filter(x => !alt.includes(x) && !muster.includes(x) && !gruppe.includes(x)), 'Alle übrigen')}</select></div>
+    <p class="leise klein">Gewichte werden nicht übertragen – jedes Gerät und jede Übung hat einen eigenen Verlauf. Nur die offenen Sätze wechseln die Übung.</p>`;
+}
+/* ---------- Heute weniger Zeit: kürzen nach Reihenfolge, Pausen bleiben ---------- */
+let trZeitMin = ''; let trZeitVorschlag = null;
+const satzSek = (u, s) => 45 + (s.art === 'arbeit' ? (Number(u.pause_s) || 90) : 60);
+function einheitRestSek(e) { return e.uebungen.reduce((sum, u) => sum + u.saetze.filter(s => !s.erledigt).reduce((a, s) => a + satzSek(u, s), 0), 0); }
+function zeitKuerzen(e, minuten) {
+  // Kopie der offenen Sätze; zuerst je Übung (von hinten) einen Arbeitssatz streichen, wenn mind. 3 offen; dann ganze Übungen von hinten (die erste bleibt)
+  const ziel = minuten * 60; const plan = e.uebungen.map(u => ({ offenA: u.saetze.filter(s => !s.erledigt && s.art === 'arbeit').length, offenW: u.saetze.filter(s => !s.erledigt && s.art === 'aufwaerm').length, weg: 0, ganz: false }));
+  const rest = () => plan.reduce((sum, p, i) => p.ganz ? sum : sum + (p.offenA - p.weg) * (45 + (Number(e.uebungen[i].pause_s) || 90)) + p.offenW * 105, 0);
+  for (let i = plan.length - 1; i >= 0 && rest() > ziel; i--) if (plan[i].offenA - plan[i].weg >= 3) plan[i].weg++;
+  for (let i = plan.length - 1; i >= 1 && rest() > ziel; i--) if (plan[i].offenA + plan[i].offenW > 0) plan[i].ganz = true;
+  return { plan, rest: rest(), passt: rest() <= ziel };
+}
+function trZeitVorschauHtml(e) {
+  const v = trZeitVorschlag; if (!v) return '';
+  const aend = v.plan.map((p, i) => p.ganz ? `<li><b>${esc(ueb(e.uebungen[i].uebung).name)}</b>: entfällt heute</li>` : p.weg ? `<li>${esc(ueb(e.uebungen[i].uebung).name)}: ${p.weg} Arbeitssatz weniger</li>` : '').join('');
+  return `${aend ? `<ul>${aend}</ul>` : '<p class="klein">Passt ohne Kürzung.</p>'}<p class="leise klein">Danach ca. ${Math.round(v.rest / 60)} Min.${v.passt ? '' : ' – reicht trotzdem nicht ganz; die erste Übung bleibt immer erhalten.'} Pausen werden nicht verkürzt. Reihenfolge der Routine = Priorität.</p>
+    ${aend ? '<div class="knopfreihe"><button class="klein haupt" data-a="tr-zeit-ok">So kürzen</button><button class="klein still" data-a="tr-zeit-ab">Abbrechen</button></div>' : ''}`;
 }
 
 /* ---------- Privater Plan-Import (Datei liegt nur lokal, nie im öffentlichen Katalog) ----------
@@ -219,6 +250,14 @@ function trEinheitHtml() {
   const opt = alleUebungen().map(u => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('');
   return `<div class="seitenkopf"><h1>${esc(e.name)}</h1><span class="leise klein">seit ${esc(new Date(e.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))}</span></div>
   <p class="leise klein">Alles wird sofort gespeichert – du kannst die App schließen und später fortsetzen. ${RIR_TEXT}</p>
+  <div class="tr-hilfen">
+    <details class="karte klein"${e.check ? '' : ''}><summary><b>Kurz-Check</b> <span class="leise">(freiwillig)</span>${e.check && (e.check.beschwerden === 'ja' || e.check.kater === 'stark' || e.check.muede === 'erhoeht') ? ' <span class="chip warn">heute vorsichtiger</span>' : ''}</summary>
+      <div class="zeile">${[['muede', 'Müdigkeit', [['', '–'], ['normal', 'normal'], ['erhoeht', 'ungewöhnlich hoch']]], ['kater', 'Muskelkater', [['', '–'], ['nein', 'keiner'], ['leicht', 'leicht'], ['stark', 'stark']]], ['beschwerden', 'Beschwerden', [['', '–'], ['nein', 'keine'], ['ja', 'ja']]]].map(([k, n, o]) => `<label class="feld"><span>${n}</span><select data-tr-check="${k}">${o.map(([v, t]) => `<option value="${v}" ${((e.check || {})[k] || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`).join('')}</div>
+      <p class="leise klein">Nur ein Merker für dich – daraus wird keine Erholungs-„Diagnose“ berechnet. Bei Beschwerden oder starkem Muskelkater schlägt die App heute keine Steigerung vor.</p></details>
+    <details class="karte klein"><summary><b>Heute weniger Zeit?</b></summary>
+      <div class="zeile"><label class="feld"><span>Verfügbare Minuten ab jetzt</span><input type="number" inputmode="numeric" min="5" max="240" step="5" id="tr-zeit-min" value="${esc(trZeitMin || '')}" style="width:6em"></label><button class="klein" data-a="tr-zeit-plan">Vorschlag zeigen</button></div>
+      <div id="tr-zeit-vorschau">${trZeitVorschlag ? trZeitVorschauHtml(e) : `<p class="leise klein">Geschätzt verbleibend: ca. ${Math.round(einheitRestSek(e) / 60)} Min. (je Satz ca. 45 s plus eingestellte Pause).</p>`}</div></details>
+  </div>
   ${e.uebungen.map((u, ui) => { const info = ueb(u.uebung); const l = letzteLeistung(u.uebung, e.id, u.variante);
     return `<section class="karte tr-uebung"><div class="zeile" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(info.name)}</h2><a class="klein" href="#/training/uebung/${esc(u.uebung)}">Anleitung</a></div>
       ${u.variante ? `<p class="klein" style="margin:.1em 0">${esc(u.variante)}</p>` : ''}
@@ -236,7 +275,7 @@ function trEinheitHtml() {
       </tbody></table>
       <p class="leise klein" style="margin:.4em 0">A = Aufwärmsatz, W = Arbeitssatz (Kürzel antippen zum Wechseln). Pause: ${u.pause_s ? zahlDE(u.pause_s / 60, 1) + ' Min.' : 'frei'}${trDaten().einstellungen.auto_pause !== false ? ' – startet nach einem fertigen Arbeitssatz' : ''}. <button class="klein still" data-a="tr-pause-start" data-u="${ui}">Pause jetzt starten</button></p>
       <div class="knopfreihe"><button class="klein" data-a="tr-satz-add" data-u="${ui}">${ico('plus', 'klein')} Satz</button><button class="klein still" data-a="tr-satz-weg" data-u="${ui}" ${u.saetze.length ? '' : 'disabled'}>letzten Satz entfernen</button>
-        <details class="klein"><summary>Übung tauschen</summary><div class="zeile"><select data-tr-tausch="${ui}"><option value="">– Ersatz wählen –</option>${(info.alternativen || []).filter(a => alleUebungen().some(x => x.id === a)).map(a => `<option value="${esc(a)}">${esc(ueb(a).name)} (Alternative)</option>`).join('')}${opt}</select></div></details></div>
+        <details class="klein"><summary>Gerät besetzt / Übung tauschen</summary>${tauschHtml(u, ui, info)}</details></div>
       <div class="zeile"><label class="feld" style="flex:2 1 180px"><span>Notiz</span><input value="${esc(u.notiz || '')}" data-tr-u-feld="notiz" data-u="${ui}" placeholder="z. B. Griff, Sitzeinstellung"></label>
         <label class="feld"><span>Ausführung (freiwillig)</span><select data-tr-u-qual="${ui}"><option value="">–</option>${[['sauber', 'sauber'], ['unsicher', 'unsicher'], ['unsauber', 'unsauber']].map(([k, n]) => `<option value="${k}" ${u.qualitaet === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
       <label style="margin-top:4px"><input type="checkbox" data-tr-u-beschwerde="${ui}" ${u.beschwerde ? 'checked' : ''}> Schmerzen oder Beschwerden bei dieser Übung</label>
@@ -338,6 +377,10 @@ document.addEventListener('click', ev => {
       const einst = trDaten().einstellungen;
       if (fertig && s.art === 'arbeit' && u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
       break; }
+    case 'tr-zeit-plan': { const m = Number(($('#tr-zeit-min') || {}).value); if (!(m > 0)) { toast('Bitte verfügbare Minuten eintragen'); return; } trZeitMin = m; trZeitVorschlag = zeitKuerzen(trEinheit(), m); const el = $('#tr-zeit-vorschau'); if (el) el.innerHTML = trZeitVorschauHtml(trEinheit()); break; }
+    case 'tr-zeit-ab': trZeitVorschlag = null; route(); break;
+    case 'tr-zeit-ok': { const v = trZeitVorschlag; if (!v) return; trZeitVorschlag = null;
+      aendere('Einheit für heute gekürzt – Plan bleibt unverändert', d => { trEinheit().uebungen.forEach((u, i) => { const p = v.plan[i]; if (p.ganz) { u.saetze = u.saetze.filter(s => s.erledigt); u.heute_ausgelassen = 'Zeit'; return; } for (let k = 0; k < p.weg; k++) { const idx = u.saetze.map((s, j) => (!s.erledigt && s.art === 'arbeit') ? j : -1).filter(j => j >= 0).pop(); if (idx != null) u.saetze.splice(idx, 1); } if (p.weg) u.gekuerzt = p.weg; }); }); break; }
     case 'tr-v-ok': { const e = trEinheit(); const u = e.uebungen[ui]; const vs = progressionsVorschlag(u, e.id);
       aendere(vs.kg != null ? `Vorschlag übernommen: ${kgText(vs.kg)} für die offenen Arbeitssätze dieser Einheit` : 'Vorschlag übernommen', d => { const u2 = trEinheit().uebungen[ui]; if (vs.kg != null) u2.saetze.forEach(s => { if (s.art === 'arbeit' && !s.erledigt) s.kg = vs.kg; }); if (vs.pause_s) u2.pause_s = vs.pause_s; u2.vorschlag = { art: vs.art, entscheidung: 'uebernommen', kg: vs.kg ?? null, zeit: new Date().toISOString() }; }); break; }
     case 'tr-v-nein': case 'tr-v-selbst': { const e = trEinheit(); const vs = progressionsVorschlag(e.uebungen[ui], e.id); aendere(null, d => { trEinheit().uebungen[ui].vorschlag = { art: vs.art, entscheidung: a === 'tr-v-nein' ? 'beibehalten' : 'selbst', zeit: new Date().toISOString() }; }); break; }
@@ -378,6 +421,7 @@ document.addEventListener('change', ev => {
   if (d.trRCheck) { const rid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)][d.trRCheck] = el.checked; }); return; }
   if (d.trPeTag != null) { const pid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().plaene.find(x => x.id === pid).einheiten[Number(d.trPeTag)].tag = el.value; }); return; }
   if (d.trEinst) { trSpeichernStill(() => { trDaten().einstellungen[d.trEinst] = el.checked; }); return; }
+  if (d.trCheck) { aendere(null, () => { const e = trEinheit(); e.check = Object.assign({}, e.check || {}, { [d.trCheck]: el.value }); }); return; }
   if (d.trUQual != null) { trSpeichernStill(() => { trEinheit().uebungen[Number(d.trUQual)].qualitaet = el.value; }); return; }
   if (d.trUBeschwerde != null) aendere(null, () => { trEinheit().uebungen[Number(d.trUBeschwerde)].beschwerde = el.checked; });
   else if (d.trTausch != null && el.value) aendere('Übung getauscht – frühere Leistung siehe oben', () => { const u = trEinheit().uebungen[Number(d.trTausch)]; u.ersetzt = u.ersetzt || u.uebung; u.uebung = el.value; u.saetze.forEach(s => { if (!s.erledigt) s.kg = ''; }); });
