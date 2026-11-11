@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#b4532a">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kochschule">
+<title>Kochschule</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="kopf">
+  <a href="#/entdecken" class="marke">Kochschule</a>
+  <span id="kopf-info" class="kopf-info"></span>
+</header>
+<main id="app" class="inhalt" tabindex="-1"><p class="laden">Lade …</p></main>
+<div id="timerleiste" class="timerleiste" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<nav class="nav" aria-label="Hauptnavigation">
+  <a href="#/entdecken" data-nav="entdecken"><span class="ni">🔎</span>Entdecken</a>
+  <a href="#/auswahl" data-nav="auswahl"><span class="ni">🗂</span>Auswahl<b id="nav-auswahl" class="zaehler" hidden></b></a>
+  <a href="#/einkauf" data-nav="einkauf"><span class="ni">🛒</span>Einkauf</a>
+  <a href="#/vorrat" data-nav="vorrat"><span class="ni">🥫</span>Vorrat</a>
+  <a href="#/mehr" data-nav="mehr"><span class="ni">☰</span>Mehr</a>
+</nav>
+<script src="data/katalog.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

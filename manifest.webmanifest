@@ -1,0 +1,16 @@
+{
+  "name": "Kochschule",
+  "short_name": "Kochschule",
+  "description": "Persönliches Kochbuch mit Kochschule, Einkauf, Vorrat und Ernährungstagebuch",
+  "lang": "de",
+  "start_url": "./#/entdecken",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf6f1",
+  "theme_color": "#b4532a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
