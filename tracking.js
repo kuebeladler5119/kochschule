@@ -2,7 +2,7 @@
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
 /* ---------- Schutz vor Doppelbuchungen: dieselbe Aktion innerhalb von 0,8 s nur einmal ---------- */
-const BUCHUNGS_AKTIONEN = new Set(['tb-rezept', 'tb-lm', 'tb-eigen', 'tb-kopie', 'tb-mz-buchen', 'tb-slot-kopie', 'rest-essen', 'auswahl-toggle', 'pd-auswahl', 'pd-menue', 'tr-start', 'tr-satz-add', 'einkauf-bestaetigen', 'anp-ok', 'tr-ende']);
+const BUCHUNGS_AKTIONEN = new Set(['tb-rezept', 'tb-lm', 'tb-eigen', 'tb-kopie', 'tb-mz-buchen', 'tb-slot-kopie', 'rest-essen', 'auswahl-toggle', 'pd-auswahl', 'pd-menue', 'tr-start', 'tr-satz-add', 'einkauf-bestaetigen', 'anp-ok', 'tr-ende', 'tb-korb-add', 'tb-korb-buchen']);
 let letzteAktion = { schluessel: '', zeit: 0 };
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b || !BUCHUNGS_AKTIONEN.has(b.dataset.a)) return;
@@ -31,7 +31,7 @@ function eintraegeHtml(ein, tag) {
     const liste = ein.filter(e => eintragSlot(e) === k); if (!liste.length) return '';
     const kcal = liste.reduce((s, e) => s + (e.naehr && e.naehr.kcal != null ? e.naehr.kcal : 0), 0); const unbek = liste.some(e => !e.naehr || e.naehr.kcal == null);
     return `<section class="mahlzeit"><div class="mahlzeit-kopf"><h3>${n}</h3><span class="leise klein">${unbek ? 'mind. ' : ''}${zahlDE(kcal)} kcal</span>
-      <span class="knopfreihe" style="margin:0">${tag !== heute() ? `<button class="still klein" data-a="tb-slot-kopie" data-v="${k}">auf heute kopieren</button>` : ''}<button class="still klein" data-a="tb-slot-merken" data-v="${k}">als eigene Mahlzeit</button></span></div>
+      <span class="knopfreihe" style="margin:0">${tag !== heute() ? `<button class="still klein" data-a="tb-kopie-vorschau" data-v="${k}">kopieren …</button>` : ''}<button class="still klein" data-a="tb-slot-merken" data-v="${k}">als eigene Mahlzeit</button></span></div>
       <ul class="eintraege">${liste.map(eintragZeile).join('')}</ul></section>`;
   }).join('');
 }
@@ -61,7 +61,33 @@ function schnellwahlHtml() {
   return `${mz.length ? `<h4>Eigene Mahlzeiten</h4><div class="schnellwahl">${mz.map(m => `<button class="klein" data-a="tb-mz-buchen" data-v="${esc(m.id)}">${esc(m.name)} · ${m.eintraege.length} Teile</button>`).join('')}</div>` : ''}
     ${letzte.length ? `<h4>Zuletzt</h4><div class="schnellwahl">${letzte.map(e => `<button class="klein" data-a="tb-kopie" data-v="${esc(e.id)}">${esc(kurztitel(e.titel))} · ${mengeText(e)}</button>`).join('')}</div>` : ''}`;
 }
-function eintragKopie(e, datum, slot) { const n = JSON.parse(JSON.stringify(e)); n.id = uid('mz'); n.datum = datum; n.zeit = new Date().toTimeString().slice(0, 5); n.mahlzeit = slot || eintragSlot(e); delete n.kochprotokoll; if (n.quelle === 'restportion') n.quelle = 'kopie'; return n; }
+// Kopie eines Eintrags: Restportions-Verknüpfung entfällt, damit Ändern/Löschen der Kopie keine Restportion verändert
+function eintragKopie(e, datum, slot) { const n = JSON.parse(JSON.stringify(e)); n.id = uid('mz'); n.datum = datum; n.zeit = new Date().toTimeString().slice(0, 5); n.mahlzeit = slot || eintragSlot(e); delete n.kochprotokoll; delete n.restportion; if (n.quelle === 'restportion') n.quelle = 'kopie'; return n; }
+
+/* Sammelliste: mehrere Lebensmittel, Produkte oder Rezepte sammeln und gemeinsam eintragen */
+let tbKorb = [];
+function korbHtml() {
+  if (!tbKorb.length) return '';
+  return `<div class="flaeche"><h4 style="margin-top:0">Sammelliste (${tbKorb.length}) → ${SLOT_NAME[neuerEintragSlot()]}</h4>
+    <ul class="eintraege">${tbKorb.map((k, i) => `<li><span>${esc(k.name)}</span><span class="zeile" style="gap:6px"><input type="number" min="0.05" step="any" inputmode="decimal" value="${esc(k.menge)}" data-korb="${i}" aria-label="Menge ${esc(k.name)}" style="width:5.5em"> ${esc(k.einheit)}<button class="still klein" data-a="tb-korb-weg" data-v="${i}" aria-label="${esc(k.name)} entfernen">entfernen</button></span></li>`).join('')}</ul>
+    <span class="knopfreihe"><button class="haupt klein" data-a="tb-korb-buchen">Alle eintragen (${tbKorb.length})</button><button class="still klein" data-a="tb-korb-leeren">Liste leeren</button></span></div>`;
+}
+function korbNeuZeichnen() { const k = $('#tb-korb'); if (k) k.innerHTML = korbHtml(); }
+
+/* Tag oder Mahlzeit kopieren – erst Vorschau mit Auswahl, dann bestätigen */
+let tbKopieVon = null;   // { slot: '' (ganzer Tag) | Mahlzeit }
+function kopierVorschauHtml(ein) {
+  if (!tbKopieVon) return '';
+  const liste = ein.filter(e => !tbKopieVon.slot || eintragSlot(e) === tbKopieVon.slot); if (!liste.length) return '';
+  const ziel = heute(); const schon = D.tagebuch.filter(e => e.datum === ziel).length;
+  return `<div class="flaeche"><h4 style="margin-top:0">${tbKopieVon.slot ? SLOT_NAME[tbKopieVon.slot] : 'Ganzen Tag'} kopieren – Vorschau</h4>
+    <form id="tb-kopie-form"><label class="feld"><span>Zieltag</span><input type="date" name="ziel" value="${ziel}" max="${heute()}" required></label>
+    <ul class="eintraege">${liste.map(e => `<li><label><input type="checkbox" name="e" value="${esc(e.id)}" checked> ${esc(e.titel)} · ${mengeText(e)} · ${SLOT_NAME[eintragSlot(e)]}</label><span class="kcal">${e.naehr && e.naehr.kcal != null ? zahlDE(e.naehr.kcal) + ' kcal' : '? kcal'}</span></li>`).join('')}</ul>
+    <p class="leise klein" id="tb-kopie-hinweis">${kopierHinweis(ziel, schon)}</p>
+    <p class="leise klein">Kopiert werden die beim Buchen gespeicherten Werte und Mahlzeiten. Restportionen werden dabei nicht erneut abgezogen.</p>
+    <span class="knopfreihe"><button class="haupt klein" type="submit">Ausgewählte kopieren</button><button class="still klein" type="button" data-a="tb-kopie-ab">Abbrechen</button></span></form></div>`;
+}
+function kopierHinweis(ziel, schon) { return schon ? `Am ${ziel === heute() ? 'heutigen Tag' : datumDE(ziel)} ${schon === 1 ? 'steht schon 1 Eintrag – er bleibt' : `stehen schon ${schon} Einträge – sie bleiben`} erhalten, die Kopien kommen dazu.` : `Am ${ziel === heute() ? 'heutigen Tag' : datumDE(ziel)} gibt es noch keine Einträge.`; }
 
 /* ---------- Einkauf: Packungen und Preise aus eigenen Produkten (nur mit Datum, sonst nichts) ---------- */
 function packungsInfo(p) {
@@ -265,6 +291,22 @@ document.addEventListener('click', ev => {
     case 'tb-slot': tbSlot = v; route(); break;
     case 'tb-edit': tbEdit = v; route(); break;
     case 'tb-edit-ab': tbEdit = null; route(); break;
+    case 'tb-tag': tbKopieVon = null; break;
+    case 'tb-kopie-vorschau': tbKopieVon = { slot: v || '' }; route(); { const p = $('#tb-kopie-form'); if (p) p.scrollIntoView({ block: 'center' }); } break;
+    case 'tb-kopie-ab': tbKopieVon = null; route(); break;
+    case 'tb-korb-add': { const t = b.dataset.t; const eingabe = Number(String(($(`[data-gramm="${v}"]`) || {}).value || '').replace(',', '.')); let k = null;
+      if (t === 'rezept') { const r = R[v]; if (r) k = { name: kurztitel(r.titel), menge: Number(b.dataset.p) || 1, einheit: 'Portion(en)' }; }
+      else if (t === 'lm') { const z = Z[v]; if (z) k = { name: z.name, menge: eingabe > 0 ? eingabe : 100, einheit: 'g' }; }
+      else { const l = (D.lebensmittel || []).find(x => x.id === v); if (l) k = { name: l.name, menge: eingabe > 0 ? eingabe : (l.portion || 100), einheit: l.bezug === '100ml' ? 'ml' : 'g' }; }
+      if (!k) return; tbKorb.push(Object.assign({ typ: t, id: v }, k)); korbNeuZeichnen(); toast(`${k.name} auf der Sammelliste`); break; }
+    case 'tb-korb-weg': tbKorb.splice(Number(v), 1); korbNeuZeichnen(); break;
+    case 'tb-korb-leeren': tbKorb = []; korbNeuZeichnen(); break;
+    case 'tb-korb-buchen': { const liste = tbKorb.filter(k => k.menge > 0); if (!liste.length) { toast('Bitte Mengen größer als 0 eingeben'); return; } tbKorb = [];
+      aendere(`${liste.length} Einträge eingetragen`, d => { liste.forEach(k => { let e = null;
+        if (k.typ === 'rezept' && R[k.id]) e = rezeptEintrag(R[k.id], k.menge);
+        else if (k.typ === 'lm' && Z[k.id]) e = lebensmittelEintrag(Z[k.id], k.menge);
+        else { const l = (d.lebensmittel || []).find(x => x.id === k.id); if (l) e = eigenerEintrag(l, k.menge); }
+        if (e) d.tagebuch.push(e); }); }); break; }
     case 'tb-slot-kopie': { const quelle = D.tagebuch.filter(e => e.datum === tbDatum && eintragSlot(e) === v);
       aendere(`${SLOT_NAME[v]} auf heute kopiert (${quelle.length})`, d => { quelle.forEach(e => d.tagebuch.push(eintragKopie(e, heute(), v))); }); break; }
     case 'tb-slot-merken': { const quelle = D.tagebuch.filter(e => e.datum === tbDatum && eintragSlot(e) === v); const name = (prompt('Name der Mahlzeit (z. B. „Mein Frühstück“):', SLOT_NAME[v]) || '').trim(); if (!name) return;
@@ -274,6 +316,18 @@ document.addEventListener('click', ev => {
     case 'tb-mz-weg': { const m = (D.mahlzeiten || []).find(x => x.id === v); if (!m || !confirm(`Eigene Mahlzeit „${m.name}“ löschen? Gebuchte Einträge bleiben.`)) return; aendere('Eigene Mahlzeit gelöscht', d => { d.mahlzeiten = d.mahlzeiten.filter(x => x.id !== v); }); break; }
     case 'produkt-weg': { const p = (D.lebensmittel || []).find(x => x.id === v); if (!p || !confirm(`„${p.name}“ aus deinen Produkten entfernen? Gebuchte Einträge behalten ihre Werte; Rückgängig ist möglich.`)) return; aendere('Produkt entfernt', d => { d.lebensmittel = d.lebensmittel.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/produkte'; break; }
   }
+});
+document.addEventListener('input', ev => { const i = ev.target.dataset ? ev.target.dataset.korb : undefined; if (i != null && tbKorb[i]) tbKorb[i].menge = Number(String(ev.target.value).replace(',', '.')) || 0; });
+document.addEventListener('change', ev => { const t = ev.target; if (t.name === 'ziel' && t.form && t.form.id === 'tb-kopie-form' && t.value) { const h = $('#tb-kopie-hinweis'); if (h) h.textContent = kopierHinweis(t.value, D.tagebuch.filter(e => e.datum === t.value).length); } });
+document.addEventListener('submit', ev => {
+  const f = ev.target; if (f.id !== 'tb-kopie-form') return; ev.preventDefault();
+  const ziel = f.ziel.value; const ids = [...f.querySelectorAll('input[name="e"]:checked')].map(x => x.value);
+  if (!/^\d{4}-\d\d-\d\d$/.test(ziel) || ziel > heute()) { toast('Bitte einen Tag bis heute wählen'); return; }
+  if (!ids.length) { toast('Bitte mindestens einen Eintrag auswählen'); return; }
+  const knopf = f.querySelector('[type="submit"]'); if (knopf.disabled) return; knopf.disabled = true;
+  const quelle = D.tagebuch.filter(e => ids.includes(e.id)); tbKopieVon = null;
+  aendere(`${quelle.length} Einträge nach ${ziel === heute() ? 'heute' : datumDE(ziel)} kopiert`, d => { quelle.forEach(e => { const n = eintragKopie(e, ziel, eintragSlot(e)); n.zeit = e.zeit || n.zeit; d.tagebuch.push(n); }); }, { neuZeichnen: false });
+  location.hash = '#/tagebuch/' + ziel; route();
 });
 document.addEventListener('submit', ev => {
   const f = ev.target; if (!f.dataset || !f.dataset.tbEdit) return; ev.preventDefault();
