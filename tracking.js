@@ -52,6 +52,27 @@ function schnellwahlHtml() {
 }
 function eintragKopie(e, datum, slot) { const n = JSON.parse(JSON.stringify(e)); n.id = uid('mz'); n.datum = datum; n.zeit = new Date().toTimeString().slice(0, 5); n.mahlzeit = slot || eintragSlot(e); delete n.kochprotokoll; if (n.quelle === 'restportion') n.quelle = 'kopie'; return n; }
 
+/* ---------- Einkauf: Packungen und Preise aus eigenen Produkten (nur mit Datum, sonst nichts) ---------- */
+function packungsInfo(p) {
+  if (!p.zutat || !p.menge || !(p.fehlt > 0)) return null;
+  const kandidaten = (D.lebensmittel || []).filter(l => l.zutat === p.zutat && l.packung > 0 && l.packung_einheit === p.einheit);
+  if (!kandidaten.length) return null;
+  const l = kandidaten.sort((a, b) => (b.preis_datum || '').localeCompare(a.preis_datum || ''))[0];
+  const n = Math.ceil(p.fehlt / l.packung - 1e-9); const rest = Math.round((n * l.packung - p.fehlt) * 10) / 10;
+  return { l, n, rest, kosten: l.preis != null ? Math.round(n * l.preis * 100) / 100 : null };
+}
+function packungsText(p) {
+  const i = packungsInfo(p); if (!i) return '';
+  const name = [i.l.marke, i.l.name].filter(Boolean).join(' ');
+  return `<br><span class="klein">${i.n} × ${esc(name)} à ${fmtMenge(i.l.packung, i.l.packung_einheit)} ${esc(i.l.packung_einheit)}${i.rest > 0 ? ` · Rest ca. ${fmtMenge(i.rest, i.l.packung_einheit)} ${esc(i.l.packung_einheit)} für den Vorrat` : ''}${i.kosten != null ? ` · ca. ${i.kosten.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € (Preis vom ${esc(datumDE(i.l.preis_datum))}${i.l.haendler ? ', ' + esc(i.l.haendler) : ''})` : ''}</span>`;
+}
+function einkaufKostenHtml(liste) {
+  const mit = liste.map(packungsInfo).filter(i => i && i.kosten != null);
+  if (!mit.length) return '<p class="leise klein">Preise: keine hinterlegt. In deinen <a href="#/produkte">Produkten</a> kannst du Packungsgröße und Preis (mit Datum) eintragen – dann rechnet der Einkauf Packungen und ungefähre Kosten.</p>';
+  const summe = mit.reduce((s, i) => s + i.kosten, 0);
+  return `<p class="klein">Ungefähre Kosten für ${mit.length} von ${liste.length} Posten: <b>${summe.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</b> – aus deinen gespeicherten Preisen (mit Datum), ganze Packungen. Für die übrigen Posten ist kein Preis hinterlegt.</p>`;
+}
+
 /* ---------- Mehrtagesauswertung (nur vollständig markierte Tage zählen für Durchschnitte) ---------- */
 let tbZeitraum = 30;
 function auswertungHtml(tag) {
@@ -140,6 +161,11 @@ function produktFormular(p) {
         <label class="feld"><span>Einheit</span><select name="packung_einheit">${['g', 'ml', 'Stück'].map(x => `<option ${v.packung_einheit === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <label class="feld"><span>Abtropfgewicht g</span><input name="abtropf" type="number" min="0" step="any" inputmode="decimal" value="${esc(v.abtropf ?? '')}" style="width:6em"></label>
         <label class="feld"><span>übliche Portion</span><input name="portion" type="number" min="0" step="any" inputmode="decimal" value="${esc(v.portion ?? '')}" style="width:6em"></label></div>
+      <div class="zeile"><label class="feld" style="flex:1 1 200px"><span>Entspricht der Zutat (für Einkauf und Vorrat)</span><input name="zutat_name" list="produkt-zutaten" value="${esc(v.zutat && Z[v.zutat] ? Z[v.zutat].name : '')}" placeholder="z. B. Rinderhackfleisch"></label>
+        <datalist id="produkt-zutaten">${K.zutaten.map(z => `<option value="${esc(z.name)}">`).join('')}</datalist>
+        <label class="feld"><span>Preis je Packung (€)</span><input name="preis" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(v.preis ?? '')}" style="width:6em"></label>
+        <label class="feld"><span>Preis vom</span><input name="preis_datum" type="date" value="${esc(v.preis_datum || '')}"></label></div>
+      <p class="leise klein">Preis bitte vom Kassenbon oder Regal – mit Datum. Die App rechnet daraus nur Packungen und ungefähre Kosten im Einkauf; Preise ändern sich.</p>
       <p class="leise klein" id="gtin-info"></p>
       <p class="klein"><button type="button" class="klein" data-a="off-suche">Bei Open Food Facts nachsehen</button> <span class="leise">Sendet nur die Barcode-Nummer an die freie Datenbank Open Food Facts. Die Werte dort pflegen Freiwillige – sie werden als <b>ungeprüft</b> übernommen; bitte mit dem Etikett vergleichen.</span></p>
       <div id="off-ergebnis" role="status" aria-live="polite"></div></fieldset>
@@ -171,7 +197,10 @@ vProdukte.danach = () => {
     const neu = { name: f.name.value.trim(), marke: f.marke.value.trim() || null, variante: f.variante.value.trim() || null, haendler: f.haendler.value.trim() || null, gtin: f.gtin.value.trim() || null,
       packung: zahl('packung'), packung_einheit: f.packung_einheit.value, abtropf: zahl('abtropf'), portion: zahl('portion'), bezug: f.bezug.value, bezug_zustand: f.bezug_zustand.value,
       naehr: Object.fromEntries(PRODUKT_NAEHR.map(([k]) => [k, zahl('n_' + k)])), zutaten: f.zutaten.value.trim() || null, allergene: [...f.querySelectorAll('input[name=allergen]:checked')].map(x => x.value), spuren: f.spuren.value.trim() || null,
-      quelle_art: f.quelle_art.value, quelle: (PRODUKT_QUELLEN.find(q => q[0] === f.quelle_art.value) || [])[1], quelle_datum: f.quelle_datum.value || heute(), pruefstatus: f.pruefstatus.value };
+      quelle_art: f.quelle_art.value, quelle: (PRODUKT_QUELLEN.find(q => q[0] === f.quelle_art.value) || [])[1], quelle_datum: f.quelle_datum.value || heute(), pruefstatus: f.pruefstatus.value,
+      zutat: (K.zutaten.find(z => z.name.toLowerCase() === f.zutat_name.value.trim().toLowerCase()) || {}).id || null, preis: zahl('preis'), preis_datum: f.preis_datum.value || null };
+    if (f.zutat_name.value.trim() && !neu.zutat) { toast('Zutat nicht gefunden – bitte einen Namen aus der Liste wählen oder das Feld leeren'); return; }
+    if (neu.preis != null && !neu.preis_datum) neu.preis_datum = heute();
     if (!neu.name) { toast('Bitte einen Namen eingeben'); return; }
     const id = f.dataset.id;
     aendere('Produkt gespeichert', d => { d.lebensmittel = d.lebensmittel || [];

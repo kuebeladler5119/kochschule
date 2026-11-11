@@ -4,7 +4,7 @@
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
 const APP_VERSION = '2.1.0';
-const APP_BUILD = '202611111733';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_BUILD = '202611111738';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -596,10 +596,10 @@ function vEinkauf() {
   const optional = posten.filter(p => p.bedarf === 'optional' && !(p.vorrat && p.vorrat.vorhanden && !p.pruefen && p.fehlt <= 0));
   const da = posten.filter(p => p.vorrat && p.vorrat.vorhanden && !p.pruefen && p.fehlt <= 0);
   const zeile = p => { const k = D.einkauf.abgehakt[p.key]; const menge = p.menge ? `${fmtMenge(p.fehlt, p.einheit)} ${esc(p.einheit)}` : ''; const txt = p.texte.length ? esc(p.texte.join(' + ')) : '';
-    return `<li class="${k ? 'erledigt' : ''}"><input type="checkbox" data-a="abhaken" data-v="${esc(p.key)}" ${k ? 'checked' : ''} aria-label="${esc(p.name)} abhaken"><span>${esc(p.name)}<br><span class="leise klein">${esc(p.rezepte.join(', '))}${p.pruefen ? ' · im Vorrat, Menge prüfen' : ''}${p.vorrat && p.vorrat.vorhanden && p.fehlt < p.menge && !p.pruefen ? ` · ${fmtMenge(p.menge - p.fehlt, p.einheit)} ${esc(p.einheit)} schon da` : ''}</span></span><span class="ekmenge">${menge}${menge && txt ? ' + ' : ''}${txt}</span></li>`; };
+    return `<li class="${k ? 'erledigt' : ''}"><input type="checkbox" data-a="abhaken" data-v="${esc(p.key)}" ${k ? 'checked' : ''} aria-label="${esc(p.name)} abhaken"><span>${esc(p.name)}<br><span class="leise klein">${esc(p.rezepte.join(', '))}${p.pruefen ? ' · im Vorrat, Menge prüfen' : ''}${p.vorrat && p.vorrat.vorhanden && p.fehlt < p.menge && !p.pruefen ? ` · ${fmtMenge(p.menge - p.fehlt, p.einheit)} ${esc(p.einheit)} schon da` : ''}</span>${packungsText(p)}</span><span class="ekmenge">${menge}${menge && txt ? ' + ' : ''}${txt}</span></li>`; };
   const gruppiert = liste => LADEN.map((n, ix) => { const g = liste.filter(p => (p.zutat ? ladenbereich(p.zutat) : 10) === ix); return g.length ? `<h3>${esc(n)}</h3><ul>${g.map(zeile).join('')}</ul>` : ''; }).join('');
   const abgehakt = kaufen.concat(optional).filter(p => D.einkauf.abgehakt[p.key]).length;
-  return `<h1>Einkaufsliste</h1><p class="leise">Aus ${D.auswahl.length} Gericht(en), inklusive Vorkoch-Portionen. Vorrat ist abgezogen, wo Einheit und Menge bekannt sind. Packungsgrößen und Preise sind noch nicht hinterlegt.</p>
+  return `<h1>Einkaufsliste</h1><p class="leise">Aus ${D.auswahl.length} Gericht(en), inklusive Vorkoch-Portionen. Vorrat ist abgezogen, wo Einheit und Menge bekannt sind.</p>${einkaufKostenHtml(kaufen.concat(optional))}
   ${grund.length ? `<div class="karte"><h3 style="margin-top:0">Grundzutaten – kurz bestätigen</h3><p class="leise klein">${gv ? 'Nicht in deinem Grundvorrat:' : 'Dein Grundvorrat ist noch nicht erfasst – nichts wird als vorhanden angenommen.'}</p>
     <ul class="ek">${grund.map(p => `<li><span>${esc(p.name)} <span class="leise klein">${p.menge ? fmtMenge(p.menge, p.einheit) + ' ' + esc(p.einheit) : esc(p.texte.join(', '))}</span></span><span class="ekmenge"><button class="klein filterchip" data-a="gv" data-k="${esc(p.key)}" data-v="da" aria-pressed="${bestaetigt[p.key] === 'da'}">habe ich</button> <button class="klein filterchip" data-a="gv" data-k="${esc(p.key)}" data-v="fehlt" aria-pressed="${bestaetigt[p.key] === 'fehlt'}">kaufen</button></span></li>`).join('')}</ul>
     <p class="leise klein"><a href="#/einstellungen">Grundvorrat dauerhaft festlegen</a></p></div>` : ''}
@@ -802,7 +802,7 @@ document.addEventListener('click', ev => {
     case 'abhaken': aendere(null, d => { if (b.checked) d.einkauf.abgehakt[v] = true; else delete d.einkauf.abgehakt[v]; }); break;
     case 'gv': aendere(null, d => { d.einkauf.bestaetigt[b.dataset.k] = v; }); break;
     case 'einkauf-bestaetigen': { const posten = einkaufsPosten().filter(p => D.einkauf.abgehakt[p.key]);
-      aendere(`${posten.length} Posten in den Vorrat übernommen`, d => { posten.forEach(p => { if (p.zutat) d.vorrat.push({ id: uid('vor'), zutat: p.zutat, menge: p.menge ? Math.round(p.fehlt) : null, einheit: p.menge ? p.einheit : 'g', lagerort: lagerortFuer(p.zutat), mhd: null, verbrauchsdatum: null, prioritaet: 'normal', geoeffnet: false, erfasst: heute() }); delete d.einkauf.abgehakt[p.key]; }); }); break; }
+      aendere(`${posten.length} Posten in den Vorrat übernommen`, d => { posten.forEach(p => { const pk = packungsInfo(p); if (p.zutat) d.vorrat.push({ id: uid('vor'), zutat: p.zutat, produkt: pk ? pk.l.id : undefined, menge: p.menge ? Math.round(pk ? pk.n * pk.l.packung : p.fehlt) : null, einheit: p.menge ? p.einheit : 'g', lagerort: lagerortFuer(p.zutat), mhd: null, verbrauchsdatum: null, prioritaet: 'normal', geoeffnet: false, erfasst: heute() }); delete d.einkauf.abgehakt[p.key]; }); }); break; }
     case 'liste-kopieren': { const t = einkaufsPosten().filter(p => p.bedarf !== 'grundvorrat' && !(p.vorrat && p.vorrat.vorhanden && !p.pruefen && p.fehlt <= 0)).map(p => `- ${p.name}: ${p.menge ? fmtMenge(p.fehlt, p.einheit) + ' ' + p.einheit : p.texte.join(' + ')}`).join('\n');
       navigator.clipboard ? navigator.clipboard.writeText('Einkaufsliste\n' + t).then(() => toast('Kopiert'), () => toast('Kopieren nicht erlaubt')) : toast('Kopieren nicht unterstützt'); break; }
     case 'tage': break;
