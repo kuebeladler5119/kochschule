@@ -3,7 +3,7 @@
    Schrift: Überschriften in einer Buchschrift (Systemschriften, kein Download), Text und Zahlen in der Systemschrift.
    Abstände: 4 · 8 · 12 · 16 · 24 · 32 px. Radien: 10 px Flächen, 999 px Chips. Berührungsflächen mind. 44 px. */
 :root {
-  --papier: #fbf8f3; --flaeche: #ffffff; --flaeche2: #f3ede4; --tinte: #2a231e; --leise: #6b6158; --linie: #e6ddd1;
+  --papier: #fbf8f3; --flaeche: #ffffff; --flaeche2: #f3ede4; --tinte: #2a231e; --leise: #6b6158; --linie: #e6ddd1; --rand: #8f8070;
   --akzent: #a8432a; --akzent-hell: #f6e4dc; --akzent-text: #ffffff;
   --salbei: #4d6b4b; --salbei-hell: #e4ece2; --bernstein: #8a5a00; --bernstein-hell: #fbefd6; --rot: #a3261b; --rot-hell: #fbe3df; --blau: #2f5a80; --blau-hell: #e3ecf5;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
@@ -12,10 +12,11 @@
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --papier: #171412; --flaeche: #211d1a; --flaeche2: #2a2521; --tinte: #f1e9e1; --leise: #b2a69b; --linie: #3a332e;
+  :root { --papier: #171412; --flaeche: #211d1a; --flaeche2: #2a2521; --tinte: #f1e9e1; --leise: #b2a69b; --linie: #3a332e; --rand: #8a7c70;
     --akzent: #e0805f; --akzent-hell: #3a251d; --akzent-text: #1a1411; --salbei: #8fb58b; --salbei-hell: #22301f;
     --bernstein: #e2b356; --bernstein-hell: #352a15; --rot: #ff9384; --rot-hell: #3b201c; --blau: #8ab6df; --blau-hell: #1c2833;
     --schatten: 0 1px 2px rgba(0, 0, 0, .3); }
+  body.kochen { --papier: #fbf8f3; --flaeche: #ffffff; --flaeche2: #f3ede4; --tinte: #2a231e; --leise: #6b6158; --linie: #e6ddd1; --rand: #8f8070; --akzent: #a8432a; --akzent-hell: #f6e4dc; --akzent-text: #ffffff; --salbei: #4d6b4b; --salbei-hell: #e4ece2; --bernstein: #8a5a00; --bernstein-hell: #fbefd6; --rot: #a3261b; --rot-hell: #fbe3df; --blau: #2f5a80; --blau-hell: #e3ecf5; color-scheme: light; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -62,7 +63,7 @@ p { margin: .5em 0 .8em; }
 .chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 10px; font-size: .78rem; line-height: 1.6; background: var(--flaeche2); color: var(--tinte); }
 .chip.gut { background: var(--salbei-hell); color: var(--salbei); } .chip.warn { background: var(--bernstein-hell); color: var(--bernstein); }
 .chip.gefahr { background: var(--rot-hell); color: var(--rot); } .chip.info { background: var(--blau-hell); color: var(--blau); } .chip.akzent { background: var(--akzent-hell); color: var(--akzent); }
-button, .knopf { font: 500 .95rem var(--sans); border: 1px solid var(--linie); background: var(--flaeche); color: var(--tinte); border-radius: 999px; padding: 10px 16px; min-height: 44px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+button, .knopf { font: 500 .95rem var(--sans); border: 1px solid var(--rand); background: var(--flaeche); color: var(--tinte); border-radius: 999px; padding: 10px 16px; min-height: 44px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 button:hover, .knopf:hover { border-color: var(--leise); }
 button.haupt, .knopf.haupt { background: var(--akzent); color: var(--akzent-text); border-color: var(--akzent); font-weight: 600; }
 button.haupt:hover, .knopf.haupt:hover { filter: brightness(1.06); }
@@ -75,7 +76,7 @@ button:disabled { opacity: .45; cursor: default; }
 .filterleiste { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .filterleiste::-webkit-scrollbar { display: none; }
 .filterleiste .filterchip { flex: none; }
-input, select, textarea { font: inherit; color: var(--tinte); background: var(--flaeche); border: 1px solid var(--linie); border-radius: 8px; padding: 9px 11px; min-height: 44px; max-width: 100%; }
+input, select, textarea { font: inherit; color: var(--tinte); background: var(--flaeche); border: 1px solid var(--rand); border-radius: 8px; padding: 9px 11px; min-height: 44px; max-width: 100%; }
 input:focus, select:focus, textarea:focus { border-color: var(--akzent); outline: none; box-shadow: 0 0 0 3px var(--akzent-hell); }
 input[type="checkbox"], input[type="radio"] { min-height: 0; width: 22px; height: 22px; accent-color: var(--akzent); }
 label { display: inline-flex; align-items: center; gap: 8px; }
@@ -84,12 +85,12 @@ label { display: inline-flex; align-items: center; gap: 8px; }
 .feld small { color: var(--leise); font-size: .78rem; }
 .zeile { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .wahl { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-.wahl label { border: 1px solid var(--linie); border-radius: var(--r); padding: 10px 12px; min-height: 48px; background: var(--flaeche); cursor: pointer; align-items: flex-start; }
+.wahl label { border: 1px solid var(--rand); border-radius: var(--r); padding: 10px 12px; min-height: 48px; background: var(--flaeche); cursor: pointer; align-items: flex-start; }
 .wahl label:has(input:checked) { border-color: var(--akzent); background: var(--akzent-hell); }
 .wahl input, label > input[type=checkbox], label > input[type=radio] { flex-shrink: 0; margin-top: 2px; }
 .wahl label > span { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
 .wahl label small { display: block; color: var(--leise); font-size: .78rem; }
-.stepper { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--linie); border-radius: 999px; padding: 2px; background: var(--flaeche); }
+.stepper { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--rand); border-radius: 999px; padding: 2px; background: var(--flaeche); }
 .stepper button { min-width: 40px; min-height: 40px; padding: 0; border: 0; }
 .stepper output { min-width: 2.4ch; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 details > summary { cursor: pointer; }
@@ -153,7 +154,7 @@ th { font-weight: 600; color: var(--leise); font-size: .82rem; }
 .wahl label.aus { opacity: .5; cursor: not-allowed; }
 .filterchip.gruppe { font-weight: 600; }
 .aktivfilter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 14px; }
-.chip.entfernen { min-height: 32px; border: 1px solid var(--linie); cursor: pointer; font: inherit; font-size: .8rem; }
+.chip.entfernen { min-height: 32px; border: 1px solid var(--rand); cursor: pointer; font: inherit; font-size: .8rem; }
 .status-ja { color: var(--salbei); font-size: .78rem; } .status-nein { color: var(--bernstein); font-size: .78rem; }
 .naehr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; }
 .naehr div { background: var(--flaeche2); border-radius: 8px; padding: 8px 4px; }
@@ -217,7 +218,9 @@ body.kochen .timerleiste { bottom: calc(var(--nav-h) + 72px + env(safe-area-inse
 .balken .zeile2 { display: grid; grid-template-columns: 7.5em 1fr auto; gap: 10px; align-items: center; font-size: .9rem; }
 .balken .spur { height: 8px; border-radius: 4px; background: var(--flaeche2); overflow: hidden; }
 .balken .spur i { display: block; height: 100%; border-radius: 4px; background: var(--salbei); }
-.balken .spur i.ueber { background: var(--bernstein); }
+.balken .spur { position: relative; }
+.balken .spur i.voll { background: var(--salbei); }
+.balken .ziel-info { display: block; font-size: .78rem; color: var(--leise); font-weight: 400; }
 .balken .wert { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--leise); }
 .balken .wert b { color: var(--tinte); }
 .eintraege { list-style: none; padding: 0; margin: 0; }
