@@ -1,7 +1,7 @@
 {
-  "name": "Kochschule",
-  "short_name": "Kochschule",
-  "description": "Persönliches Kochbuch mit Kochschule, Einkauf, Vorrat und Ernährungstagebuch",
+  "name": "Fitomat",
+  "short_name": "Fitomat",
+  "description": "Fitomat – persönliches Kochbuch mit Kochschule, Ernährungstagebuch, Einkauf und Vorrat; Training folgt",
   "lang": "de",
   "start_url": "./#/entdecken",
   "scope": "./",

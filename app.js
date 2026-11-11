@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.0.0';
-const APP_BUILD = '202611111648';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.1.0';
+const APP_BUILD = '202611111703';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -813,7 +813,7 @@ document.addEventListener('click', ev => {
     case 'rest-tk': aendere('Als eingefroren markiert', d => { const q = d.restportionen.find(x => x.id === v); const r = R[q.rezept]; q.lagerort = 'tiefkuehler'; q.eingefroren_am = heute(); const gr = r ? restGrenze(r, 'tiefkuehler') : { bis: null, beleg: 'Tiefkühl-Dauer nicht belegt' }; q.verbrauchen_bis = gr.bis; q.grenze_beleg = gr.beleg; }); break;
     case 'tb-weg': aendere('Eintrag gelöscht', d => { d.tagebuch = d.tagebuch.filter(x => x.id !== v); }); break;
     case 'tb-kopie': aendere('Erneut eingetragen (heute)', d => { const e = d.tagebuch.find(x => x.id === v); d.tagebuch.push(Object.assign({}, e, { id: uid('mz'), datum: heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'kopie', restportion: undefined, kochprotokoll: undefined })); }); break;
-    case 'export': { const blob = new Blob([JSON.stringify(exportDaten(), null, 1)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = url; l.download = `kochschule-export-${heute()}.json`; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); aendere('Export erstellt', d => { d.letzter_export = new Date().toISOString(); }); break; }
+    case 'export': { const blob = new Blob([JSON.stringify(exportDaten(), null, 1)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = url; l.download = `fitomat-sicherung-${heute()}.json`; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); aendere('Export erstellt', d => { d.letzter_export = new Date().toISOString(); }); break; }
     case 'export-kopie': navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(exportDaten())).then(() => { aendere('Export als Text kopiert', d => { d.letzter_export = new Date().toISOString(); }); }, () => toast('Kopieren nicht erlaubt')); break;
     case 'import-text': try { importAnwenden(JSON.parse($('#import-text').value)); } catch (e) { toast('Import fehlgeschlagen: ' + e.message); } break;
     case 'persist': navigator.storage && navigator.storage.persist ? navigator.storage.persist().then(ok => { toast(ok ? 'Dauerhafter Speicher gewährt' : 'Browser hat abgelehnt – regelmäßig exportieren'); route(); }) : toast('Nicht unterstützt'); break;

@@ -173,7 +173,7 @@ function vEinrichtung(teil) {
   ];
   return `<div class="einrichtung"><p class="leise klein">Einrichtung · Schritt ${s + 1} von ${EINR_SCHRITTE.length} · ${esc(EINR_SCHRITTE[s])}</p>
     <div class="schritte-anzeige">${EINR_SCHRITTE.map((_, i) => `<i class="${i <= s ? 'an' : ''}"></i>`).join('')}</div>
-    <h1>${s === 0 ? 'Willkommen in der Kochschule' : esc(EINR_SCHRITTE[s])}</h1>
+    <h1>${s === 0 ? 'Willkommen bei Fitomat' : esc(EINR_SCHRITTE[s])}</h1>
     ${s === 0 ? '<p class="unterzeile">Ein paar kurze Fragen, damit Vorschläge und Ziele zu dir passen. Alles ist optional und später unter Profil änderbar.</p>' : ''}
     <form id="einr-form">${teile[s]}
     <div class="knopfreihe">${s > 0 ? '<button type="button" data-a="einr-zurueck">' + ico('zurueck', 'klein') + ' Zurück</button>' : ''}
