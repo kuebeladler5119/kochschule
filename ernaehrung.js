@@ -82,7 +82,8 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
   const faktorZiel = p.ziel === 'abbau' ? -abbauStufe : zf;
   const kcal = rund(gesamt * (1 + faktorZiel), 50);
   let bezug = p.gewicht, bezugText = 'aktuelles Körpergewicht';
-  if (p.groesse > 120) { const bmi = p.gewicht / Math.pow(p.groesse / 100, 2); if (bmi > 25) { bezug = 25 * Math.pow(p.groesse / 100, 2); bezugText = `Gewicht bei BMI 25 (${Math.round(bezug)} kg), weil die DGE bei Übergewicht das Normalgewicht zugrunde legt`; } }
+  if (p.groesse > 120) { const bmi = p.gewicht / Math.pow(p.groesse / 100, 2); if (bmi > 25) { bezug = 25 * Math.pow(p.groesse / 100, 2); bezugText = `Gewicht bei BMI 25 (${Math.round(bezug)} kg), weil die DGE bei Übergewicht das Normalgewicht zugrunde legt${p.kraft ? ' – für die ISSN-Spanne hier ebenso vorsichtig übernommen (eigene Festlegung)' : ''}`; } }
+  const bmiWert = p.groesse > 120 ? p.gewicht / Math.pow(p.groesse / 100, 2) : null;
   let gkg, protQuelle;
   if (p.kraft && p.ziel === 'aufbau') { gkg = 1.6; protQuelle = 'ISSN: 1,4–2,0 g/kg für Trainierende (Aufbau: 1,6)'; }
   else if (p.kraft && p.ziel === 'abbau') { gkg = 2.0; protQuelle = 'ISSN: 1,4–2,0 g/kg, im Defizit oberes Ende (2,0)'; }
@@ -102,7 +103,8 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
     `Protein: ${gkg.toLocaleString('de-DE')} g/kg × ${Math.round(bezug)} kg (${bezugText}) ≈ ${protein} g – ${protQuelle}.`,
     `Fett: ${Math.round(fettAnteil * 100)} % der Energie (DGE-Richtwert${fettAnteil > 0.3 ? ' für körperlich Aktive' : ''}) ≈ ${fett} g.`,
     `Kohlenhydrate: Rest der Energie ≈ ${kh} g (${khAnteil} % der Energie).`,
-    'Ballaststoffe: mindestens 30 g (DGE-Richtwert für Erwachsene).'
+    'Ballaststoffe: mindestens 30 g (DGE-Richtwert für Erwachsene).',
+    ...(bmiWert && bmiWert >= 30 ? ['Grenze: Bei deutlichem Übergewicht (BMI ≥ 30) schätzen Formeln für den Energiebedarf erfahrungsgemäß ungenauer; der Verlauf des Körpergewichts über einige Wochen ist der bessere Maßstab. Ärztliche oder ernährungsfachliche Begleitung ist sinnvoll (Hinweis, ungeprüft).'] : [])
   ];
   return { ok: true, ree, pal, gesamt, kcal, protein, fett, kh, ballaststoffe: 30, khAnteil, schritte };
 }
@@ -266,19 +268,19 @@ function tagMikro(tag) {
 function eintragSkalieren(e, faktor) { const s = v => v == null ? null : Math.round(v * faktor * 10) / 10; e.naehr = Object.fromEntries(Object.entries(e.naehr || {}).map(([k, v]) => [k, s(v)])); if (e.mikro) e.mikro = Object.fromEntries(Object.entries(e.mikro).map(([k, v]) => [k, { w: v.w == null ? null : Math.round(v.w * faktor * 1000) / 1000, abdeckung: v.abdeckung }])); }
 function rezeptEintrag(r, portionen, quelle = 'rezept', extra = {}) {
   const pp = r.naehrwerte.pro_portion, mp = r.naehrwerte.mikro_pro_portion || {};
-  const e = Object.assign({ id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle, rezept: r.id, rezept_version: r.meta.version || 1, titel: r.titel, portionen, einheit: 'Portion', naehr: Object.assign({}, pp), mikro: JSON.parse(JSON.stringify(mp)), status: r.naehrwerte.status }, extra);
+  const e = Object.assign({ id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle, mahlzeit: neuerEintragSlot(), rezept: r.id, rezept_version: r.meta.version || 1, titel: r.titel, portionen, einheit: 'Portion', naehr: Object.assign({}, pp), mikro: JSON.parse(JSON.stringify(mp)), status: r.naehrwerte.status }, extra);
   eintragSkalieren(e, portionen); return e;
 }
 function lebensmittelEintrag(z, gramm) {
   const code = Object.keys(z.bls || {})[0]; const w = code ? z.bls[code].werte : {};
   const naehr = {}; ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz'].forEach(k => { naehr[k] = w[k] == null ? null : w[k] / 100; });
   const mikro = {}; Object.keys(K.naehrstoffe || {}).forEach(k => { mikro[k] = { w: w[k] == null ? null : w[k] / 100, abdeckung: w[k] == null ? 0 : 100 }; });
-  const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'lebensmittel', zutat: z.id, titel: z.name, gramm, einheit: 'g', naehr, mikro, status: code ? 'vollstaendig' : 'unvollstaendig', datenquelle: code ? 'BLS ' + code + ' (allgemeiner Wert)' : 'keine Nährwerte' };
+  const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'lebensmittel', mahlzeit: neuerEintragSlot(), zutat: z.id, titel: z.name, gramm, einheit: 'g', naehr, mikro, status: code ? 'vollstaendig' : 'unvollstaendig', datenquelle: code ? 'BLS ' + code + ' (allgemeiner Wert)' : 'keine Nährwerte' };
   eintragSkalieren(e, gramm); return e;
 }
 function eigenerEintrag(l, gramm) {
   const naehr = {}; ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz'].forEach(k => { naehr[k] = l.naehr[k] == null ? null : l.naehr[k] / 100; });
-  const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'eigen', lebensmittel: l.id, titel: l.name + (l.marke ? ' (' + l.marke + ')' : ''), gramm, einheit: l.bezug === '100ml' ? 'ml' : 'g', naehr, mikro: null, status: Object.values(l.naehr).some(v => v == null) ? 'unvollstaendig' : 'vollstaendig', datenquelle: l.quelle || 'eigene Angabe' };
+  const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'eigen', lebensmittel: l.id, titel: l.name + (l.marke ? ' (' + l.marke + ')' : ''), gramm, einheit: l.bezug === '100ml' ? 'ml' : 'g', naehr, mikro: null, status: Object.values(l.naehr).some(v => v == null) ? 'unvollstaendig' : 'vollstaendig', datenquelle: (l.quelle || 'eigene Angabe') + (l.quelle_datum ? ', Stand ' + l.quelle_datum : ''), mahlzeit: neuerEintragSlot(), produkt_version: l.version || 1, produkt_pruefstatus: l.pruefstatus || 'ungeprueft' };
   eintragSkalieren(e, gramm); return e;
 }
 function vTagebuch2(datum) {
@@ -299,25 +301,18 @@ function vTagebuch2(datum) {
   <div class="flaeche"><div class="balken">${MAKROS.map(zeileBalken).join('')}</div>
     <p class="leise klein" style="margin-bottom:0">Laut protokollierten Einträgen (${s.eintraege}). ${ziele ? `Ziele: ${esc(ziele.herkunft)}.` : '<a href="#/ziele">Ziele festlegen</a> (optional).'} Fehlende Einträge heißen nicht, dass nichts gegessen wurde.</p>
     <label style="margin-top:10px"><input type="checkbox" data-a="tb-vollstaendig" ${info.vollstaendig ? 'checked' : ''}> Tag vollständig protokolliert</label></div>
-  <h2>Hinzufügen</h2>
+  <h2>Hinzufügen</h2>${slotWahlHtml()}
   ${rest.length ? `<h4>Restportionen</h4><div class="schnellwahl">${rest.map(p => `<button class="klein" data-a="rest-essen" data-v="${esc(p.id)}">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))} · 1 Portion</button>`).join('')}</div>` : ''}
-  ${haeufig.length ? `<h4>Häufig</h4><div class="schnellwahl">${haeufig.map(({ e }) => `<button class="klein" data-a="tb-kopie" data-v="${esc(e.id)}">${esc(kurztitel(e.titel))} · ${e.einheit === 'Portion' ? zahlDE(e.portionen, 1) + ' P.' : zahlDE(e.gramm) + ' ' + esc(e.einheit || 'g')}</button>`).join('')}</div>` : ''}
-  <div class="zeile" style="margin-top:12px"><label class="feld" style="flex:1 1 220px"><span>Suchen: Rezept, Lebensmittel, eigenes Produkt</span><input id="tb-suche" value="${esc(tbSuche)}" placeholder="z. B. Dal, Apfel, Haferflocken" autocomplete="off"></label></div>
+  ${haeufig.length ? `<h4>Häufig gegessen</h4><div class="schnellwahl">${haeufig.map(({ e }) => `<button class="klein" data-a="tb-kopie" data-v="${esc(e.id)}">${esc(kurztitel(e.titel))} · ${e.einheit === 'Portion' ? zahlDE(e.portionen, 1) + ' P.' : zahlDE(e.gramm) + ' ' + esc(e.einheit || 'g')}</button>`).join('')}</div>` : ''}
+  ${schnellwahlHtml()}<div class="zeile" style="margin-top:12px"><label class="feld" style="flex:1 1 220px"><span>Suchen: Rezept, Lebensmittel, eigenes Produkt</span><input id="tb-suche" value="${esc(tbSuche)}" placeholder="z. B. Dal, Apfel, Haferflocken" autocomplete="off"></label></div>
   <div id="tb-treffer">${tbTreffer()}</div>
   <details class="klein"><summary>Freier Eintrag oder eigenes Lebensmittel anlegen</summary>${tbFormulare()}</details>
-  <h2>Einträge</h2>
-  ${ein.length ? `<ul class="eintraege">${ein.map(e => `<li><span><b>${e.rezept ? `<a href="#/rezept/${esc(e.rezept)}">${esc(e.titel)}</a>` : esc(e.titel)}</b></span><span class="kcal">${e.naehr && e.naehr.kcal != null ? zahlDE(e.naehr.kcal) + ' kcal' : '? kcal'}</span>
-      <span class="unter"><span>${esc(e.zeit || '')}</span>
-        <span class="stepper"><button data-a="tb-menge" data-v="${esc(e.id)}" data-d="-1" aria-label="weniger">−</button><output>${e.einheit === 'Portion' || !e.einheit ? zahlDE(e.portionen, 2) + ' P.' : zahlDE(e.gramm) + ' ' + esc(e.einheit)}</output><button data-a="tb-menge" data-v="${esc(e.id)}" data-d="1" aria-label="mehr">+</button></span>
-        ${e.naehr ? `<span>P ${zahlDE(e.naehr.protein, 1)} · KH ${zahlDE(e.naehr.kh, 1)} · F ${zahlDE(e.naehr.fett, 1)}</span>` : ''}${e.status === 'unvollstaendig' ? '<span class="chip warn">unvollständig</span>' : ''}${e.quelle === 'restportion' ? '<span class="chip">Restportion</span>' : ''}
-        <button class="still klein" data-a="tb-kopie" data-v="${esc(e.id)}">erneut</button><button class="still klein" data-a="tb-weg" data-v="${esc(e.id)}">löschen</button></span></li>`).join('')}</ul>`
-    : `<div class="leer">${ico('leer')}Noch nichts eingetragen.<br><span class="klein">Einträge entstehen hier, beim „Fertig gekocht“ oder mit einer Restportion.</span></div>`}
+  <h2>Einträge</h2>${eintraegeHtml(ein, tag)}
   <h2>Letzte 7 Tage</h2>
   <div class="woche" role="img" aria-label="Energie der letzten 7 Tage">${w7.map(x => `<div><i class="${x.voll ? '' : 'unv'}" style="height:${Math.round(x.s.kcal / maxK * 100)}%" title="${datumDE(x.t)}: ${zahlDE(x.s.kcal)} kcal${x.voll ? '' : ' (nicht als vollständig markiert)'}"></i>${new Date(x.t + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short' })}</div>`).join('')}</div>
   <p class="leise klein">${mitDaten.length ? `Ø ${zahlDE(mitDaten.reduce((a, x) => a + x.s.kcal, 0) / mitDaten.length)} kcal · ${zahlDE(mitDaten.reduce((a, x) => a + x.s.protein, 0) / mitDaten.length)} g Protein an ${mitDaten.length} Tagen mit Einträgen (davon ${w7.filter(x => x.voll && x.s.eintraege).length} als vollständig markiert). Schraffiert = nicht als vollständig markiert.` : 'Noch keine Einträge in diesen 7 Tagen.'}</p>
-  <details class="flaeche"><summary><b>Mikronährstoffe heute</b> <span class="leise klein">– soweit Daten vorliegen</span></summary>
-    ${mk.n ? `<p class="leise klein">Summen aus allgemeinen BLS-Werten. „Abdeckung“ = Anteil der Zutatenmenge mit bekanntem Wert; Einträge ohne Daten (z. B. eigene Produkte ohne Angabe) fehlen in der Summe. Referenzwerte und obere Grenzen folgen im nächsten Ausbau – <b>aus diesen Summen lässt sich kein Mangel ableiten</b>.</p>
-    <div class="tabelle-wrap"><table class="mikro"><thead><tr><th>Nährstoff</th><th>Summe</th><th>Abdeckung</th></tr></thead><tbody>${Object.entries(mk.erg).filter(([k]) => k !== 'gesfs').map(([k, v]) => `<tr><td>${esc(K.naehrstoffe[k].name)}</td><td>${v.mit ? (v.ohne || v.abdeckung < 100 ? 'mind. ' : '') + zahlDE(v.w, v.w < 10 ? 1 : 0) + ' ' + esc(K.naehrstoffe[k].einheit) : 'unbekannt'}</td><td>${v.mit}/${v.mit + v.ohne} Einträge${v.mit ? ' · ' + v.abdeckung + ' %' : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="leise">Noch keine Einträge.</p>'}</details>`;
+  <details class="flaeche"><summary><b>Mikronährstoffe</b> <span class="leise klein">– protokolliert, Referenzwert, Abdeckung</span></summary>
+    ${mikroHtml(tag)}</details>`;
 }
 function tbTreffer() {
   const q = tbSuche.trim().toLowerCase(); if (q.length < 2) return '';
@@ -332,7 +327,7 @@ function tbTreffer() {
 function tbFormulare() {
   const f = (k, n) => `<label class="feld"><span>${n}</span><input type="number" name="${k}" min="0" step="any" inputmode="decimal" style="width:6.5em"></label>`;
   return `<form id="tb-frei"><h4>Freier Eintrag (z. B. auswärts gegessen)</h4><div class="zeile"><label class="feld" style="flex:2 1 200px"><span>Was?</span><input name="titel" required></label>${f('kcal', 'kcal')}${f('protein', 'Protein g')}${f('kh', 'KH g')}${f('fett', 'Fett g')}</div><p class="leise klein">Leere Felder bleiben unbekannt (nicht 0).</p><button class="haupt klein" type="submit">Eintragen</button></form><hr>
-  <form id="tb-lm-neu"><h4>Eigenes Lebensmittel oder Produkt (Werte laut Etikett)</h4><div class="zeile"><label class="feld" style="flex:2 1 180px"><span>Name</span><input name="name" required></label><label class="feld"><span>Marke</span><input name="marke"></label><label class="feld"><span>Barcode (GTIN)</span><input name="gtin" inputmode="numeric" pattern="[0-9]{8,14}" title="8 bis 14 Ziffern"></label></div>
+  <p class="klein"><a href="#/produkte/neu">Markenprodukt mit allen Angaben anlegen</a> (Barcode, Packung, Allergene, Quelle, Prüfstatus) · <a href="#/produkte">alle Produkte</a></p><form id="tb-lm-neu"><h4>Schnell: eigenes Lebensmittel (Werte laut Etikett)</h4><div class="zeile"><label class="feld" style="flex:2 1 180px"><span>Name</span><input name="name" required></label><label class="feld"><span>Marke</span><input name="marke"></label><label class="feld"><span>Barcode (GTIN)</span><input name="gtin" inputmode="numeric" pattern="[0-9]{8,14}" title="8 bis 14 Ziffern"></label></div>
    <div class="zeile"><label class="feld"><span>Bezug</span><select name="bezug"><option value="100g">je 100 g</option><option value="100ml">je 100 ml</option></select></label>${f('kcal', 'kcal')}${f('protein', 'Protein')}${f('kh', 'Kohlenh.')}${f('zucker', 'davon Zucker')}${f('fett', 'Fett')}${f('ballaststoffe', 'Ballastst.')}${f('salz', 'Salz')}${f('portion', 'übliche Portion g/ml')}</div>
    <label class="feld"><span>Quelle</span><select name="quelle"><option>Etikett</option><option>eigene Schätzung</option></select></label>
    <p class="leise klein">Bleibt nur in deinem Profil auf diesem Gerät – nichts davon gelangt in den öffentlichen Katalog. Spätere Änderungen verändern bereits gebuchte Einträge nicht.</p><button class="haupt klein" type="submit">Speichern</button></form>`;
@@ -340,7 +335,7 @@ function tbFormulare() {
 vTagebuch2.danach = () => {
   const s = $('#tb-suche'); if (s) s.addEventListener('input', () => { tbSuche = s.value; $('#tb-treffer').innerHTML = tbTreffer(); });
   const fr = $('#tb-frei'); if (fr) fr.addEventListener('submit', ev => { ev.preventDefault(); const n = k => fr[k].value === '' ? null : Number(fr[k].value);
-    aendere('Eingetragen', d => d.tagebuch.push({ id: uid('mz'), datum: tbDatum, zeit: new Date().toTimeString().slice(0, 5), quelle: 'frei', titel: fr.titel.value, portionen: 1, einheit: 'Portion', naehr: { kcal: n('kcal'), protein: n('protein'), kh: n('kh'), fett: n('fett'), ballaststoffe: null }, mikro: null, status: 'unvollstaendig' })); });
+    aendere('Eingetragen', d => d.tagebuch.push({ id: uid('mz'), datum: tbDatum, zeit: new Date().toTimeString().slice(0, 5), quelle: 'frei', mahlzeit: neuerEintragSlot(), titel: fr.titel.value, portionen: 1, einheit: 'Portion', naehr: { kcal: n('kcal'), protein: n('protein'), kh: n('kh'), fett: n('fett'), ballaststoffe: null }, mikro: null, status: 'unvollstaendig' })); });
   const lm = $('#tb-lm-neu'); if (lm) lm.addEventListener('submit', ev => { ev.preventDefault(); const n = k => lm[k].value === '' ? null : Number(lm[k].value);
     aendere('Lebensmittel gespeichert', d => { (d.lebensmittel = d.lebensmittel || []).push({ id: uid('lm'), name: lm.name.value.trim(), marke: lm.marke.value.trim() || null, gtin: lm.gtin.value.trim() || null, bezug: lm.bezug.value, naehr: { kcal: n('kcal'), protein: n('protein'), kh: n('kh'), zucker: n('zucker'), fett: n('fett'), ballaststoffe: n('ballaststoffe'), salz: n('salz') }, portion: n('portion'), quelle: lm.quelle.value, erfasst: heute(), version: 1 }); });
     tbSuche = lm.name.value; route(); });

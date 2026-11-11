@@ -4,7 +4,7 @@
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
 const APP_VERSION = '2.0.0';
-const APP_BUILD = '202611111607';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_BUILD = '202611111629';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -47,7 +47,7 @@ function leer() {
     einstellungen: { ausschluesse: null, geraete: null, geraete_hinweise: {}, grundvorrat: null, portionen: 2, hilfen_offen: true, ziele: { modus: 'keine' },
       person: {}, ernaehrungsweise: null, allergien: [], abneigungen: {}, budget: null, kochzeit: null, einrichtung: null },
     vorrat: [], auswahl: [], planung: { tage: '' }, einkauf: { abgehakt: {}, bestaetigt: {} },
-    restportionen: [], tagebuch: [], kochprotokolle: [], fortschritt: {}, tage: {}, lebensmittel: [], anpassungen: {}, varianten: {}, letzter_export: null, geschrieben_von: null };
+    restportionen: [], tagebuch: [], kochprotokolle: [], fortschritt: {}, tage: {}, lebensmittel: [], anpassungen: {}, varianten: {}, mahlzeiten: [], letzter_export: null, geschrieben_von: null };
 }
 /* Datenformat-Updates: je Schritt eine Funktion „von Schema n auf n+1“. Vorher wird der unveränderte Stand
    als Zwischenstand gesichert. Nie Felder löschen, die eine ältere Version noch braucht. */
@@ -287,7 +287,7 @@ function route() {
   if (istNeu && !D.einstellungen.einrichtung && seite !== 'einrichtung' && !sessionStorage.getItem('einr-gezeigt-' + PROFIL)) { try { sessionStorage.setItem('einr-gezeigt-' + PROFIL, '1'); } catch (e) { /* */ } location.replace('#/einrichtung/0'); return; }
   $$('.nav a').forEach(n => n.classList.toggle('aktiv', n.dataset.nav === seite || (['rezept', 'kochen', 'fertig'].includes(seite) && n.dataset.nav === 'entdecken')));
   const app = $('#app');
-  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile };
+  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte };
   const fn = views[seite] || vEntdecken;
   app.innerHTML = fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
@@ -679,6 +679,7 @@ function vMehr() {
     ${eintrag('#/ziele', 'Ziele', z ? `${z.herkunft}: ${z.kcal ? zahlDE(z.kcal) + ' kcal' : ''}${z.protein ? ' · ' + zahlDE(z.protein) + ' g Protein' : ''}` : 'keine Ziele – optional')}
     ${eintrag('#/einrichtung/0', 'Persönliche Angaben', `${p.ziel ? ZIELE[p.ziel][0] : 'nicht eingerichtet'} · Ernährungsweise: ${esc((WEISEN.find(w => w[0] === (D.einstellungen.ernaehrungsweise || 'alles')) || [])[1] || 'Alles')}${(D.einstellungen.allergien || []).length ? ' · Allergien: ' + D.einstellungen.allergien.length : ''}`)}
     ${eintrag('#/einstellungen', 'Küche und Einstellungen', 'Geräte, Geräte-Hinweise, Grundvorrat, Ausschlüsse, Anzeige')}
+    ${eintrag('#/produkte', 'Produkte und eigene Mahlzeiten', `${(D.lebensmittel || []).length} Produkt(e) · ${(D.mahlzeiten || []).length} eigene Mahlzeit(en) – mit Etikettwerten, Barcode und Prüfstatus`)}
     ${eintrag('#/profile', 'Profile auf diesem Gerät', `${profilListe().length} Profil(e) · getrennte Daten, kein Passwortschutz`)}
     ${eintrag('#/daten', 'Daten sichern', `Export, Wiederherstellung, Zwischenstände${D.letzter_export ? ' · letzter Export ' + esc(datumDE(D.letzter_export.slice(0, 10))) : ' · noch nie exportiert'}`)}
     ${eintrag('#/info', 'Über diese App', 'Prüfstand, Quellen, Techniken, Bildnachweise')}

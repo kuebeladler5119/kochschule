@@ -242,3 +242,12 @@ body.kochen .timerleiste { bottom: calc(var(--nav-h) + 72px + env(safe-area-inse
 @media print { .nav, .kopf, .timerleiste, .kochnav, button { display: none !important; } }
 .passt-eintrag .bildnachweis { display: none; }
 @media (max-width: 420px) { .passt-eintrag { grid-template-columns: 56px 1fr; } .passt-eintrag > button { grid-column: 1 / 3; justify-self: start; } }
+.mahlzeit { margin: 6px 0 16px; }
+.mahlzeit-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; border-bottom: 1px solid var(--linie); padding-bottom: 4px; }
+.mahlzeit-kopf h3 { margin: 0; font-size: 1.05rem; }
+.mahlzeit-kopf .knopfreihe { margin-left: auto; }
+.eintraege li.bearbeiten { background: var(--flaeche); border-radius: var(--r); padding: 8px; }
+.spur.mini { display: inline-block; width: 44px; height: 6px; margin-right: 6px; vertical-align: middle; }
+.spur.mini i { display: block; height: 100%; border-radius: 3px; background: var(--salbei); }
+table.mikro td { vertical-align: top; }
+.spur.mini { background: var(--flaeche2); border-radius: 3px; overflow: hidden; }
