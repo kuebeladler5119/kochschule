@@ -299,3 +299,4 @@ body[data-bereich="training"] { --akzent: #3b4f7a; --akzent-hell: #e4e8f3; --akz
 .verlauf { width: 100%; max-width: 420px; height: auto; display: block; margin: 6px 0 12px; }
 .tr-wahl summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; }
 @media (max-width: 420px) { .tr-saetze input { width: 3.9em; } .tr-saetze th, .tr-saetze td { padding: 3px 2px; } }
+.bildrahmen.foto-offline::after { content: "Foto offline nicht gespeichert"; position: absolute; inset: 0; display: grid; place-items: center; font-size: .78rem; color: var(--leise); text-align: center; padding: 8px; }

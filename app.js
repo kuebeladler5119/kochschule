@@ -4,7 +4,7 @@
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
 const APP_VERSION = '2.2.0';
-const APP_BUILD = '202611111832';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_BUILD = '202611111855';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -313,7 +313,11 @@ function route() {
   if (location.hash !== route.letzte) { route.letzte = location.hash; const zurueck = ['entdecken', 'training', 'produkte', 'vorrat'].includes(seite) ? scrollPos[location.hash] : 0; window.scrollTo(0, zurueck || 0); }   // neue Seite oben beginnen, Neuzeichnen derselben Seite behält die Position
   ungespeichert = false;
   navZaehler(); zeichneTimer(); updateLeiste();
+  setTimeout(bilderVorladen, 1500);
 }
+/* Fotos der ausgewählten Rezepte vorab in den Bild-Speicher holen (offline beim Kochen verfügbar) */
+const vorgeladen = new Set();
+function bilderVorladen() { if (!navigator.onLine) return; D.auswahl.forEach(a => { const r = R[a.rezept]; const b = r && r.meta.bild; if (b && !vorgeladen.has(b)) { vorgeladen.add(b); fetch('bilder/' + b).catch(() => vorgeladen.delete(b)); } }); }
 function navZaehler() { const n = D.auswahl.length; const el = $('#nav-auswahl'); if (el) { el.hidden = !n; el.textContent = n; } const teile = []; if (speicherFehler) teile.push('⚠ nicht gespeichert');
   if (PROFIL || profilListe().length > 1) teile.push(profilName(PROFIL));
   const rp = D.restportionen.reduce((s, p) => s + (p.portionen > 0 ? p.portionen : 0), 0); if (rp) teile.push(`${zahlDE(rp, 1)} Restportionen`);
@@ -769,6 +773,7 @@ function importAnwenden(obj) { const plan = importiere(obj); if (!confirm(plan.t
 function vInfo() {
   const n = K.rezepte.length;
   return `<h1>Über diese App</h1><div class="karte"><p>Katalog ${esc(K.version)} (${esc(K.erstellt)}) · ${n} Rezepte · ${K.techniken.length} Techniken · ${K.zutaten.length} Zutaten · App ${APP_VERSION}</p>
+  <p class="leise klein"><b>Offline:</b> App und alle Rezepttexte sind nach dem ersten Laden ohne Internet nutzbar. Fotos werden gespeichert, sobald du sie einmal angesehen hast; die Fotos der Gerichte in deiner Auswahl lädt die App automatisch vor. Deine Daten liegen nur in diesem Browser – bitte regelmäßig unter Profil → Daten sichern exportieren.</p>
   <p class="leise klein">Alle Rezepte sind <b>Entwürfe</b>: quellenbasiert, aber noch von niemandem in dieser Form gekocht. „Quellengeprüft“ heißt nicht „erprobt“. Nährwerte sind Schätzungen aus allgemeinen BLS-4.0-Werten. Sicherheitsangaben stammen aus gelesenen Quellen (vor allem BfR); Zeiten sind Orientierung.</p></div>
   <h2>Techniken</h2><div class="raster">${K.techniken.map(t => `<a class="karte rk" href="#/technik/${esc(t.id)}"><h3>${esc(t.titel)}</h3></a>`).join('')}</div>
   <h2>Bildnachweise</h2><p class="leise klein">Die Fotos sind <b>Beispielfotos</b> freier Lizenz von Wikimedia Commons, auf 800 px verkleinert. Sie zeigen ein ähnliches Gericht, nicht das Ergebnis dieses Rezepts. Rezepte ohne passendes freies Foto zeigen eine gestaltete Tellergrafik.</p>

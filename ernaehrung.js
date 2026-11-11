@@ -127,7 +127,7 @@ function bildHtml(r, art = 'karte') {
   const m = r.meta || {}; const hero = art === 'hero';
   if (m.bild) {
     const nachweis = `Foto: ${esc(m.bild_autor || 'unbekannt')}${m.bild_lizenz ? ', ' + esc(m.bild_lizenz) : ''}`;
-    return `<figure class="bildrahmen ${hero ? 'hero' : ''}" style="margin:0"><img src="bilder/${esc(m.bild)}" alt="Beispielfoto: ${esc(r.titel)}" loading="${hero ? 'eager' : 'lazy'}" decoding="async">
+    return `<figure class="bildrahmen ${hero ? 'hero' : ''}" style="margin:0"><img src="bilder/${esc(m.bild)}" alt="Beispielfoto: ${esc(r.titel)}" loading="${hero ? 'eager' : 'lazy'}" decoding="async" onerror="this.parentNode.classList.add('foto-offline'); this.remove()">
       <figcaption class="bildnachweis">${hero ? bildNachweisHtml(m) : nachweis}</figcaption></figure>`;
   }
   return `<div class="bildrahmen ${hero ? 'hero' : ''} b-${esc(m.bereich || '')}" role="img" aria-label="Kein Foto vorhanden: ${esc(r.titel)}"><div class="teller"><span>${esc(kurztitel(r.titel))}</span><small>${esc(BEREICH_NAME[m.bereich] || '')}</small></div></div>`;
