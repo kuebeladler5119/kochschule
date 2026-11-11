@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.1.0';
-const APP_BUILD = '202611111812';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.2.0';
+const APP_BUILD = '202611111832';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -278,6 +278,20 @@ function passtRichtung(r, info, rt) { return EIGENSCHAFT[rt] ? EIGENSCHAFT[rt][2
 
 /* ---------- Router ---------- */
 const filterZustand = { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '', ohneGeraete: false };
+const FILTER_SPEICHER = 'kochschule.filter.v1' + (PROFIL ? '.' + PROFIL : '');
+try { Object.assign(filterZustand, JSON.parse(localStorage.getItem(FILTER_SPEICHER)) || {}); } catch (e) { /* gemerkte Filter sind nur Komfort */ }
+const scrollPos = {};
+/* Bereich der App (für Akzentfarbe): Kochen warm, Ernährung ruhig, Training konzentriert */
+const BEREICH_VON_SEITE = { tagebuch: 'ernaehrung', ziele: 'ernaehrung', produkte: 'ernaehrung', training: 'training' };
+/* „Weitermachen“: laufendes Kochen, laufendes Training, bald fällige Restportionen */
+function weitermachenHtml() {
+  const teile = [];
+  Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a>`); });
+  if (D.training && D.training.aktiv) teile.push(`<a class="weiter-chip" href="#/training/einheit">${ico('hantel', 'klein')} Training fortsetzen</a>`);
+  D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
+  return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';
+}
+function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a></div>`; }
 function route() {
   rezepteAktualisieren();   // angepasste Mengen (nur für diesen Kochvorgang) wirken überall über R
   const h = location.hash.replace(/^#\/?/, '') || 'entdecken';
@@ -287,13 +301,16 @@ function route() {
   document.body.classList.toggle('koch-hell', kf === 'hell'); document.body.classList.toggle('koch-dunkel', kf === 'dunkel');
   // Neue Nutzer (leerer Speicher) sehen einmal die Einrichtung – bestehende nie erzwungen
   if (istNeu && !D.einstellungen.einrichtung && seite !== 'einrichtung' && !sessionStorage.getItem('einr-gezeigt-' + PROFIL)) { try { sessionStorage.setItem('einr-gezeigt-' + PROFIL, '1'); } catch (e) { /* */ } location.replace('#/einrichtung/0'); return; }
-  $$('.nav a').forEach(n => n.classList.toggle('aktiv', n.dataset.nav === seite || (['rezept', 'kochen', 'fertig'].includes(seite) && n.dataset.nav === 'entdecken')));
+  $$('.nav a').forEach(n => { const an = n.dataset.nav === seite || (['rezept', 'kochen', 'fertig'].includes(seite) && n.dataset.nav === 'entdecken') || (seite === 'auswahl' && n.dataset.nav === 'einkauf'); n.classList.toggle('aktiv', an); if (an) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
+  document.body.dataset.bereich = BEREICH_VON_SEITE[seite] || 'kochen';
+  if (route.letzte && location.hash !== route.letzte) { scrollPos[route.letzte] = window.scrollY; if (typeof tbEdit !== 'undefined') tbEdit = null; if (typeof anpassDialog !== 'undefined' && anpassDialog && !location.hash.includes(anpassDialog.rid)) anpassDialog = null; }
+  if (seite === 'entdecken') { try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(filterZustand)); } catch (e) { /* */ } }
   const app = $('#app');
   const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining };
   const fn = views[seite] || vEntdecken;
   app.innerHTML = fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
-  if (location.hash !== route.letzte) { route.letzte = location.hash; window.scrollTo(0, 0); }   // neue Seite oben beginnen, Neuzeichnen derselben Seite behält die Position
+  if (location.hash !== route.letzte) { route.letzte = location.hash; const zurueck = ['entdecken', 'training', 'produkte', 'vorrat'].includes(seite) ? scrollPos[location.hash] : 0; window.scrollTo(0, zurueck || 0); }   // neue Seite oben beginnen, Neuzeichnen derselben Seite behält die Position
   ungespeichert = false;
   navZaehler(); zeichneTimer(); updateLeiste();
 }
@@ -317,7 +334,7 @@ function vEntdecken() {
   const sortiert = D.vorrat.length || f.richtung.length ? liste.sort((x, y) => y.b.punkte - x.b.punkte) : liste.sort((x, y) => BEREICHE.findIndex(b => b[0] === x.r.meta.bereich) - BEREICHE.findIndex(b => b[0] === y.r.meta.bereich));
   const e = D.einstellungen;
   const setup = (!e.einrichtung || e.einrichtung === 'bestehend') && !e.person.ziel ? `<div class="hinweis"><b>Passt die App zu dir?</b> In einer kurzen, freiwilligen Einrichtung legst du Ziel, Ernährungsweise, Allergien und Geräte fest. <a href="#/einrichtung/0">Jetzt einrichten</a></div>` : '';
-  return `<div class="seitenkopf"><h1>Kochbuch</h1></div><p class="unterzeile">${K.rezepte.length} Rezepte mit Anleitung Schritt für Schritt – was passt heute?</p>${setup}
+  return `${weitermachenHtml()}<div class="seitenkopf"><h1>Kochbuch</h1></div><p class="unterzeile">${K.rezepte.length} Rezepte mit Anleitung Schritt für Schritt – was passt heute?</p>${setup}
   <div class="filterleiste" role="group" aria-label="Bereich">${[['', 'Alle'], ...BEREICHE].filter(([id]) => !id || K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id))).map(([id, n]) => `<button class="filterchip" data-a="bereich" data-v="${id}" aria-pressed="${f.bereich === id}">${esc(n)}</button>`).join('')}</div>
   ${kuechenLeisteHtml(f)}
   <div class="filterleiste" role="group" aria-label="Eigenschaften (alle müssen passen)">${EIGENSCHAFTEN.map(([id, n]) => `<button class="filterchip" data-a="richtung" data-v="${id}" aria-pressed="${f.richtung.includes(id)}"${EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : ''}>${esc(n)}</button>`).join('')}</div>
@@ -331,7 +348,7 @@ function vEntdecken() {
     <p class="leise klein">Mehrere Küchen = aus einer davon. Eigenschaften müssen alle zutreffen. Proteinreich: ${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}. Günstig: ${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}.</p>
   </details>
   ${filterKopfHtml(f, sortiert.length, persoenlichAus, geraeteAus)}${D.vorrat.length && sortiert.length ? '<p class="leise klein">sortiert nach Vorrat und Wunsch</p>' : ''}
-  ${sortiert.length ? `<div class="raster">${sortiert.map(({ r, b, ger }) => rezeptKarte(r, b, ger)).join('')}</div>` : lockerungenHtml(f, kandidaten)}`;
+  ${sortiert.length ? `<div class="raster karten">${sortiert.map(({ r, b, ger }) => rezeptKarte(r, b, ger)).join('')}</div>` : lockerungenHtml(f, kandidaten)}`;
 }
 function rezeptKarte(r, b, ger) {
   const inAuswahl = D.auswahl.some(a => a.rezept === r.id);
@@ -531,7 +548,7 @@ const mal = (n, f) => Object.fromEntries(Object.entries(n || {}).map(([k, v]) =>
 
 /* ---------- Auswahl (mehrere Gerichte) ---------- */
 function vAuswahl() {
-  if (!D.auswahl.length) return `<h1>Auswahl</h1><p class="leer">Noch nichts ausgewählt. In <a href="#/entdecken">Entdecken</a> Gerichte mit „+ Auswahl“ hinzufügen – zum Beispiel zwei Gerichte mit mehreren Portionen für die nächsten Tage.</p>`;
+  if (!D.auswahl.length) return `<h1>Einkauf</h1>${planTabs('auswahl')}<p class="leer">Noch nichts ausgewählt. Im <a href="#/entdecken">Kochbuch</a> Gerichte mit „+ Auswahl“ hinzufügen – zum Beispiel zwei Gerichte mit mehreren Portionen für die nächsten Tage.</p>`;
   let aktiv = 0, gesamt = 0, warnungen = [];
   const tage = Number(D.planung.tage) || 0;
   const zaehl = {};
@@ -552,7 +569,7 @@ function vAuswahl() {
       <p class="leise klein">aktiv ${info.aktiv || '?'} Min. · gesamt ${info.gesamt || '?'} Min. · ${np.kcal != null ? `≈ ${zahlDE(np.kcal)} kcal, ${zahlDE(np.protein)} g Eiweiß pro Portion` : 'Nährwerte unvollständig'} · Vorkochen: ${m.vorkochen_kuehlschrank === 'ja' ? `Kühlschrank ${m.kuehl_max_tage || 2} Tage` : m.vorkochen_kuehlschrank === 'nein' ? 'nein' : 'nicht belegt'}</p></div>`;
   }).join('');
   const gemeinsam = Object.entries(zaehl).filter(([, n]) => n > 1).map(([z]) => Z[z].name);
-  return `<h1>Auswahl</h1>
+  return `<h1>Einkauf</h1>${planTabs('auswahl')}
   <p class="leise">Kein Wochenplan: Wähle Gerichte und Portionen für „jetzt“ und „vorkochen“. Die Einkaufsliste fasst alles zusammen.</p>
   ${zeilen}
   <div class="karte"><label class="feld"><span>Wie viele Tage möchtest du damit versorgt sein? (optional)</span><input type="number" min="0" max="14" data-a="tage" value="${esc(D.planung.tage)}" style="width:6em"></label>
@@ -588,7 +605,7 @@ function einkaufsPosten() {
   });
 }
 function vEinkauf() {
-  if (!D.auswahl.length) return `<h1>Einkauf</h1><p class="leer">Die Einkaufsliste entsteht aus deiner <a href="#/auswahl">Auswahl</a>.</p>`;
+  if (!D.auswahl.length) return `<h1>Einkauf</h1>${planTabs('einkauf')}<p class="leer">Die Einkaufsliste entsteht aus deiner <a href="#/auswahl">Auswahl</a>.</p>`;
   const posten = einkaufsPosten(); const gv = D.einstellungen.grundvorrat;
   const grund = posten.filter(p => p.bedarf === 'grundvorrat' && !(gv && gv.includes(p.zutat)) && !(p.vorrat && p.vorrat.vorhanden));
   const bestaetigt = D.einkauf.bestaetigt;
@@ -599,7 +616,7 @@ function vEinkauf() {
     return `<li class="${k ? 'erledigt' : ''}"><input type="checkbox" data-a="abhaken" data-v="${esc(p.key)}" ${k ? 'checked' : ''} aria-label="${esc(p.name)} abhaken"><span>${esc(p.name)}<br><span class="leise klein">${esc(p.rezepte.join(', '))}${p.pruefen ? ' · im Vorrat, Menge prüfen' : ''}${p.vorrat && p.vorrat.vorhanden && p.fehlt < p.menge && !p.pruefen ? ` · ${fmtMenge(p.menge - p.fehlt, p.einheit)} ${esc(p.einheit)} schon da` : ''}</span>${packungsText(p)}</span><span class="ekmenge">${menge}${menge && txt ? ' + ' : ''}${txt}</span></li>`; };
   const gruppiert = liste => LADEN.map((n, ix) => { const g = liste.filter(p => (p.zutat ? ladenbereich(p.zutat) : 10) === ix); return g.length ? `<h3>${esc(n)}</h3><ul>${g.map(zeile).join('')}</ul>` : ''; }).join('');
   const abgehakt = kaufen.concat(optional).filter(p => D.einkauf.abgehakt[p.key]).length;
-  return `<h1>Einkaufsliste</h1><p class="leise">Aus ${D.auswahl.length} Gericht(en), inklusive Vorkoch-Portionen. Vorrat ist abgezogen, wo Einheit und Menge bekannt sind.</p>${einkaufKostenHtml(kaufen.concat(optional))}
+  return `<h1>Einkauf</h1>${planTabs('einkauf')}<p class="leise">Aus ${D.auswahl.length} Gericht(en), inklusive Vorkoch-Portionen. Vorrat ist abgezogen, wo Einheit und Menge bekannt sind.</p>${einkaufKostenHtml(kaufen.concat(optional))}
   ${grund.length ? `<div class="karte"><h3 style="margin-top:0">Grundzutaten – kurz bestätigen</h3><p class="leise klein">${gv ? 'Nicht in deinem Grundvorrat:' : 'Dein Grundvorrat ist noch nicht erfasst – nichts wird als vorhanden angenommen.'}</p>
     <ul class="ek">${grund.map(p => `<li><span>${esc(p.name)} <span class="leise klein">${p.menge ? fmtMenge(p.menge, p.einheit) + ' ' + esc(p.einheit) : esc(p.texte.join(', '))}</span></span><span class="ekmenge"><button class="klein filterchip" data-a="gv" data-k="${esc(p.key)}" data-v="da" aria-pressed="${bestaetigt[p.key] === 'da'}">habe ich</button> <button class="klein filterchip" data-a="gv" data-k="${esc(p.key)}" data-v="fehlt" aria-pressed="${bestaetigt[p.key] === 'fehlt'}">kaufen</button></span></li>`).join('')}</ul>
     <p class="leise klein"><a href="#/einstellungen">Grundvorrat dauerhaft festlegen</a></p></div>` : ''}

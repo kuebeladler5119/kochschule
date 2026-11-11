@@ -266,3 +266,36 @@ body.kochen.koch-dunkel { --papier: #171412; --flaeche: #211d1a; --flaeche2: #2a
 .tr-saetze tr.erledigt td { background: var(--salbei-hell); }
 .tr-liste { list-style: none; padding: 0; }
 .nav a { min-width: 0; }
+
+/* ===== UI-Überarbeitung 2026-11-11: Bereiche, Navigation, Karten ===== */
+/* Bereichsakzente: Kochen warm (Terrakotta), Ernährung ruhig (Petrol), Training konzentriert (Indigo) – alle ≥ 4,5:1 auf dem Hintergrund */
+body[data-bereich="ernaehrung"] { --akzent: #2f6862; --akzent-hell: #e1eeec; --akzent-text: #ffffff; }
+body[data-bereich="training"] { --akzent: #3b4f7a; --akzent-hell: #e4e8f3; --akzent-text: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  body[data-bereich="ernaehrung"] { --akzent: #7fbcb4; --akzent-hell: #1d2e2c; --akzent-text: #0f1a19; }
+  body[data-bereich="training"] { --akzent: #a3b4e0; --akzent-hell: #1f2535; --akzent-text: #12161f; }
+}
+/* Weitermachen-Leiste */
+.weitermachen { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px; margin-bottom: 4px; scrollbar-width: none; }
+.weiter-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 14px; border-radius: 999px; background: var(--akzent-hell); color: var(--tinte); text-decoration: none; font-size: .86rem; font-weight: 600; border: 1px solid color-mix(in srgb, var(--akzent) 35%, transparent); }
+/* Segment-Umschalter (Gerichte | Einkaufsliste) */
+.segment { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--flaeche2); margin: 0 0 14px; }
+.segment a { min-height: 38px; display: inline-flex; align-items: center; padding: 6px 16px; border-radius: 999px; text-decoration: none; color: var(--leise); font-weight: 600; font-size: .9rem; }
+.segment a[aria-selected="true"] { background: var(--flaeche); color: var(--tinte); box-shadow: var(--schatten); }
+/* Rezeptkarten: kompakt, zwei Spalten auf dem iPhone */
+.raster.karten { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 18px 12px; }
+.raster.karten .rk h3 { font-size: 1rem; line-height: 1.25; margin: 8px 0 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.raster.karten .rk .meta { font-size: .76rem; gap: 2px 8px; }
+.raster.karten .gruende .chip:nth-child(n+2) { display: none; }
+.raster.karten .merken { min-height: 36px; min-width: 36px; padding: 4px 10px; font-size: .78rem; }
+.raster.karten .teller span { font-size: clamp(.95rem, 3.6vw, 1.25rem); }
+.raster.karten .bildnachweis { font-size: .6rem; }
+@media (min-width: 700px) { .raster.karten { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 22px 16px; } .raster.karten .rk h3 { font-size: 1.1rem; } }
+/* Navigation: 5 Ziele, deutlicher aktiver Zustand */
+.nav a { font-size: .74rem; }
+.nav a .zaehler { position: absolute; top: 6px; left: calc(50% + 6px); }
+.tr-saetze td.vorher { font-size: .8rem; color: var(--leise); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tr-saetze input::placeholder { color: color-mix(in srgb, var(--leise) 70%, transparent); }
+.verlauf { width: 100%; max-width: 420px; height: auto; display: block; margin: 6px 0 12px; }
+.tr-wahl summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; }
+@media (max-width: 420px) { .tr-saetze input { width: 3.9em; } .tr-saetze th, .tr-saetze td { padding: 3px 2px; } }

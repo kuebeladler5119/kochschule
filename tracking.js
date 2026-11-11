@@ -1,6 +1,17 @@
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
+/* ---------- Schutz vor Doppelbuchungen: dieselbe Aktion innerhalb von 0,8 s nur einmal ---------- */
+const BUCHUNGS_AKTIONEN = new Set(['tb-rezept', 'tb-lm', 'tb-eigen', 'tb-kopie', 'tb-mz-buchen', 'tb-slot-kopie', 'rest-essen', 'auswahl-toggle', 'pd-auswahl', 'pd-menue', 'tr-start', 'tr-satz-add', 'einkauf-bestaetigen', 'anp-ok', 'tr-ende']);
+let letzteAktion = { schluessel: '', zeit: 0 };
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-a]'); if (!b || !BUCHUNGS_AKTIONEN.has(b.dataset.a)) return;
+  const k = b.dataset.a + '|' + (b.dataset.v || '') + '|' + (b.dataset.p || '') + '|' + (b.dataset.u || '');
+  const jetzt = Date.now();
+  if (letzteAktion.schluessel === k && jetzt - letzteAktion.zeit < 800) { ev.stopImmediatePropagation(); ev.preventDefault(); return; }
+  letzteAktion = { schluessel: k, zeit: jetzt };
+}, true);
+
 /* ---------- Mahlzeiten ---------- */
 const SLOTS = [['fruehstueck', 'Frühstück'], ['mittag', 'Mittag'], ['abend', 'Abend'], ['snack', 'Snack']];
 const SLOT_NAME = Object.fromEntries(SLOTS);
