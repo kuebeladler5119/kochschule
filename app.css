@@ -240,3 +240,5 @@ body.kochen .timerleiste { bottom: calc(var(--nav-h) + 72px + env(safe-area-inse
 .einrichtung fieldset { border: 0; padding: 0; margin: 0 0 16px; }
 .einrichtung legend { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
 @media print { .nav, .kopf, .timerleiste, .kochnav, button { display: none !important; } }
+.passt-eintrag .bildnachweis { display: none; }
+@media (max-width: 420px) { .passt-eintrag { grid-template-columns: 56px 1fr; } .passt-eintrag > button { grid-column: 1 / 3; justify-self: start; } }

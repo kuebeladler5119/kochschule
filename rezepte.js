@@ -256,11 +256,73 @@ function skaliereZutatenText(r, text, f) {
   }).join('');
 }
 
+/* ---------- Passt dazu (ohne KI: hinterlegte Verknüpfungen + Regeln nach Küche und Speisebereich) ---------- */
+function pdParse(s) { const [id, art, grund, quelle] = String(s).split('|'); return { id: (id || '').trim(), art: (art || '').trim(), grund: (grund || '').trim(), quelle: (quelle || '').trim() }; }
+const pdArt = a => a === 'ergaenzt' ? 'ergänzt das Gericht' : a && a.startsWith('ersetzt') ? `ersetzt ${KOMPONENTE_NAME[a.split(':')[1]] || 'eine Komponente'}` : (a || '');
+const pdQuelle = q => q === 'quelle' ? 'Empfehlung aus der Rezeptquelle' : 'eigener Vorschlag';
+const pdErlaubt = id => R[id] && !rezeptPruefung(R[id]).hart.length;
+function passtDazuDaten(r) {
+  const direkt = arr(r.meta.passt_dazu).map(pdParse).filter(e => R[e.id] && e.id !== r.id);
+  const rueck = K.rezepte.filter(x => x.id !== r.id && !direkt.some(d => d.id === x.id)).map(x => { const s = arr(x.meta.passt_dazu).map(pdParse).find(e => e.id === r.id); return s ? { id: x.id, art: 'ergaenzt', grund: s.grund, quelle: s.quelle, rueck: true } : null; }).filter(Boolean);
+  const gruppen = new Set(rezeptKuechen(r).map(k => KUECHE_GRUPPE[k]));
+  const istHaupt = r.meta.bereich === 'hauptgericht';
+  const passendeBereiche = istHaupt ? ['vorspeise', 'suppe', 'salat', 'beilage', 'dessert'] : ['hauptgericht'];
+  const bekannt = new Set([r.id, ...direkt.map(e => e.id), ...rueck.map(e => e.id)]);
+  const regel = K.rezepte.filter(x => !bekannt.has(x.id) && passendeBereiche.includes(x.meta.bereich) && rezeptKuechen(x).some(k => gruppen.has(KUECHE_GRUPPE[k])))
+    .map(x => ({ id: x.id, art: 'ergaenzt', grund: `gleiche Küchenfamilie (${KUECHE_NAME[KUECHE_GRUPPE[rezeptKuechen(x)[0]]]}), anderer Speisebereich`, quelle: 'regel' }));
+  const alle = [...direkt, ...rueck, ...regel];
+  return { direkt, rueck, regel, sichtbar: alle.filter(e => pdErlaubt(e.id)), ausgeblendet: alle.filter(e => !pdErlaubt(e.id)).length };
+}
+function kleinesMenue(r, d) {
+  const pool = [...d.direkt, ...d.rueck, ...d.regel].filter(e => pdErlaubt(e.id)).map(e => R[e.id]);
+  const nimm = bereiche => pool.find(x => bereiche.includes(x.meta.bereich));
+  let gaenge;
+  if (r.meta.bereich === 'hauptgericht') gaenge = [nimm(['suppe', 'vorspeise', 'salat']), r, nimm(['dessert'])];   // Dessert nur aus Verknüpfungen oder gleicher Küchenfamilie – keine beliebige Kombination
+  else if (['vorspeise', 'suppe', 'salat'].includes(r.meta.bereich)) gaenge = [r, nimm(['hauptgericht'])];
+  else gaenge = [nimm(['hauptgericht']), r];
+  gaenge = gaenge.filter(Boolean); return gaenge.length >= 2 ? gaenge : null;
+}
+function mahlzeitWerte(rs) {
+  const s = { kcal: 0, protein: 0, aktiv: 0, gesamt: 0, unbekannt: false, geraete: new Set() };
+  rs.forEach(x => { const p = x.naehrwerte.pro_portion; if (p.kcal == null) s.unbekannt = true; else { s.kcal += p.kcal; s.protein += p.protein || 0; } s.aktiv += Number(x.meta.zeit_aktiv_min) || 0; s.gesamt = Math.max(s.gesamt, Number(x.meta.zeit_gesamt_min) || 0); arr(x.meta.geraete_noetig).forEach(g => s.geraete.add(g)); });
+  return s;
+}
+function passtDazuHtml(r) {
+  const d = passtDazuDaten(r); const zeig = d.sichtbar;
+  const getr = arr(r.meta.getraenke).map(s => { const [name, art, grund, quelle] = String(s).split('|').map(x => (x || '').trim()); return { name, art, grund, quelle }; });
+  const ohneAlk = getr.filter(g => g.art !== 'alkohol'), alk = getr.filter(g => g.art === 'alkohol');
+  if (!zeig.length && !getr.length) return '';
+  const inAuswahl = id => D.auswahl.some(a => a.rezept === id);
+  const eintrag = e => { const x = R[e.id]; const np = x.naehrwerte.pro_portion;
+    return `<li class="passt-eintrag">${bildHtml(x)}<div><a href="#/rezept/${esc(x.id)}"><b>${esc(kurztitel(x.titel))}</b></a> <span class="leise klein">· ${esc(BEREICH_NAME[x.meta.bereich] || '')}${np.kcal != null ? ' · ' + zahlDE(np.kcal) + ' kcal' : ''}${x.meta.zeit_gesamt_min ? ' · ' + esc(x.meta.zeit_gesamt_min) + ' Min.' : ''}</span>
+      <br><span class="klein">${esc(pdArt(e.art))}: ${esc(e.grund)}</span> <span class="chip ${e.quelle === 'quelle' ? 'gut' : ''}">${e.quelle === 'regel' ? 'App-Regel, inhaltlich ungeprüft' : esc(pdQuelle(e.quelle))}</span></div>
+      <button class="klein" data-a="pd-auswahl" data-v="${esc(x.id)}" data-zu="${esc(r.id)}" ${inAuswahl(x.id) ? 'disabled' : ''}>${inAuswahl(x.id) ? ico('haken', 'klein') + ' in der Auswahl' : ico('plus', 'klein') + ' dazu'}</button></li>`; };
+  const erste = zeig.filter(e => e.quelle !== 'regel').slice(0, 3); const mehr = zeig.filter(e => !erste.includes(e));
+  const menue = kleinesMenue(r, d);
+  const begleit = D.auswahl.filter(a => a.zu === r.id && R[a.rezept]).map(a => R[a.rezept]);
+  const mw = begleit.length ? mahlzeitWerte([r, ...begleit]) : null;
+  return `<div class="karte"><h3 style="margin-top:0">Passt dazu</h3>
+    ${erste.length ? `<ul class="passt" style="list-style:none;padding:0">${erste.map(eintrag).join('')}</ul>` : '<p class="leise klein">Keine hinterlegte Ergänzung, die zu deinen Einstellungen passt.</p>'}
+    ${mehr.length ? `<details class="klein"><summary>Mehr Vorschläge (${mehr.length})</summary><ul class="passt" style="list-style:none;padding:0">${mehr.map(eintrag).join('')}</ul></details>` : ''}
+    ${menue ? `<details class="klein"><summary>Kleines Menü</summary><ol>${menue.map(x => `<li><a href="#/rezept/${esc(x.id)}">${esc(kurztitel(x.titel))}</a> <span class="leise">(${esc(BEREICH_NAME[x.meta.bereich] || '')})</span></li>`).join('')}</ol>
+      ${(() => { const s = mahlzeitWerte(menue); return `<p class="leise">Pro Person ${s.unbekannt ? 'mind. ' : 'ca. '}${zahlDE(s.kcal)} kcal · ${zahlDE(s.protein)} g Protein · aktive Zeit zusammen ca. ${s.aktiv} Min. (parallel teils kürzer) · Geräte: ${esc([...s.geraete].map(g => GERAETE[g] || g).join(', '))}.</p>`; })()}
+      <button class="klein" data-a="pd-menue" data-v="${esc(menue.map(x => x.id).join(','))}" data-zu="${esc(r.id)}">${ico('plus', 'klein')} Menü in die Auswahl</button>
+      <p class="leise">Zusammengestellt nach hinterlegten Verknüpfungen, Küche und Speisebereich – ohne KI und ohne geschmackliche Prüfung.</p></details>` : ''}
+    ${mw ? `<p class="klein"><b>Mit deinen Ergänzungen</b> (${esc(begleit.map(x => kurztitel(x.titel)).join(', '))}): pro Person ${mw.unbekannt ? 'mind. ' : 'ca. '}${zahlDE(mw.kcal)} kcal · ${zahlDE(mw.protein)} g Protein · längste Gesamtzeit (inkl. Ruhe- und Kühlzeiten) ${mw.gesamt} Min. · Geräte: ${esc([...mw.geraete].map(g => GERAETE[g] || g).join(', '))}. Einkauf enthält alles. Ausgewählt heißt noch nicht gegessen.</p>` : ''}
+    ${d.ausgeblendet ? `<p class="leise klein">${d.ausgeblendet} Vorschlag/Vorschläge wegen deiner persönlichen Ausschlüsse ausgeblendet.</p>` : ''}
+    ${ohneAlk.length ? `<h4>Getränke</h4><ul class="klein">${ohneAlk.map(g => `<li><b>${esc(g.name)}</b> – ${esc(g.grund)}${g.quelle === 'quelle' ? ' <span class="chip gut">aus der Quelle</span>' : ''}</li>`).join('')}</ul>` : ''}
+    ${alk.length ? `<details class="klein"><summary>Alkoholische Begleitung (nur für Erwachsene, optional)</summary><ul>${alk.map(g => `<li><b>${esc(g.name)}</b> – ${esc(g.grund)}</li>`).join('')}</ul><p class="leise">Geschmackliche Ergänzung, kein gesundheitlicher Nutzen. Alkoholfreie Getränke oben passen genauso.</p></details>` : ''}
+  </div>`;
+}
+
 /* Ereignisse */
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
   if (['kueche', 'kueche-alle-weg', 'filter-weg', 'filter-reset', 'filter-locker'].includes(a)) { if (filterAktion(a, v, b)) route(); return; }
   switch (a) {
+    case 'pd-auswahl': case 'pd-menue': { ev.preventDefault(); const zu = b.dataset.zu; const ids = v.split(',').filter(id => R[id]);
+      const port = Math.max(1, Math.round(standardPortionen(R[zu])));
+      aendere(`${ids.length > 1 ? 'Menü' : kurztitel(R[ids[0]].titel)} in der Auswahl – ausgewählt heißt noch nicht gegessen`, d => { ids.forEach(id => { if (!d.auswahl.some(x => x.rezept === id)) d.auswahl.push({ rezept: id, jetzt: port, vorkochen: 0, zu: id === zu ? undefined : zu }); }); }); break; }
     case 'anp-start': anpassStart(b.dataset.r, Number(b.dataset.i)); break;
     case 'anp-abbruch': anpassDialog = null; route(); break;
     case 'anp-ok': anpassUebernehmen(); break;

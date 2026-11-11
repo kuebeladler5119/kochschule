@@ -4,7 +4,7 @@
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
 const APP_VERSION = '2.0.0';
-const APP_BUILD = '202611111559';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_BUILD = '202611111607';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -419,6 +419,7 @@ function vRezept(id) {
       <div class="knopfreihe"><a class="knopf haupt" href="#/kochen/${esc(r.id)}">${ico('flamme', 'klein')} Geführt kochen</a><button data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? ico('haken', 'klein') + ' In der Auswahl' : ico('plus', 'klein') + ' Zur Auswahl'}</button><button class="still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">Als gegessen buchen</button></div>
     </div>
     <div class="karte"><h3 style="margin-top:0">Nährwerte</h3>${naehrBox(r, p)}</div>
+    ${passtDazuHtml(r)}
     <div class="karte"><h3 style="margin-top:0">Vorkochen</h3>${vorkochBox(r)}</div>
     <div class="karte klein"><h3 style="margin-top:0">Geräte</h3><p>${esc(arr(m.geraete_noetig).map(g => GERAETE[g] || g).join(', ') || '–')}${arr(m.geraete_optional).length ? `<br><span class="leise">optional: ${esc(arr(m.geraete_optional).map(g => GERAETE[g] || g).join(', '))}</span>` : ''}</p>${geraeteHinweise(r)}
       <h3>Herkunft</h3>${herkunftHtml(r)}<p>${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p></div>
@@ -542,6 +543,7 @@ function vAuswahl() {
     new Set(r.zutaten.filter(z => z.zutat && z.bedarf !== 'grundvorrat').map(z => z.zutat)).forEach(z => { zaehl[z] = (zaehl[z] || 0) + 1; });
     const np = r.naehrwerte.pro_portion;
     return `<div class="karte"><div class="zeile" style="justify-content:space-between"><a href="#/rezept/${esc(r.id)}"><strong>${esc(r.titel)}</strong></a><button class="klein" data-a="auswahl-weg" data-v="${ix}">entfernen</button></div>
+      ${a.zu && R[a.zu] ? `<p class="leise klein" style="margin:0">Ergänzung zu <a href="#/rezept/${esc(a.zu)}">${esc(kurztitel(R[a.zu].titel))}</a></p>` : ''}${r.angepasst ? `<p class="klein" style="margin:0"><span class="chip akzent">angepasst</span> ${esc(r.angepasst.beschreibung || '')}</p>` : ''}
       <div class="zeile"><span class="stepper">jetzt <button data-a="aw" data-ix="${ix}" data-k="jetzt" data-v="-1">−</button><output>${a.jetzt}</output><button data-a="aw" data-ix="${ix}" data-k="jetzt" data-v="1">+</button></span>
       <span class="stepper">vorkochen <button data-a="aw" data-ix="${ix}" data-k="vorkochen" data-v="-1">−</button><output>${a.vorkochen}</output><button data-a="aw" data-ix="${ix}" data-k="vorkochen" data-v="1">+</button></span></div>
       <p class="leise klein">aktiv ${info.aktiv || '?'} Min. · gesamt ${info.gesamt || '?'} Min. · ${np.kcal != null ? `≈ ${zahlDE(np.kcal)} kcal, ${zahlDE(np.protein)} g Eiweiß pro Portion` : 'Nährwerte unvollständig'} · Vorkochen: ${m.vorkochen_kuehlschrank === 'ja' ? `Kühlschrank ${m.kuehl_max_tage || 2} Tage` : m.vorkochen_kuehlschrank === 'nein' ? 'nein' : 'nicht belegt'}</p></div>`;
