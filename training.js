@@ -73,6 +73,8 @@ function vTraining(teil, id) {
   if (teil === 'uebungen') return trUebungenHtml();
   if (teil === 'gewicht') return trGewichtHtml();
   if (teil === 'plan') return trPlanHtml(id);
+  if (teil === 'einrichtung') return trEinrichtungHtml();
+  if (teil === 'cardio') return trCardioHtml();
   const akt = t.aktiv && t.einheiten.find(e => e.id === t.aktiv);
   const fertig = t.einheiten.filter(e => e.ende).sort((a, b) => b.start.localeCompare(a.start)).slice(0, 8);
   const kg = [...t.koerpergewicht].sort((a, b) => b.datum.localeCompare(a.datum))[0];
@@ -90,7 +92,7 @@ function vTraining(teil, id) {
       <p class="leise klein">Verpasste Einheiten zählen nicht als erledigt – du startest einfach die passende als Nächstes.</p></div>`
     : `<p class="leise">Kein Plan aktiv. Ein Plan fasst mehrere Einheiten zusammen – mit Wochentagen oder flexibel in Reihenfolge.</p>`}
   ${t.plaene.filter(p => !p.aktiv).length ? `<p class="klein">Weitere Pläne: ${t.plaene.filter(p => !p.aktiv).map(p => `<a href="#/training/plan/${esc(p.id)}">${esc(p.name)}</a>`).join(' · ')}</p>` : ''}
-  <div class="knopfreihe"><button data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button></div>
+  <div class="knopfreihe"><button data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button><a class="knopf still" href="#/training/einrichtung">Einrichtung und Planvorschläge</a><a class="knopf still" href="#/training/cardio">Cardio</a></div>
   <details class="karte klein"><summary><b>Pausentimer</b></summary>
     <label><input type="checkbox" data-tr-einst="auto_pause" ${t.einstellungen.auto_pause !== false ? 'checked' : ''}> Pause nach jedem abgeschlossenen Arbeitssatz automatisch starten</label>
     <label><input type="checkbox" data-tr-einst="ton" ${t.einstellungen.ton !== false ? 'checked' : ''}> Ton/Vibration am Ende (wenn das Gerät es unterstützt)</label>
@@ -181,6 +183,88 @@ function vorschlagHtml(u, ui, e) {
   return `<details class="vorschlag v-${esc(v.art)}"${ent ? '' : ' open'}><summary><b>Vorschlag:</b> ${esc(v.titel)}${ent ? ` <span class="chip">${esc({ uebernommen: 'übernommen', beibehalten: 'beibehalten', selbst: 'selbst geändert' }[ent] || ent)}</span>` : ''}</summary>
     <p class="klein" style="margin:.3em 0">${esc(v.begruendung)}</p>${v.daten ? `<p class="leise klein" style="margin:.2em 0">Daten: ${esc(v.daten)}</p>` : ''}${v.unsicherheit ? `<p class="leise klein" style="margin:.2em 0">Unsicher: ${esc(v.unsicherheit)}</p>` : ''}
     ${ent ? '' : `<div class="knopfreihe">${aenderbar ? `<button class="klein haupt" data-a="tr-v-ok" data-u="${ui}">Übernehmen</button>` : ''}<button class="klein" data-a="tr-v-nein" data-u="${ui}">Beibehalten</button><button class="klein still" data-a="tr-v-selbst" data-u="${ui}">Selbst ändern</button></div>`}</details>`;
+}
+
+/* ---------- Trainingseinrichtung und begründete Planvorschläge (regelbasiert; Regeln 13–18 in „Trainingswissenschaft – Grundlagen“) ----------
+   Alles optional; nichts wird automatisch ersetzt – ein Vorschlag wird erst nach Vorschau als neuer, inaktiver Plan angelegt. */
+const TR_GERAETE = [['langhantel', 'Langhantel + Rack'], ['kurzhantel', 'Kurzhanteln'], ['kabel', 'Kabelzug'], ['maschine', 'Maschinen'], ['klimmzugstange', 'Klimmzugstange'], ['bank', 'Bank'], ['koerpergewicht', 'nur Körpergewicht']];
+const SPLITS = {
+  gk: { name: 'Ganzkörper', tage: ['Ganzkörper A', 'Ganzkörper B', 'Ganzkörper C'], slots: { 'Ganzkörper A': ['kniebeuge', 'horizontal_druecken', 'vertikal_ziehen', 'hueftbeuge', 'iso:arme', 'rumpf'], 'Ganzkörper B': ['hueftbeuge', 'vertikal_druecken', 'horizontal_ziehen', 'kniebeuge', 'iso:schultern', 'iso:arme'], 'Ganzkörper C': ['kniebeuge', 'horizontal_druecken', 'horizontal_ziehen', 'hueftbeuge', 'iso:arme', 'rumpf'] },
+    plus: 'Jeder Muskel 2–3× pro Woche; ein ausgefallener Tag fällt weniger ins Gewicht.', minus: 'Einheiten werden bei viel Volumen lang; wenig Platz für viele Armübungen.' },
+  ou: { name: 'Ober-/Unterkörper', tage: ['Oberkörper A', 'Unterkörper A', 'Oberkörper B', 'Unterkörper B'], slots: { 'Oberkörper A': ['horizontal_druecken', 'vertikal_ziehen', 'vertikal_druecken', 'horizontal_ziehen', 'iso:arme', 'iso:arme'], 'Unterkörper A': ['kniebeuge', 'hueftbeuge', 'kniebeuge', 'rumpf'], 'Oberkörper B': ['vertikal_ziehen', 'horizontal_druecken', 'horizontal_ziehen', 'iso:schultern', 'iso:arme', 'iso:arme'], 'Unterkörper B': ['hueftbeuge', 'kniebeuge', 'hueftbeuge', 'rumpf'] },
+    plus: 'Oberkörper 2× pro Woche mit Platz für Arme und Schultern; gut planbar mit 4 Tagen.', minus: 'Fällt ein Tag aus, bekommt eine Körperhälfte in dieser Woche weniger.' },
+  ppl: { name: 'Push/Pull/Beine', tage: ['Push', 'Pull', 'Beine'], slots: { Push: ['horizontal_druecken', 'vertikal_druecken', 'horizontal_druecken', 'iso:schultern', 'iso:trizeps'], Pull: ['vertikal_ziehen', 'horizontal_ziehen', 'horizontal_ziehen', 'iso:bizeps'], Beine: ['kniebeuge', 'hueftbeuge', 'kniebeuge', 'rumpf'] },
+    plus: 'Viel Volumen pro Muskel in einer Einheit; übersichtlich je Tag.', minus: 'Mit 3 Tagen nur 1× pro Woche je Muskel; Ausfälle wiegen schwerer.' }
+};
+function splitOptionen(n) {
+  const o = { 2: [['gk', 2]], 3: [['gk', 3], ['ppl', 3]], 4: [['ou', 4], ['gk', 4]], 5: [['ou', 5], ['ppl', 5]], 6: [['ppl', 6], ['ou', 6]] };
+  return (o[Math.min(6, Math.max(2, n || 3))] || o[3]);
+}
+// Verfügbar, wenn die Übung nur Körpergewicht braucht oder eines ihrer Geräte vorhanden ist (Klimmzug braucht die Stange)
+function uebVerfuegbar(u, ger) { const g = arr(u.geraet).filter(x => x !== 'bank' && x !== 'rack'); const echt = g.filter(x => x !== 'koerpergewicht'); return !echt.length || echt.some(x => ger.includes(x)); }
+function slotUebung(slot, ger, nein, schon, versatz) {
+  const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'] }[slot];
+  const kand = (K.uebungen || []).filter(u => uebVerfuegbar(u, ger) && !nein.includes(u.id) && !schon.includes(u.id) && (iso ? u.bewegungsmuster === 'isolation' && arr(u.muskeln_haupt).some(m => iso.includes(m)) : u.bewegungsmuster === slot));
+  return kand.length ? kand[versatz % kand.length] : null;
+}
+function planVorschlag(cfg, splitKey, n) {
+  const sp = SPLITS[splitKey]; const ger = cfg.geraete && cfg.geraete.length ? cfg.geraete : ['langhantel', 'kurzhantel', 'kabel', 'maschine', 'klimmzugstange', 'koerpergewicht'];
+  const nein = arr(cfg.unerwuenscht); const prio = arr(cfg.schwerpunkte); const basis = cfg.erfahrung === 'einsteiger' ? 2 : 3;
+  const tage = []; for (let i = 0; i < n; i++) tage.push(sp.tage[i % sp.tage.length]);
+  const zaehl = {}; const einheiten = tage.map((tn, ti) => { const schon = [];
+    const ue = sp.slots[tn].map((slot, si) => { const u = slotUebung(slot, ger, nein, schon, Math.floor(ti / sp.tage.length) + si); if (!u) return null; schon.push(u.id);
+      const gr = uebGruppen(u); const iso = u.bewegungsmuster === 'isolation' || u.bewegungsmuster === 'rumpf'; const bonus = gr.some(g => prio.includes(g)) && basis < 4 ? 1 : 0;
+      const von = String(u.wdh_bereich_vorschlag || '8–12').match(/(\d+)\D+(\d+)/); return { uebung: u.id, aufwaerm: si === 0 ? 2 : 0, saetze: basis + bonus, _bonus: bonus, _iso: iso, wdh_von: u.id === 'ueb-plank' ? null : (von ? Number(von[1]) : 8), wdh_bis: u.id === 'ueb-plank' ? null : (von ? Number(von[2]) : 12), pause_s: iso ? 90 : 150, ziel_rir: '1–3' }; }).filter(Boolean);
+    let sek = ue.reduce((s, x) => s + (x.saetze + x.aufwaerm) * 45 + x.saetze * x.pause_s + x.aufwaerm * 60, 0) + 300;
+    // Zeitrahmen (nie Pausen kürzen): 1. Schwerpunkt-Zusatzsätze, 2. Isolation ohne Schwerpunkt, 3. Mehrgelenk über 2 Sätze, 4. hintere Übungen
+    const ziel = (Number(cfg.minuten) || 0) * 60; const gekuerzt = []; let bonusWeg = 0;
+    const satzWeg = (filter, text) => { for (let i = ue.length - 1; i >= 0 && sek > ziel; i--) { const x = ue[i]; if (filter(x)) { x.saetze--; if (x._bonus) { x._bonus = 0; bonusWeg++; } sek -= 45 + x.pause_s; gekuerzt.push(ueb(x.uebung).name + text); } } };
+    if (ziel) { satzWeg(x => x._bonus, ' −1 Schwerpunktsatz'); satzWeg(x => x._iso && !x._bonus && x.saetze > 2, ' −1 Satz'); satzWeg(x => !x._iso && x.saetze > 2, ' −1 Satz');
+      while (sek > ziel && ue.length > 3) { const x = ue.pop(); sek -= (x.saetze + x.aufwaerm) * 45 + x.saetze * x.pause_s; gekuerzt.push(ueb(x.uebung).name + ' entfällt'); } }
+    const bonusSaetze = ue.reduce((s, x) => s + (x._bonus || 0), 0); ue.forEach(x => { delete x._bonus; delete x._iso; });
+    ue.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { zaehl[g] = (zaehl[g] || 0) + x.saetze; }));
+    return { name: tn, uebungen: ue, minuten: Math.round(sek / 60), gekuerzt, bonusSaetze, bonusWeg }; });
+  return { key: splitKey, name: sp.name + (n > sp.tage.length ? ` (${n}×/Woche)` : ''), plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, fehlend: einheiten.some(e => e.uebungen.length < sp.slots[e.name].length) };
+}
+let trVorschlagWahl = null;
+function trEinrichtungHtml() {
+  const t = trDaten(); const c = t.einrichtung || {};
+  const chk = (name, wert, an, text) => `<label class="wahl-chip"><input type="checkbox" name="${name}" value="${wert}" ${an ? 'checked' : ''}> ${text}</label>`;
+  const tage = arr(c.tage); const n = tage.length || Number(c.tage_anzahl) || 0;
+  const opts = n ? splitOptionen(n).map(([k, m]) => planVorschlag(c, k, m)) : [];
+  return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Trainingseinrichtung</h1>
+  <p class="leise klein">Alles ist freiwillig und jederzeit änderbar. Es bleibt nur auf diesem Gerät. Eigene Pläne und Training ohne Vorschläge bleiben möglich – ein Vorschlag ersetzt nie deinen Plan.</p>
+  <form id="tr-einr" class="karte">
+    <div class="zeile"><label class="feld"><span>Ziel</span><select name="ziel">${[['', '–'], ['muskelaufbau', 'Muskelaufbau'], ['kraft', 'Kraft'], ['fitness', 'allgemeine Fitness'], ['kombi', 'Kombination']].map(([v, t2]) => `<option value="${v}" ${c.ziel === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label>
+      <label class="feld"><span>Erfahrung</span><select name="erfahrung">${[['', '–'], ['einsteiger', 'Einsteiger (< 1 Jahr)'], ['fortgeschritten', 'Fortgeschritten'], ['erfahren', 'Erfahren']].map(([v, t2]) => `<option value="${v}" ${c.erfahrung === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label>
+      <label class="feld"><span>Minuten pro Einheit</span><input name="minuten" type="number" min="20" max="180" step="5" inputmode="numeric" value="${esc(c.minuten || '')}" style="width:6em"></label></div>
+    <fieldset><legend>Trainingstage</legend><div class="chips-wrap">${WOCHENTAGE.map(([k, n2]) => chk('tage', k, tage.includes(k), n2)).join('')}</div></fieldset>
+    <fieldset><legend>Ort und Geräte</legend><div class="zeile"><label class="feld"><span>Ort</span><select name="ort">${[['', '–'], ['studio', 'Studio'], ['zuhause', 'Zuhause'], ['beides', 'beides']].map(([v, t2]) => `<option value="${v}" ${c.ort === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label></div>
+      <div class="chips-wrap">${TR_GERAETE.map(([k, n2]) => chk('geraete', k, arr(c.geraete).includes(k), n2)).join('')}</div></fieldset>
+    <fieldset><legend>Schwerpunkte (optisch/Vorliebe)</legend><div class="chips-wrap">${MUSKEL_GRUPPEN.map(([k, n2]) => chk('schwerpunkte', k, arr(c.schwerpunkte).includes(k), n2)).join('')}</div>
+      <p class="leise klein">Ein Schwerpunkt bedeutet etwas mehr Volumen für diese Gruppe – das ist etwas anderes als stagnierende Leistung oder Beschwerden.</p></fieldset>
+    <label class="feld"><span>Unerwünschte Übungen</span><select name="unerwuenscht" multiple size="4">${(K.uebungen || []).map(u => `<option value="${esc(u.id)}" ${arr(c.unerwuenscht).includes(u.id) ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+    <fieldset><legend>Cardio</legend><div class="zeile"><label class="feld"><span>Interesse</span><select name="cardio">${[['', '–'], ['nein', 'nein'], ['ja', 'ja']].map(([v, t2]) => `<option value="${v}" ${(c.cardio || '') === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label><label class="feld"><span>Art</span><input name="cardio_art" value="${esc(c.cardio_art || '')}" placeholder="z. B. Rad, Laufen"></label><label class="feld"><span>Min./Woche</span><input name="cardio_min" type="number" min="0" step="10" value="${esc(c.cardio_min || '')}" style="width:6em"></label></div></fieldset>
+    <label class="feld"><span>Einschränkungen oder Beschwerden (nur als Notiz)</span><input name="einschraenkungen" value="${esc(c.einschraenkungen || '')}"></label>
+    <button class="haupt" type="submit">Speichern und Vorschläge zeigen</button></form>
+  ${n ? `<h2>Vorschläge für ${n} Tage</h2><p class="leise klein">Bei gleichem Wochenvolumen sind die Aufteilungen für Muskelaufbau etwa gleichwertig – entscheidend sind Tage, Zeit und was du durchhältst. Übungen nur aus der geprüften Bibliothek (${(K.uebungen || []).length} Übungen); eigene Übungen kannst du danach ergänzen.</p>
+    ${opts.map((o, oi) => `<section class="karte"><h3 style="margin-top:0">${esc(o.name)}</h3><p class="klein">+ ${esc(o.plus)}<br>− ${esc(o.minus)}</p>
+      ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul>${e.uebungen.map(x => `<li>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${x.wdh_von ? x.wdh_von + '–' + x.wdh_bis : 'Zeit'} · Pause ${x.pause_s} s</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
+      <p class="leise klein">Arbeitssätze pro Woche (nur Hauptmuskeln): ${MUSKEL_GRUPPEN.filter(([k]) => o.wochensaetze[k]).map(([k, n2]) => `${n2} ${o.wochensaetze[k]}`).join(' · ') || '–'}${o.fehlend ? ' · Für einige Plätze fehlt mit deinen Geräten eine passende Übung.' : ''}</p>
+      ${arr(c.schwerpunkte).length ? `<p class="leise klein">Schwerpunkt: ${o.einheiten.reduce((s, e) => s + e.bonusSaetze, 0)} Zusatzsätze pro Woche (je ca. 2–4 Min.)${o.einheiten.some(e => e.bonusWeg) ? `; ${o.einheiten.reduce((s, e) => s + e.bonusWeg, 0)} weitere passten nicht in die Zeitvorgabe` : ''}. Andere Gruppen behalten ihre Grundsätze.</p>` : ''}
+      <button class="klein" data-a="tr-vorschlag-anlegen" data-v="${oi}">Als neuen Plan anlegen (inaktiv)</button></section>`).join('')}
+    ${c.cardio === 'ja' ? `<p class="hinweis klein"><b>Cardio:</b> getrennt protokolliert. Als Ableitung aus Studien: Radfahren stört Kraftzuwächse weniger als Laufen; an Krafttagen am besten nach dem Krafttraining oder mit einigen Stunden Abstand. Trainingskalorien werden nicht automatisch zum Ernährungsbudget addiert – Schätzungen von Uhren und Formeln weichen oft über 20 % ab.</p>` : ''}` : '<p class="leise">Trainingstage wählen, dann erscheinen Vorschläge.</p>'}`;
+}
+
+/* ---------- Cardio: getrennt protokolliert, keine Kalorien ins Ernährungsbudget ---------- */
+function trCardioHtml() {
+  const l = [...arr(trDaten().cardio)].sort((a, b) => b.datum.localeCompare(a.datum));
+  const woche = l.filter(x => tageZwischen(x.datum, heute()) < 7).reduce((s, x) => s + (Number(x.minuten) || 0), 0);
+  return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Cardio</h1>
+  <form id="tr-cardio" class="karte zeile"><label class="feld"><span>Datum</span><input type="date" name="datum" value="${esc(heute())}"></label><label class="feld"><span>Art</span><input name="art" required placeholder="z. B. Rad, Laufen" style="width:9em"></label><label class="feld"><span>Minuten</span><input name="minuten" type="number" min="1" max="600" inputmode="numeric" required style="width:5em"></label><label class="feld"><span>Intensität</span><select name="intensitaet"><option value="">–</option><option>locker</option><option>mittel</option><option>hart</option></select></label><button class="haupt" type="submit">Eintragen</button></form>
+  <p>Letzte 7 Tage: <b>${woche} Min.</b>${trDaten().einrichtung && trDaten().einrichtung.cardio_min ? ` von geplant ${esc(trDaten().einrichtung.cardio_min)} Min.` : ''}</p>
+  ${l.length ? `<ul class="eintraege">${l.slice(0, 30).map((x, i) => `<li><span>${esc(datumDE(x.datum))} · <b>${esc(x.art)}</b> ${esc(x.minuten)} Min.${x.intensitaet ? ' · ' + esc(x.intensitaet) : ''}</span><span><button class="still klein" data-a="tr-cardio-weg" data-v="${esc(x.id)}">löschen</button></span></li>`).join('')}</ul>` : '<p class="leise">Noch nichts eingetragen.</p>'}
+  <p class="leise klein">Cardio wird getrennt vom Krafttraining gespeichert. Verbrauchte Kalorien werden bewusst nicht geschätzt und nicht zum Ernährungsbudget addiert – Schätzungen weichen oft stark ab.</p>`;
 }
 
 /* ---------- Gerät besetzt: Alternativen nach hinterlegter Alternative, Bewegungsmuster, Muskelgruppe ---------- */
@@ -377,6 +461,11 @@ document.addEventListener('click', ev => {
       const einst = trDaten().einstellungen;
       if (fertig && s.art === 'arbeit' && u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
       break; }
+    case 'tr-vorschlag-anlegen': { const c = trDaten().einrichtung || {}; const n = arr(c.tage).length; const opt = splitOptionen(n)[Number(v)]; if (!opt) return; const vs = planVorschlag(c, opt[0], opt[1]); const tage = WOCHENTAGE.map(w => w[0]).filter(k => arr(c.tage).includes(k));
+      if (!confirm(`Plan „${vs.name}“ mit ${vs.einheiten.length} Einheiten als neuen, inaktiven Plan anlegen? Bestehende Pläne und Routinen bleiben unverändert.`)) return; let pid;
+      aendere('Vorschlag als neuer Plan angelegt – aktivieren kannst du ihn im Plan', d => { trDaten(); const ids = vs.einheiten.map(e => { const id = uid('rou'); d.training.routinen.push({ id, name: e.name + ' (Vorschlag)', uebungen: JSON.parse(JSON.stringify(e.uebungen)) }); return id; }); pid = uid('plan'); d.training.plaene.push({ id: pid, name: vs.name + ' – Vorschlag', art: 'eigen', hinweis: 'aus Planvorschlag erstellt ' + heute(), aktiv: !d.training.plaene.some(p => p.aktiv), erstellt: heute(), einheiten: ids.map((r, i) => ({ routine: r, tag: tage[i] || '' })) }); }, { neuZeichnen: false });
+      location.hash = '#/training/plan/' + pid; break; }
+    case 'tr-cardio-weg': aendere('Eintrag gelöscht', d => { d.training.cardio = arr(d.training.cardio).filter(x => x.id !== v); }); break;
     case 'tr-zeit-plan': { const m = Number(($('#tr-zeit-min') || {}).value); if (!(m > 0)) { toast('Bitte verfügbare Minuten eintragen'); return; } trZeitMin = m; trZeitVorschlag = zeitKuerzen(trEinheit(), m); const el = $('#tr-zeit-vorschau'); if (el) el.innerHTML = trZeitVorschauHtml(trEinheit()); break; }
     case 'tr-zeit-ab': trZeitVorschlag = null; route(); break;
     case 'tr-zeit-ok': { const v = trZeitVorschlag; if (!v) return; trZeitVorschlag = null;
@@ -430,6 +519,10 @@ document.addEventListener('submit', ev => {
   const f = ev.target;
   if (f.id === 'tr-ueb-neu') { ev.preventDefault(); const name = f.name.value.trim(); if (!name) return;
     aendere('Eigene Übung gespeichert', d => { trDaten(); d.training.uebungen.push({ id: uid('uebe'), name, geraet: f.geraet.value.trim() || null, schritt_kg: f.schritt_kg.value === '' ? null : Number(f.schritt_kg.value), link: /^https:\/\//.test(f.link.value) ? f.link.value : null, notiz: f.notiz.value.trim() || null }); }); }
+  if (f.id === 'tr-einr') { ev.preventDefault(); const werte = n => [...f.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
+    aendere('Einrichtung gespeichert', d => { trDaten(); d.training.einrichtung = { ziel: f.ziel.value, erfahrung: f.erfahrung.value, minuten: f.minuten.value === '' ? '' : Number(f.minuten.value), tage: werte('tage'), ort: f.ort.value, geraete: werte('geraete'), schwerpunkte: werte('schwerpunkte'), unerwuenscht: [...f.unerwuenscht.selectedOptions].map(o => o.value), cardio: f.cardio.value, cardio_art: f.cardio_art.value.trim(), cardio_min: f.cardio_min.value === '' ? '' : Number(f.cardio_min.value), einschraenkungen: f.einschraenkungen.value.trim(), geaendert: heute() }; }); return; }
+  if (f.id === 'tr-cardio') { ev.preventDefault(); const m = Number(f.minuten.value); if (!(m > 0)) return;
+    aendere('Cardio eingetragen', d => { trDaten(); (d.training.cardio = d.training.cardio || []).push({ id: uid('car'), datum: f.datum.value || heute(), art: f.art.value.trim().slice(0, 40), minuten: m, intensitaet: f.intensitaet.value }); }); return; }
   if (f.id === 'tr-kg') { ev.preventDefault(); const kg = Number(String(f.kg.value).replace(',', '.')); if (!(kg > 20)) return;
     aendere('Körpergewicht eingetragen', d => { trDaten(); d.training.koerpergewicht = d.training.koerpergewicht.filter(x => x.datum !== f.datum.value); d.training.koerpergewicht.push({ datum: f.datum.value || heute(), kg }); }); }
 });
