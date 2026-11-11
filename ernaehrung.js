@@ -302,7 +302,7 @@ function vTagebuch2(datum) {
     <p class="leise klein" style="margin-bottom:0">Laut protokollierten Einträgen (${s.eintraege}). ${ziele ? `Ziele: ${esc(ziele.herkunft)}.` : '<a href="#/ziele">Ziele festlegen</a> (optional).'} Fehlende Einträge heißen nicht, dass nichts gegessen wurde.</p>
     <label style="margin-top:10px"><input type="checkbox" data-a="tb-vollstaendig" ${info.vollstaendig ? 'checked' : ''}> Tag vollständig protokolliert</label></div>
   <h2>Hinzufügen</h2>${slotWahlHtml()}
-  ${rest.length ? `<h4>Restportionen</h4><div class="schnellwahl">${rest.map(p => `<button class="klein" data-a="rest-essen" data-v="${esc(p.id)}">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))} · 1 Portion</button>`).join('')}</div>` : ''}
+  ${rest.length ? `<h4>Restportionen</h4><div class="schnellwahl">${rest.map(p => `<button class="klein" data-a="rest-essen" data-v="${esc(p.id)}" data-p="1">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))} · 1 Portion</button>${p.portionen >= 0.5 ? `<button class="klein still" data-a="rest-essen" data-v="${esc(p.id)}" data-p="0.5" aria-label="halbe Portion ${esc(kurztitel(p.titel))}">½</button>` : ''}`).join('')}</div>` : ''}
   ${haeufig.length ? `<h4>Häufig gegessen</h4><div class="schnellwahl">${haeufig.map(({ e }) => `<button class="klein" data-a="tb-kopie" data-v="${esc(e.id)}">${esc(kurztitel(e.titel))} · ${e.einheit === 'Portion' ? zahlDE(e.portionen, 1) + ' P.' : zahlDE(e.gramm) + ' ' + esc(e.einheit || 'g')}</button>`).join('')}</div>` : ''}
   ${schnellwahlHtml()}<div class="zeile" style="margin-top:12px"><label class="feld" style="flex:1 1 220px"><span>Suchen: Rezept, Lebensmittel, eigenes Produkt</span><input id="tb-suche" value="${esc(tbSuche)}" placeholder="z. B. Dal, Apfel, Haferflocken" autocomplete="off"></label></div>
   <div id="tb-treffer">${tbTreffer()}</div>
@@ -311,6 +311,7 @@ function vTagebuch2(datum) {
   <h2>Letzte 7 Tage</h2>
   <div class="woche" role="img" aria-label="Energie der letzten 7 Tage">${w7.map(x => `<div><i class="${x.voll ? '' : 'unv'}" style="height:${Math.round(x.s.kcal / maxK * 100)}%" title="${datumDE(x.t)}: ${zahlDE(x.s.kcal)} kcal${x.voll ? '' : ' (nicht als vollständig markiert)'}"></i>${new Date(x.t + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short' })}</div>`).join('')}</div>
   <p class="leise klein">${mitDaten.length ? `Ø ${zahlDE(mitDaten.reduce((a, x) => a + x.s.kcal, 0) / mitDaten.length)} kcal · ${zahlDE(mitDaten.reduce((a, x) => a + x.s.protein, 0) / mitDaten.length)} g Protein an ${mitDaten.length} Tagen mit Einträgen (davon ${w7.filter(x => x.voll && x.s.eintraege).length} als vollständig markiert). Schraffiert = nicht als vollständig markiert.` : 'Noch keine Einträge in diesen 7 Tagen.'}</p>
+  <details class="flaeche"><summary><b>Auswertung über mehrere Tage</b> <span class="leise klein">– 7, 14 oder 30 Tage</span></summary>${auswertungHtml(tag)}</details>
   <details class="flaeche"><summary><b>Mikronährstoffe</b> <span class="leise klein">– protokolliert, Referenzwert, Abdeckung</span></summary>
     ${mikroHtml(tag)}</details>`;
 }
@@ -355,7 +356,7 @@ document.addEventListener('click', ev => {
     case 'tb-lm': { const z = Z[v]; const g = Number(($(`[data-gramm="${v}"]`) || {}).value) || 100; aendere(`${z.name} eingetragen`, d => d.tagebuch.push(lebensmittelEintrag(z, g))); break; }
     case 'tb-eigen': { const l = (D.lebensmittel || []).find(x => x.id === v); const g = Number(($(`[data-gramm="${v}"]`) || {}).value) || 100; aendere(`${l.name} eingetragen`, d => d.tagebuch.push(eigenerEintrag(l, g))); break; }
     case 'tb-menge': { aendere(null, d => { const e = d.tagebuch.find(x => x.id === v); const dir = Number(b.dataset.d);
-      if (e.einheit === 'Portion' || !e.einheit) { const alt = e.portionen || 1; const neu = Math.max(0.25, Math.round((alt + dir * 0.25) * 100) / 100); eintragSkalieren(e, neu / alt); e.portionen = neu; }
+      if (e.einheit === 'Portion' || !e.einheit) { const alt = e.portionen || 1; let neu = Math.max(0.25, Math.round((alt + dir * 0.25) * 100) / 100); const q = e.restportion ? d.restportionen.find(x => x.id === e.restportion) : null; if (q && neu - alt > q.portionen) neu = alt; if (q) q.portionen = Math.round((q.portionen - (neu - alt)) * 100) / 100; eintragSkalieren(e, neu / alt); e.portionen = neu; }
       else { const alt = e.gramm || 100; const schritt = alt >= 200 ? 25 : 10; const neu = Math.max(5, alt + dir * schritt); eintragSkalieren(e, neu / alt); e.gramm = neu; } }); break; }
   }
 });

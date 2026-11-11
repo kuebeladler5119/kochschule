@@ -52,6 +52,21 @@ function schnellwahlHtml() {
 }
 function eintragKopie(e, datum, slot) { const n = JSON.parse(JSON.stringify(e)); n.id = uid('mz'); n.datum = datum; n.zeit = new Date().toTimeString().slice(0, 5); n.mahlzeit = slot || eintragSlot(e); delete n.kochprotokoll; if (n.quelle === 'restportion') n.quelle = 'kopie'; return n; }
 
+/* ---------- Mehrtagesauswertung (nur vollständig markierte Tage zählen für Durchschnitte) ---------- */
+let tbZeitraum = 30;
+function auswertungHtml(tag) {
+  const n = tbZeitraum; const tage = [...Array(n)].map((_, i) => plusTage(tag, i - n + 1));
+  const mitEintrag = tage.filter(t => D.tagebuch.some(e => e.datum === t)); const voll = mitEintrag.filter(t => ((D.tage || {})[t] || {}).vollstaendig);
+  const ziele = aktuelleZiele();
+  const zeilen = MAKROS.map(([k, name, einh]) => { const werte = voll.map(t => tagWerte(t)); const unvoll = werte.some(s => s.fehlend[k]);
+    const avg = werte.length ? werte.reduce((a, s) => a + s[k], 0) / werte.length : null; const z = ziele && ziele[k] != null && ziele[k] !== '' ? Number(ziele[k]) : null;
+    return `<tr><td>${name}</td><td>${avg == null ? '–' : (unvoll ? 'mind. ' : '') + zahlDE(avg, einh === 'kcal' ? 0 : 1) + ' ' + einh}</td><td>${z ? zahlDE(z) + ' ' + einh : '–'}</td><td>${avg != null && z ? (avg >= z ? zahlDE(avg - z, einh === 'kcal' ? 0 : 1) + ' ' + einh + ' über dem Ziel' : zahlDE(z - avg, einh === 'kcal' ? 0 : 1) + ' ' + einh + ' unter dem Ziel') : '–'}</td></tr>`; }).join('');
+  return `<div class="filterleiste" role="group" aria-label="Zeitraum">${[7, 14, 30].map(x => `<button class="filterchip" data-a="tb-zeitraum" data-v="${x}" aria-pressed="${n === x}">${x} Tage</button>`).join('')}</div>
+    <p class="klein">${mitEintrag.length} von ${n} Tagen mit Einträgen, davon <b>${voll.length}</b> als vollständig markiert. Durchschnitte nur über vollständige Tage${voll.length < 3 ? ' – <b>noch zu wenige für eine aussagekräftige Auswertung</b> (mind. 3)' : ''}.</p>
+    ${voll.length ? `<div class="tabelle-wrap"><table class="mikro"><thead><tr><th>Ø pro Tag</th><th>protokolliert</th><th>eingestelltes Ziel</th><th>Abstand</th></tr></thead><tbody>${zeilen}</tbody></table></div>` : ''}
+    <p class="leise klein">Schätzwerte aus deinem Protokoll. Für Veränderungen des Körpergewichts zählt der Verlauf über Wochen, nicht einzelne Tage.</p>`;
+}
+
 /* ---------- Mikronährstoffe mit Referenzwerten (DGE/ÖGE) und EFSA-Höchstmengen ---------- */
 function refPerson() { const p = D.einstellungen.person || {}; return p.alter >= 19 && (p.geschlecht === 'm' || p.geschlecht === 'w') && !p.besonders ? p : null; }
 const einheitFaktor = (von, nach) => von === nach ? 1 : von === 'mg' && nach === 'µg' ? 1000 : von === 'µg' && nach === 'mg' ? 0.001 : null;
@@ -204,6 +219,7 @@ function offUebernehmen() {
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
   switch (a) {
+    case 'tb-zeitraum': tbZeitraum = Number(v) || 30; route(); break;
     case 'off-suche': offSuchen(); break;
     case 'off-uebernehmen': offUebernehmen(); break;
     case 'tb-slot': tbSlot = v; route(); break;
@@ -225,5 +241,6 @@ document.addEventListener('submit', ev => {
   if (!(menge > 0)) { toast('Bitte eine Menge größer als 0 eingeben'); return; }
   tbEdit = null;
   aendere('Eintrag geändert', d => { const e = d.tagebuch.find(x => x.id === id); if (!e) return; const istPortion = e.einheit === 'Portion' || !e.einheit; const alt = istPortion ? (e.portionen || 1) : (e.gramm || 100);
+    const q = istPortion && e.restportion ? d.restportionen.find(x => x.id === e.restportion) : null; if (q) { const diff = menge - alt; if (diff > q.portionen) { toast('So viel ist von der Restportion nicht mehr übrig'); return; } q.portionen = Math.round((q.portionen - diff) * 100) / 100; }
     eintragSkalieren(e, menge / alt); if (istPortion) e.portionen = menge; else e.gramm = menge; e.mahlzeit = f.slot.value; if (f.zeit.value) e.zeit = f.zeit.value; e.bearbeitet = new Date().toISOString(); });
 });
