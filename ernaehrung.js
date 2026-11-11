@@ -298,14 +298,18 @@ function vTagebuch2(datum) {
   return `<div class="tagnav"><button class="klein" data-a="tb-tag" data-v="-1" aria-label="Vortag">${ico('zurueck', 'klein')}</button>
     <strong>${tag === heute() ? 'Heute' : datumDE(tag)}</strong>
     <button class="klein" data-a="tb-tag" data-v="1" aria-label="Nächster Tag" ${tag >= heute() ? 'disabled' : ''}>${ico('weiter', 'klein')}</button></div>
-  <div class="flaeche"><div class="balken">${MAKROS.map(zeileBalken).join('')}</div>
-    <p class="leise klein" style="margin-bottom:0">Laut protokollierten Einträgen (${s.eintraege}). ${ziele ? `Ziele: ${esc(ziele.herkunft)}.` : '<a href="#/ziele">Ziele festlegen</a> (optional).'} Fehlende Einträge heißen nicht, dass nichts gegessen wurde.</p>
-    <label style="margin-top:10px"><input type="checkbox" data-a="tb-vollstaendig" ${info.vollstaendig ? 'checked' : ''}> Tag vollständig protokolliert</label></div>
-  <h2>Hinzufügen</h2>${slotWahlHtml()}
+  <div class="flaeche tb-kompakt"><div class="balken">${MAKROS.filter(([k]) => k === 'kcal' || k === 'protein').map(zeileBalken).join('')}</div>
+    <p class="klein" style="margin:4px 0 0">${MAKROS.filter(([k]) => k !== 'kcal' && k !== 'protein').map(([k, n, einh]) => `${n} <b>${zahlDE(s[k], 1)}</b>${ziele && ziele[k] ? ' / ' + zahlDE(ziele[k]) : ''} ${einh}`).join(' · ')}</p>
+    <details class="klein"><summary class="leise">Grundlage und Vollständigkeit</summary><p class="leise klein" style="margin:4px 0">Laut protokollierten Einträgen (${s.eintraege}). ${ziele ? `Ziele: ${esc(ziele.herkunft)}.` : '<a href="#/ziele">Ziele festlegen</a> (optional).'} Fehlende Einträge heißen nicht, dass nichts gegessen wurde.</p></details>
+    <label style="margin-top:6px"><input type="checkbox" data-a="tb-vollstaendig" ${info.vollstaendig ? 'checked' : ''}> Tag vollständig protokolliert</label></div>
+  <h2 id="tb-hinzufuegen">Essen hinzufügen</h2>
+  <div class="zeile"><label class="such-feld" style="flex:1 1 220px"><span class="sr-only">Suchen: Rezept, Lebensmittel, eigenes Produkt</span>${ico('suche', 'klein')}<input id="tb-suche" type="search" enterkeyhint="search" value="${esc(tbSuche)}" placeholder="Lebensmittel, Rezept oder Produkt" autocomplete="off"></label></div>
+  ${slotWahlHtml()}
+  <div id="tb-korb">${korbHtml()}</div>
+  <div id="tb-treffer">${tbTreffer()}</div>
   ${rest.length ? `<h4>Restportionen</h4><div class="schnellwahl">${rest.map(p => `<button class="klein" data-a="rest-essen" data-v="${esc(p.id)}" data-p="1">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))} · 1 Portion</button>${p.portionen >= 0.5 ? `<button class="klein still" data-a="rest-essen" data-v="${esc(p.id)}" data-p="0.5" aria-label="halbe Portion ${esc(kurztitel(p.titel))}">½</button>` : ''}`).join('')}</div>` : ''}
   ${haeufig.length ? `<h4>Häufig gegessen</h4><div class="schnellwahl">${haeufig.map(({ e }) => `<button class="klein" data-a="tb-kopie" data-v="${esc(e.id)}">${esc(kurztitel(e.titel))} · ${e.einheit === 'Portion' ? zahlDE(e.portionen, 1) + ' P.' : zahlDE(e.gramm) + ' ' + esc(e.einheit || 'g')}</button>`).join('')}</div>` : ''}
-  ${schnellwahlHtml()}<div id="tb-korb">${korbHtml()}</div><div class="zeile" style="margin-top:12px"><label class="feld" style="flex:1 1 220px"><span>Suchen: Rezept, Lebensmittel, eigenes Produkt</span><input id="tb-suche" value="${esc(tbSuche)}" placeholder="z. B. Dal, Apfel, Haferflocken" autocomplete="off"></label></div>
-  <div id="tb-treffer">${tbTreffer()}</div>
+  ${schnellwahlHtml()}
   <details class="klein"><summary>Freier Eintrag oder eigenes Lebensmittel anlegen</summary>${tbFormulare()}</details>
   <h2>Einträge</h2>${ein.length && tag !== heute() ? `<p style="margin-top:-4px"><button class="still klein" data-a="tb-kopie-vorschau" data-v="">Ganzen Tag kopieren …</button></p>` : ''}${kopierVorschauHtml(ein)}${eintraegeHtml(ein, tag)}
   <h2>Letzte 7 Tage</h2>
@@ -315,12 +319,21 @@ function vTagebuch2(datum) {
   <details class="flaeche"><summary><b>Mikronährstoffe</b> <span class="leise klein">– protokolliert, Referenzwert, Abdeckung</span></summary>
     ${mikroHtml(tag)}</details>`;
 }
+/* Häufige Suchen ohne allgemeinen BLS-Eintrag → verwandte Einträge als Hinweis (bewusst keine Gleichsetzung) */
+const TB_VERWANDT = { skyr: ['Magerquark', 'Joghurt, fettarm', 'Hüttenkäse'], proteinriegel: ['Müsliriegel'], proteinpudding: ['Joghurt, fettarm'], 'griechischer joghurt': ['Joghurt, fettarm'], tofu: [], seitan: [], wrap: ['Weizentortilla'], toast: ['Toastbrot'], semmel: ['Brötchen'], schrippe: ['Brötchen'], bratkartoffeln: ['Kartoffeln, gekocht'], pommes: ['Pommes frites, aus dem Ofen'], cappuccino: ['Kaffee', 'Fettarme Milch'], latte: ['Kaffee', 'Fettarme Milch'], energy: ['Cola'] };
 function tbTreffer() {
   const q = tbSuche.trim().toLowerCase(); if (q.length < 2) return '';
   const rz = K.rezepte.filter(r => r.titel.toLowerCase().includes(q)).slice(0, 5);
-  const zt = K.zutaten.filter(z => (z.name.toLowerCase().includes(q) || (z.aliases || []).some(a => a.toLowerCase().includes(q))) && Object.keys(z.bls || {}).length).slice(0, 6);
+  const qn = suchNorm(q);
+  const zt = K.zutaten.filter(z => (suchNorm(z.name).includes(qn) || (z.aliases || []).some(a => suchNorm(a).includes(qn))) && Object.keys(z.bls || {}).length)
+    .sort((a, b) => (suchNorm(b.name).startsWith(qn) ? 1 : 0) - (suchNorm(a.name).startsWith(qn) ? 1 : 0) || a.name.length - b.name.length).slice(0, 8);
   const eg = (D.lebensmittel || []).filter(l => (l.name + ' ' + (l.marke || '') + ' ' + (l.gtin || '')).toLowerCase().includes(q)).slice(0, 6);
-  if (!rz.length && !zt.length && !eg.length) return '<p class="leise klein">Nichts gefunden – unten ein eigenes Lebensmittel anlegen.</p>';
+  if (!rz.length && !zt.length && !eg.length) {
+    // Verwandte allgemeine Einträge nur als Hinweis anbieten – keine automatische Gleichsetzung
+    const verw = (TB_VERWANDT[suchNorm(q)] || []).map(n => K.zutaten.find(z => z.name === n && Object.keys(z.bls || {}).length)).filter(Boolean);
+    return `<div class="hinweis klein"><b>Kein allgemeiner Eintrag zu „${esc(tbSuche.trim())}“.</b>${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
+      <br>Genauer: <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a> – dort auch Barcode-Abfrage bei Open Food Facts. Oder unten einen freien Eintrag machen.</div>`;
+  }
   return `<ul class="eintraege">${rz.map(r => `<li><span>${esc(r.titel)}<br><span class="leise klein">Rezept · ${r.naehrwerte.pro_portion.kcal != null ? zahlDE(r.naehrwerte.pro_portion.kcal) + ' kcal/Portion' : 'kcal unbekannt'}</span></span><span><button class="klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">1 Portion</button> <button class="klein still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="0.5">½</button> <button class="klein still" data-a="tb-korb-add" data-t="rezept" data-v="${esc(r.id)}" data-p="1" aria-label="${esc(r.titel)} auf die Sammelliste">+ Liste</button></span></li>`).join('')}
     ${zt.map(z => `<li><span>${esc(z.name)}<br><span class="leise klein">allgemeiner BLS-Wert · ${zahlDE(z.bls[Object.keys(z.bls)[0]].werte.kcal)} kcal/100 g</span></span><span class="zeile" style="gap:6px"><input type="number" min="1" value="100" aria-label="Gramm ${esc(z.name)}" data-gramm="${esc(z.id)}" style="width:5.5em" inputmode="decimal"><button class="klein" data-a="tb-lm" data-v="${esc(z.id)}">g eintragen</button><button class="klein still" data-a="tb-korb-add" data-t="lm" data-v="${esc(z.id)}" aria-label="${esc(z.name)} auf die Sammelliste">+ Liste</button></span></li>`).join('')}
     ${eg.map(l => `<li><span>${esc(l.name)}${l.marke ? ' · ' + esc(l.marke) : ''}<br><span class="leise klein">eigenes Produkt · ${l.naehr.kcal != null ? zahlDE(l.naehr.kcal) + ' kcal/100 ' + (l.bezug === '100ml' ? 'ml' : 'g') : 'kcal unbekannt'}</span></span><span class="zeile" style="gap:6px"><input type="number" min="1" value="${esc(l.portion || 100)}" data-gramm="${esc(l.id)}" style="width:5.5em" inputmode="decimal"><button class="klein" data-a="tb-eigen" data-v="${esc(l.id)}">eintragen</button><button class="klein still" data-a="tb-korb-add" data-t="eigen" data-v="${esc(l.id)}" aria-label="${esc(l.name)} auf die Sammelliste">+ Liste</button></span></li>`).join('')}</ul>

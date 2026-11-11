@@ -299,4 +299,66 @@ body[data-bereich="training"] { --akzent: #3b4f7a; --akzent-hell: #e4e8f3; --akz
 .verlauf { width: 100%; max-width: 420px; height: auto; display: block; margin: 6px 0 12px; }
 .tr-wahl summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; }
 @media (max-width: 420px) { .tr-saetze input { width: 3.9em; } .tr-saetze th, .tr-saetze td { padding: 3px 2px; } }
+/* Kochbuch: Suche oben, wenige Schnellfilter, Filterbereich mit Abschnitten statt Chip-Wand */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.kb-suche { display: flex; gap: 8px; align-items: stretch; margin: 6px 0 10px; }
+.such-feld { flex: 1; display: flex; align-items: center; gap: 8px; border: 1px solid var(--rand); border-radius: 999px; background: var(--flaeche); padding: 0 6px 0 14px; min-height: 48px; color: var(--leise); }
+.such-feld:focus-within { outline: 2px solid var(--akzent); outline-offset: 1px; }
+.such-feld input { flex: 1; border: 0; background: transparent; min-height: 46px; padding: 0; font-size: 1rem; outline: none; min-width: 0; }
+.kb-filterknopf { flex: none; min-height: 48px; }
+.kb-filterknopf[aria-expanded="true"] { background: var(--tinte); color: var(--papier); border-color: var(--tinte); }
+.zaehl { display: inline-grid; place-items: center; min-width: 1.4em; height: 1.4em; border-radius: 999px; background: var(--akzent); color: var(--akzent-text); font-size: .75rem; font-weight: 700; padding: 0 4px; }
+.chips-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips-wrap.schnell { margin: 0 0 12px; }
+.filterpanel { margin: 0 0 14px; }
+.fsec { padding: 2px 0 12px; border-bottom: 1px solid var(--linie); margin-bottom: 10px; }
+.fsec h3 { font-size: .95rem; margin: 6px 0 6px; font-family: var(--sans); }
+.fsec .zeile .feld { flex: 1 1 140px; }
+.kgruppe { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.sammlungen { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 0 0 16px; }
+.sammlung { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border-radius: var(--r); background: var(--flaeche2); border: 1px solid var(--linie); padding: 10px 12px; min-height: 60px; text-align: left; }
+.sammlung b { font-size: .92rem; line-height: 1.2; }
+.sammlung span { font-size: .78rem; color: var(--leise); font-weight: 400; }
+/* Rezeptkarten: Bildnachweis nur auf der Rezeptseite (dort vollständig), nicht als Kleinsttext über dem Essen */
+.raster.karten .bildnachweis { display: none; }
+.raster.karten .rk h3 { -webkit-line-clamp: 3; }
+/* Schmale Geräte: eine Spalte als Zeilenkarte – Bild links, Titel voll lesbar */
+@media (max-width: 599px) {
+  .raster.karten { grid-template-columns: 1fr; gap: 10px; }
+  .raster.karten .rezeptkarte { background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--r); padding: 8px; min-height: 120px; }
+  .raster.karten .rk { display: grid; grid-template-columns: 104px 1fr; column-gap: 12px; align-items: start; padding-right: 4px; }
+  .raster.karten .rk .bildrahmen { grid-row: 1 / span 3; aspect-ratio: 1; border-radius: 10px; }
+  .raster.karten .rk h3 { grid-column: 2; margin: 2px 0 4px; font-size: 1.02rem; padding-right: 40px; }
+  .raster.karten .rk .meta, .raster.karten .rk .gruende { grid-column: 2; }
+  .raster.karten .rk .meta { font-size: .8rem; flex-direction: column; gap: 2px; }
+  .raster.karten .merken { top: auto; right: auto; left: 74px; bottom: 12px; padding: 0; width: 40px; min-width: 40px; height: 40px; font-size: 0; }
+  .raster.karten .rk h3 { padding-right: 0; }
+  .raster.karten .merken .ico { width: 18px; height: 18px; }
+  .raster.karten .teller span { font-size: .78rem; padding: 0 8%; }
+  .raster.karten .teller small { display: none; }
+}
+.rezeptkarte .merken[aria-pressed="true"] { font-weight: 600; }
+/* Rezeptseite */
+.ueberblick { font-size: 1.02rem; margin: 6px 0 12px; }
+.tb-kompakt { padding: 12px 14px; }
+.timer.pausetimer { flex-wrap: wrap; white-space: normal; border-radius: 14px; padding: 6px 8px; gap: 6px; flex: 1 1 100%; }
+.pausetimer > span:first-child { flex: 1 1 100%; font-size: 1rem; }
+.pausetimer small { color: var(--leise); }
+.pausetimer button { min-height: 40px; padding: 4px 14px; }
+#tb-treffer .eintraege li { grid-template-columns: 1fr; }
+#tb-treffer .eintraege li > span:last-child { justify-content: flex-start; flex-wrap: wrap; }
+.tb-kompakt .balken { gap: 6px; }
+.zeit-davon { flex-basis: 100%; font-size: .84rem; color: var(--leise); margin-top: -2px; }
+.ueberblick > :first-child { margin-top: 0; }
+.herkunft-kurz { margin: 8px 0 4px; font-size: .9rem; }
+.herkunft-kurz > summary { cursor: pointer; color: var(--leise); min-height: 36px; display: flex; align-items: center; gap: 8px; }
+.herkunft-kurz[open] { background: var(--flaeche2); border-radius: var(--r); padding: 4px 12px 10px; }
+.abschnitt-zu { border-top: 1px solid var(--linie); padding: 4px 0; margin: 6px 0; }
+.abschnitt-zu > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.ug { display: inline-block; font: 500 .66rem var(--sans); color: var(--leise); border: 1px solid var(--linie); border-radius: 4px; padding: 0 4px; vertical-align: .12em; white-space: nowrap; line-height: 1.4; }
+.belege { font-size: .74rem; color: var(--leise); margin: 6px 0 0; }
+.belege a { color: var(--leise); }
+.fertig-wenn { background: var(--salbei-hell); border-left: 4px solid var(--salbei); border-radius: 8px; padding: 8px 12px; margin: 10px 0; }
+.fertig-wenn b { display: block; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--salbei); }
+.hinweis.warn { background: var(--bernstein-hell); }
 .bildrahmen.foto-offline::after { content: "Foto offline nicht gespeichert"; position: absolute; inset: 0; display: grid; place-items: center; font-size: .78rem; color: var(--leise); text-align: center; padding: 8px; }

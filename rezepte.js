@@ -44,9 +44,126 @@ function filterPasst(r, info, f, ohne) {
   for (const e of f.richtung) if (ohne !== 'e:' + e && EIGENSCHAFT[e] && !EIGENSCHAFT[e][2](r, info)) return false;
   if (ohne !== 'maxGesamt' && f.maxGesamt && !(info.gesamt && info.gesamt <= Number(f.maxGesamt))) return false;
   if (ohne !== 'maxAktiv' && f.maxAktiv && !(info.aktiv && info.aktiv <= Number(f.maxAktiv))) return false;
-  if (ohne !== 'suche' && f.suche) { const q = f.suche.toLowerCase(); if (!(r.titel.toLowerCase().includes(q) || r.zutaten.some(z => (z.text || '').toLowerCase().includes(q)))) return false; }
+  if (ohne !== 'suche' && f.suche && !suchePasst(r, f.suche)) return false;
   return true;
 }
+
+/* ---------- Suche: Titel, Speisenart, Küche, Zutaten mit Synonymen; ohne Akzente und Groß/Klein ---------- */
+const suchNorm = s => String(s || '').toLowerCase().replace(/ı/g, 'i').replace(/ß/g, 'ss').normalize('NFD').replace(/[̀-ͯ]/g, '');
+const suchIndex = new Map();
+function rezeptSuchtext(r) {
+  if (suchIndex.has(r.id)) return suchIndex.get(r.id);
+  const m = r.meta; const teile = [r.titel, BEREICH_NAME[m.bereich], ...arr(m.bereiche).map(b => BEREICH_NAME[b]), ...rezeptKuechen(r).map(k => KUECHE_NAME[k]), m.kueche, ...arr(m.kategorien), ...arr(m.techniken)];
+  r.zutaten.forEach(z => { teile.push(z.text); const zz = z.zutat && Z[z.zutat]; if (zz) teile.push(zz.name, ...arr(zz.aliases)); });
+  const t = suchNorm(teile.filter(Boolean).join(' | ')); suchIndex.set(r.id, t); return t;
+}
+function suchePasst(r, q) { const w = suchNorm(q).split(/\s+/).filter(Boolean); if (!w.length) return true; const t = rezeptSuchtext(r); return w.every(x => t.includes(x)); }
+const titelTreffer = (r, q) => suchNorm(r.titel).includes(suchNorm(q).trim());
+/* Rangfolge: Titel vor ganzem Wort (z. B. Zutat „Huhn“) vor Wortanfang vor Wortteil (z. B. „Hühnerei“) */
+function suchRang(r, q) {
+  const t = rezeptSuchtext(r), ti = suchNorm(r.titel);
+  return suchNorm(q).split(/\s+/).filter(Boolean).reduce((s, w) => {
+    const wort = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)'), anfang = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return s + (ti.includes(w) ? 8 : wort.test(t) ? 4 : anfang.test(t) ? 2 : 1);
+  }, 0);
+}
+
+/* ---------- Zeiten verständlich: Arbeit, Warte-/Garzeit, gesamt, Vortag ---------- */
+function dauerText(min) { if (min == null) return ''; if (min < 90) return `${min} Min.`; return `ca. ${zahlDE(Math.round(min / 30) / 2, 1)} Std.`; }
+const VORTAG_RE = /über Nacht|am Vortag|am Vorabend|Vortag/i;
+const WARTE_ARTEN = [[/einweich/i, 'Einweichen'], [/marinier/i, 'Marinieren'], [/gehen lassen|Teig (?:ruht|ruhen)|Gare\b|gären/i, 'Teig gehen lassen'], [/kühlschrank[^.]{0,60}(?:fest|stunden|std\.|über nacht)|fest werden|durchkühlen|kalt stellen/i, 'Kühlen']];
+function zeitInfo(r) {
+  const i = rezeptInfo(r); const text = r.schritte.map(s => s.titel + ' ' + s.md).join(' \n ');
+  const warte = i.gesamt && i.aktiv && i.gesamt > i.aktiv ? i.gesamt - i.aktiv : 0;
+  const arten = warte >= 45 ? WARTE_ARTEN.filter(([re]) => re.test(text)).map(x => x[1]) : [];
+  const vs = r.schritte.find(s => VORTAG_RE.test(s.titel + ' ' + s.md));
+  const vortag = vs ? { nr: vs.nr, titel: vs.titel } : (i.gesamt >= 8 * 60 ? { nr: null, titel: '' } : null);
+  return { aktiv: i.aktiv, gesamt: i.gesamt, warte, arten, vortag };
+}
+function zeitKurz(r) {
+  const z = zeitInfo(r); if (!z.gesamt) return z.aktiv ? `${dauerText(z.aktiv)} Arbeit` : '';
+  if (!z.aktiv || z.aktiv >= z.gesamt) return `${dauerText(z.gesamt)} gesamt`;
+  return `${dauerText(z.aktiv)} Arbeit · ${dauerText(z.gesamt)} gesamt${z.vortag ? ' · Vortag' : ''}`;
+}
+function zeitDetailHtml(r) {
+  const z = zeitInfo(r); const t = [];
+  if (z.aktiv) t.push(`<span>${ico('hand', 'klein')} ${dauerText(z.aktiv)} Arbeit</span>`);
+  if (z.gesamt) t.push(`<span>${ico('uhr', 'klein')} ${dauerText(z.gesamt)} insgesamt</span>`);
+  const w = z.warte >= 15 ? `<span class="zeit-davon">davon ${dauerText(z.warte)} ohne Arbeit${z.arten.length ? ' – vor allem ' + esc(z.arten.slice(0, 2).join(' und ')) : ' (Garen, Ruhen, Warten)'}</span>` : '';
+  return t.join('') + w;
+}
+function vortagHinweisHtml(r) {
+  const z = zeitInfo(r); if (!z.vortag) return '';
+  return `<div class="hinweis warn"><b>Rechtzeitig beginnen:</b> ${z.vortag.titel ? `Schritt ${esc(z.vortag.nr != null ? z.vortag.nr : '')} „${inline(z.vortag.titel)}“ braucht Vorlauf (über Nacht bzw. am Vortag).` : `insgesamt ${dauerText(z.gesamt)} – bitte vorausplanen.`}</div>`;
+}
+
+/* ---------- Rezeptseite: Anleitung, Herkunft und Redaktion trennen (nur Anzeige; der Vault bleibt vollständig) ---------- */
+const INTERN_ZEILE = /(?:ergänzt|geändert|aktualisiert|überarbeitet) am \d{4}-\d\d-\d\d|weiterhin v\d|\barchiviert\b|Versionshistorie|nach deinem Kochen wird daraus v\d/i;
+const ohneIntern = t => String(t || '').split('\n').filter(z => !INTERN_ZEILE.test(z)).join('\n');
+/* Anleitungstext: Quellenlinks und Kennzeichnungen aus dem Fließtext lösen; Belege gesammelt am Schritt­ende, „ungeprüft“ als kurzes Etikett */
+function anleitung(text) {
+  const belege = []; let abgeleitet = false;
+  let t = ohneIntern(text);
+  t = t.replace(/\s*\(\s*\[\[Quellenverzeichnis#\^([^\]|]+)(?:\|[^\]]+)?\]\](?:\s*[,;]\s*\[\[Quellenverzeichnis#\^([^\]|]+)(?:\|[^\]]+)?\]\])*\s*\)/g, m => { m.replace(/#\^([^\]|]+)/g, (x, id) => { belege.push(id); return x; }); return ''; });
+  t = t.replace(/\[\[Quellenverzeichnis#\^([^\]|]+)\|([^\]]+)\]\]/g, (m, id, alias) => { belege.push(id); return alias; });
+  t = t.replace(/\s*\[\[Quellenverzeichnis#\^([^\]|]+)\]\]/g, (m, id) => { belege.push(id); return ''; });
+  // kursive Klammer-Kennzeichnungen: „ungeprüft“ als Etikett, reine Herkunftsangaben aus dem Handlungstext lösen
+  t = t.replace(/\s*\*\(([^()]*?)\)\*/g, (m, innen) => { if (/ungeprüft|Vorschlag/i.test(innen)) return ' ⟪ug⟫'; if (/abgeleitet|laut|nach |Quelle|🔎|Warentest|BfR|gelesen/i.test(innen)) { abgeleitet = true; return ''; } return m; });
+  t = t.replace(/\s*\((?:Vorschlag, )?ungeprüft\)/g, ' ⟪ug⟫');
+  t = quellKuerzelWeg(t);
+  return { text: t, belege: [...new Set(belege)], abgeleitet };
+}
+/* Kürzel aus Rezeptvergleichen (A–E) sind ohne Vergleichstabelle unverständlich */
+const quellKuerzelWeg = s => String(s || '').replace(/\s*\(([A-E])(?:\s*,\s*[A-E])*\)/g, '').replace(/,?\s*laut [A-E]\b/g, '').replace(/\(\s*([^()]*?),\s*\)/g, '($1)');
+function belegeHtml(a) {
+  if (!a.belege.length && !a.abgeleitet) return '';
+  const qs = a.belege.map(id => { const q = K.quellen[id]; const n = q ? (q.kurz || q.titel || id) : id; return q && q.url ? `<a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(String(n).slice(0, 60))}</a>` : esc(String(n).slice(0, 60)); });
+  return `<p class="belege">${qs.length ? 'Belege: ' + qs.join(' · ') : ''}${a.abgeleitet ? `${qs.length ? ' · ' : ''}teils aus Quellen abgeleitet` : ''}</p>`;
+}
+/* Einleitung in Überblick, Herkunft/Prüfstatus, Geräte und Sicherheit aufteilen */
+function einleitungTeile(r) {
+  const z = String(r.einleitung || '').replace(/\r/g, '').split('\n'); const t = { ueberblick: [], herkunft: [], geraete: [], sicherheit: [], sonst: [] };
+  let i = 0;
+  while (i < z.length) {
+    const c = z[i].match(/^>\s*\[!(\w+)\][+-]?\s*(.*)$/);
+    if (c) { const typ = c[1].toLowerCase(), titel = c[2]; const innen = []; i++; while (i < z.length && /^>/.test(z[i])) { innen.push(z[i].replace(/^>\s?/, '')); i++; }
+      const body = innen.filter(x => !/^Kennzeichnung:/.test(x) && !/Nährwertschätzung|Details und Grenzen:/.test(x) && !INTERN_ZEILE.test(x)).join('\n');
+      if (typ === 'abstract') t.ueberblick.push(body);
+      else if (typ === 'warning' && /Entwurf|erprobt|Quelle|angelehnt/i.test(titel + ' ' + body)) t.herkunft.push(body);
+      else if (/Geräte/i.test(titel)) t.geraete.push(body);
+      else if (typ === 'danger' || typ === 'warning') t.sicherheit.push(`> [!${typ}] ${titel}\n` + body.split('\n').map(x => '> ' + x).join('\n'));
+      else t.sonst.push(`> [!${typ}]- ${titel}\n` + body.split('\n').map(x => '> ' + x).join('\n'));
+      continue; }
+    if (z[i].trim() && !INTERN_ZEILE.test(z[i])) t.ueberblick.push(z[i]);
+    i++;
+  }
+  return t;
+}
+const ABSCHNITT_VERBERGEN = /Version|Archiv|Redaktion|Bearbeitung|Kochprotokoll/i;
+const ABSCHNITT_HINTERGRUND = /Quellen|Anpassungen gegenüber|Nährwertschätzung|Rezeptvergleich|Methodik/i;
+function abschnitteTeile(r) {
+  const t = { ablauf: null, aufbewahren: null, sicherheit: [], hinweise: [], hintergrund: [] };
+  r.abschnitte.forEach(a => {
+    if (ABSCHNITT_VERBERGEN.test(a.titel)) return;
+    const mdt = ohneIntern(a.md); if (!mdt.trim()) return;
+    if (/^Ablauf auf einen Blick/.test(a.titel)) t.ablauf = { titel: a.titel, md: mdt };
+    else if (/^Vorkochen und Aufbewahren/.test(a.titel)) t.aufbewahren = { titel: a.titel, md: mdt };
+    else if (/Sicherheit|Gargrad/i.test(a.titel)) t.sicherheit.push({ titel: a.titel, md: mdt });
+    else if (ABSCHNITT_HINTERGRUND.test(a.titel)) t.hintergrund.push({ titel: a.titel, md: mdt });
+    else t.hinweise.push({ titel: a.titel, md: mdt });
+  });
+  return t;
+}
+/* Einstiegssammlungen – setzen nur Filter, kein Plan */
+const SAMMLUNGEN = [
+  ['schnell-protein', 'Schnell & proteinreich', { richtung: ['schnell', 'proteinreich'] }],
+  ['japanisch', 'Japanisch entdecken', { kuechen: ['japanisch'] }],
+  ['vorkochen', 'Gut vorzukochen', { richtung: ['vorkochen'] }],
+  ['guenstig', 'Günstig (Schätzung)', { richtung: ['guenstig'] }],
+  ['anspruchsvoll', 'Anspruchsvoller kochen', { richtung: ['anspruchsvoll'] }],
+  ['vegetarisch', 'Vegetarisch', { richtung: ['vegetarisch'] }]
+];
+const SCHNELLFILTER = ['schnell', 'proteinreich', 'vegetarisch', 'vorkochen'];
 function aktiveFilter(f) {
   const a = [];
   if (f.bereich) a.push(['bereich', BEREICH_NAME[f.bereich] || f.bereich, `data-a="bereich" data-v=""`]);

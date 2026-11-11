@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.6.0';
-const APP_BUILD = '202611112041';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.7.0';
+const APP_BUILD = '202611112123';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -144,7 +144,7 @@ function inline(s) {
   s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, (m, t, u) => { ext.push(`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)} ↗</a>`); return `\u0002${ext.length - 1}\u0002`; });
   s = esc(s);
   s = s.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[\s(„])\*([^*\s][^*]*?)\*(?=[\s).,;:!?“]|$)/g, '$1<i>$2</i>');
-  s = s.replace(/⟦([^⟧]+)⟧/g, '<span class="skaliert">$1</span>');
+  s = s.replace(/⟦([^⟧]+)⟧/g, '<span class="skaliert">$1</span>').replace(/⟪ug⟫/g, '<span class="ug" title="Eigener Vorschlag ohne direkt gelesene Quelle">ungeprüft</span>');
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => links[i]).replace(/\u0002(\d+)\u0002/g, (m, i) => ext[i]);
   return s;
 }
@@ -324,7 +324,34 @@ function navZaehler() { const n = D.auswahl.length; const el = $('#nav-auswahl')
   $('#kopf-info').textContent = teile.join(' · '); }
 
 /* ---------- Entdecken ---------- */
+let filterOffen = false;
 function vEntdecken() {
+  const f = filterZustand; const e = D.einstellungen;
+  const setup = (!e.einrichtung || e.einrichtung === 'bestehend') && !e.person.ziel ? `<div class="hinweis"><b>Passt die App zu dir?</b> In einer kurzen, freiwilligen Einrichtung legst du Ziel, Ernährungsweise, Allergien und Geräte fest. <a href="#/einrichtung/0">Jetzt einrichten</a></div>` : '';
+  const zusatz = aktiveFilter(f).filter(([k]) => !k.startsWith('e:') || !SCHNELLFILTER.includes(k.slice(2))).filter(([k]) => k !== 'suche').length + (f.ohneGeraete ? 1 : 0);
+  const sec = (titel, inhalt, hilfe) => `<section class="fsec"><h3>${titel}</h3>${hilfe ? `<p class="leise klein">${hilfe}</p>` : ''}<div class="chips-wrap">${inhalt}</div></section>`;
+  const chip = (a, v, n, an, extra = '') => `<button class="filterchip" data-a="${a}" data-v="${esc(v)}" aria-pressed="${an}"${extra}>${esc(n)}</button>`;
+  const vorhanden = new Set(K.rezepte.flatMap(rezeptKuechen));
+  const kuechen = KUECHEN_GRUPPEN.map(([g, gn, subs]) => { const da = subs.filter(([k]) => vorhanden.has(k)); if (!da.length) return ''; return `<div class="kgruppe">${chip('kueche', g, gn + ' (alle)', f.kuechen.includes(g), ' class="filterchip gruppe"').replace('class="filterchip" ', '')}${da.map(([k, n]) => chip('kueche', k, n, f.kuechen.includes(k) || f.kuechen.includes(g))).join('')}</div>`; }).join('');
+  const bereiche = BEREICHE.filter(([id]) => K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id)));
+  const zeitSel = (k, werte, titel) => `<label class="feld"><span>${titel}</span><select data-f="${k}"><option value="">egal</option>${werte.map(n => `<option value="${n}" ${String(f[k]) === String(n) ? 'selected' : ''}>${n < 90 ? 'bis ' + n + ' Min.' : 'bis ' + n / 60 + ' Std.'}</option>`).join('')}</select></label>`;
+  const keineFilter = !aktiveFilter(f).length;
+  return `${weitermachenHtml()}<div class="seitenkopf"><h1>Kochbuch</h1></div>${setup}
+  <div class="kb-suche"><label class="such-feld"><span class="sr-only">Rezepte suchen</span>${ico('suche', 'klein')}<input id="kb-suche" type="search" enterkeyhint="search" autocomplete="off" value="${esc(f.suche)}" placeholder="Gericht, Zutat oder Küche – z. B. Hähnchen, Ramen"></label>
+    <button class="kb-filterknopf" data-a="filter-panel" aria-expanded="${filterOffen}">${ico('filter', 'klein')} Filter${zusatz ? ` <span class="zaehl">${zusatz}</span>` : ''}</button></div>
+  <div class="chips-wrap schnell" role="group" aria-label="Schnellfilter">${SCHNELLFILTER.map(id => chip('richtung', id, EIGENSCHAFT[id][1], f.richtung.includes(id), EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : '')).join('')}</div>
+  ${filterOffen ? `<div class="filterpanel karte" id="kb-filter">
+    ${sec('Speisenart', chip('bereich', '', 'alle', !f.bereich) + bereiche.map(([id, n]) => chip('bereich', id, n, f.bereich === id)).join(''))}
+    <section class="fsec"><h3>Küche</h3><p class="leise klein">Mehrere gewählt = eine davon genügt.</p>${kuechen}</section>
+    <section class="fsec"><h3>Zeit</h3><div class="zeile">${zeitSel('maxAktiv', [10, 15, 20, 30, 45, 60], 'Arbeitszeit')}${zeitSel('maxGesamt', [20, 30, 45, 60, 90, 180, 480], 'Gesamtzeit inkl. Warten')}</div></section>
+    ${sec('Merkmale', EIGENSCHAFTEN.filter(([id]) => id !== 'schnell').map(([id, n]) => chip('richtung', id, n, f.richtung.includes(id), EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : '')).join(''), 'Alle gewählten Merkmale müssen zutreffen.')}
+    <section class="fsec"><h3>Geräte</h3><label><input type="checkbox" data-f="ohneGeraete" ${f.ohneGeraete ? 'checked' : ''}> auch Rezepte zeigen, für die laut Einstellungen ein Gerät fehlt</label></section>
+    <p class="leise klein">Persönliche Ausschlüsse (Allergien, Ernährungsweise, „esse ich nie“) gelten immer zusätzlich. Proteinreich: ${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}. Günstig: ${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}.</p>
+    <div class="knopfreihe"><button class="haupt" data-a="filter-panel">Treffer anzeigen</button><button class="still" data-a="filter-reset">Alles zurücksetzen</button></div></div>` : ''}
+  ${keineFilter ? `<div class="sammlungen" role="group" aria-label="Sammlungen">${SAMMLUNGEN.map(([id, n, s]) => { const tmp = Object.assign({ bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' }, s); const zahl = K.rezepte.filter(r0 => { const r = R[r0.id]; return !ausgeschlossen(r).length && filterPasst(r, rezeptInfo(r), tmp); }).length; return zahl ? `<button class="sammlung" data-a="sammlung" data-v="${id}"><b>${esc(n)}</b><span>${zahl} Rezepte</span></button>` : ''; }).join('')}</div>` : ''}
+  <div id="kb-ergebnis">${kbErgebnisHtml()}</div>`;
+}
+function kbErgebnisHtml() {
   const f = filterZustand;
   // Persönliche Ausschlüsse gelten immer; die gewählten Filter kommen zusätzlich dazu
   const alle = K.rezepte.map(r0 => { const r = R[r0.id]; return { r, b: bewerte(r, f), aus: ausgeschlossen(r), ger: geraeteFehlen(r) }; });
@@ -335,32 +362,20 @@ function vEntdecken() {
   const filterOhnePersoenlich = alle.filter(x => filterPasst(x.r, x.info, f));
   const persoenlichAus = filterOhnePersoenlich.filter(x => x.aus.length).length;
   const geraeteAus = filterOhnePersoenlich.filter(x => !x.aus.length && x.ger && x.ger.length).length;
-  const sortiert = D.vorrat.length || f.richtung.length ? liste.sort((x, y) => y.b.punkte - x.b.punkte) : liste.sort((x, y) => BEREICHE.findIndex(b => b[0] === x.r.meta.bereich) - BEREICHE.findIndex(b => b[0] === y.r.meta.bereich));
-  const e = D.einstellungen;
-  const setup = (!e.einrichtung || e.einrichtung === 'bestehend') && !e.person.ziel ? `<div class="hinweis"><b>Passt die App zu dir?</b> In einer kurzen, freiwilligen Einrichtung legst du Ziel, Ernährungsweise, Allergien und Geräte fest. <a href="#/einrichtung/0">Jetzt einrichten</a></div>` : '';
-  return `${weitermachenHtml()}<div class="seitenkopf"><h1>Kochbuch</h1></div><p class="unterzeile">${K.rezepte.length} Rezepte mit Anleitung Schritt für Schritt – was passt heute?</p>${setup}
-  <div class="filterleiste" role="group" aria-label="Bereich">${[['', 'Alle'], ...BEREICHE].filter(([id]) => !id || K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id))).map(([id, n]) => `<button class="filterchip" data-a="bereich" data-v="${id}" aria-pressed="${f.bereich === id}">${esc(n)}</button>`).join('')}</div>
-  ${kuechenLeisteHtml(f)}
-  <div class="filterleiste" role="group" aria-label="Eigenschaften (alle müssen passen)">${EIGENSCHAFTEN.map(([id, n]) => `<button class="filterchip" data-a="richtung" data-v="${id}" aria-pressed="${f.richtung.includes(id)}"${EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : ''}>${esc(n)}</button>`).join('')}</div>
-  <details class="filter"${f.maxGesamt || f.maxAktiv || f.suche || f.ohneGeraete ? ' open' : ''}><summary>Mehr Filter</summary>
-    <div class="zeile">
-      <label class="feld"><span>Gesamtzeit höchstens</span><select data-f="maxGesamt"><option value="">egal</option>${[20, 30, 45, 60, 90, 180].map(n => `<option ${String(f.maxGesamt) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label class="feld"><span>Aktive Zeit höchstens</span><select data-f="maxAktiv"><option value="">egal</option>${[10, 15, 20, 30, 45, 60].map(n => `<option ${String(f.maxAktiv) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label class="feld"><span>Suche</span><input data-f="suche" value="${esc(f.suche)}" placeholder="Gericht oder Zutat"></label>
-    </div>
-    <div class="knopfreihe"><label><input type="checkbox" data-f="ohneGeraete" ${f.ohneGeraete ? 'checked' : ''}> auch Rezepte zeigen, für die ein Gerät fehlt</label></div>
-    <p class="leise klein">Mehrere Küchen = aus einer davon. Eigenschaften müssen alle zutreffen. Proteinreich: ${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}. Günstig: ${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}.</p>
-  </details>
-  ${filterKopfHtml(f, sortiert.length, persoenlichAus, geraeteAus)}${D.vorrat.length && sortiert.length ? '<p class="leise klein">sortiert nach Vorrat und Wunsch</p>' : ''}
-  ${sortiert.length ? `<div class="raster karten">${sortiert.map(({ r, b, ger }) => rezeptKarte(r, b, ger)).join('')}</div>` : lockerungenHtml(f, kandidaten)}`;
+  const sortiert = f.suche ? liste.sort((x, y) => suchRang(y.r, f.suche) - suchRang(x.r, f.suche) || y.b.punkte - x.b.punkte)
+    : D.vorrat.length || f.richtung.length ? liste.sort((x, y) => y.b.punkte - x.b.punkte) : liste.sort((x, y) => BEREICHE.findIndex(b => b[0] === x.r.meta.bereich) - BEREICHE.findIndex(b => b[0] === y.r.meta.bereich));
+  return `${filterKopfHtml(f, sortiert.length, persoenlichAus, geraeteAus)}${D.vorrat.length && sortiert.length && !f.suche ? '<p class="leise klein">sortiert nach Vorrat und Wunsch</p>' : ''}
+  ${sortiert.length ? `<div class="raster karten">${sortiert.map(({ r, b, ger }) => rezeptKarte(r, b, ger)).join('')}</div>` : (f.suche && aktiveFilter(f).length === 1 ? `<div class="leer">${ico('leer')}<p><b>Kein Rezept zu „${esc(f.suche)}“.</b></p><p class="klein">Andere Schreibweise oder eine Zutat versuchen (z. B. „Huhn“, „Linsen“).</p></div>` : lockerungenHtml(f, kandidaten))}`;
 }
+function filterMerken() { try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(filterZustand)); } catch (e) { /* */ } }
 function rezeptKarte(r, b, ger) {
   const inAuswahl = D.auswahl.some(a => a.rezept === r.id);
   const np = r.naehrwerte.pro_portion; const i = b.info;
-  const gruende = b.gruende.filter(([, t]) => !/^aktiv /.test(t)).slice(0, 2);
+  const gruende = b.gruende.filter(([k, t]) => !/^aktiv |^vorkochbar|^zuletzt|^heute gekocht/.test(t)).slice(0, 1);
+  const zk = zeitKurz(r);
   return `<article class="rezeptkarte"><a class="rk" href="#/rezept/${esc(r.id)}">${bildHtml(r)}
     <h3>${esc(r.titel)}</h3>
-    <span class="meta">${i.gesamt ? `<span>${ico('uhr', 'klein')} ${i.aktiv ? i.aktiv + ' / ' : ''}${i.gesamt} Min.</span>` : ''}${np.kcal != null ? `<span>${zahlDE(np.kcal)} kcal · ${zahlDE(np.protein)} g Protein</span>` : ''}<span>${esc([BEREICH_NAME[r.meta.bereich] || '', ...rezeptKuechen(r).map(k => KUECHE_NAME[k])].filter(Boolean).join(' · '))}</span>${r.angepasst ? '<span class="chip akzent">angepasst</span>' : ''}</span>
+    <span class="meta">${zk ? `<span>${ico('uhr', 'klein')} ${esc(zk)}</span>` : ''}${np.kcal != null ? `<span>${zahlDE(np.kcal)} kcal · ${zahlDE(np.protein)} g Protein <span class="leise">je Portion</span></span>` : ''}<span>${esc([BEREICH_NAME[r.meta.bereich] || '', ...rezeptKuechen(r).map(k => KUECHE_NAME[k])].filter(Boolean).join(' · '))}</span>${r.angepasst ? '<span class="chip akzent">angepasst</span>' : ''}</span>
     ${gruende.length || (ger && ger.length) ? `<span class="chips gruende">${gruende.map(([k, t]) => `<span class="chip ${k}">${esc(t)}</span>`).join('')}${ger && ger.length ? `<span class="chip warn">Gerät fehlt: ${esc(ger.map(g => GERAETE[g] || g).join(', '))}</span>` : ''}</span>` : ''}</a>
     <button class="merken" data-a="auswahl-toggle" data-v="${esc(r.id)}" aria-pressed="${inAuswahl}" aria-label="${inAuswahl ? 'Aus der Auswahl entfernen' : 'Zur Auswahl hinzufügen'}">${inAuswahl ? ico('haken', 'klein') + ' Ausgewählt' : ico('plus', 'klein') + ' Auswahl'}</button></article>`;
 }
@@ -379,7 +394,7 @@ function zutatenListe(r, p, mitStatus = true, anpassbar = false) {
       else if (D.vorrat.length) { const v = vorratMenge(z.zutat); status = v.vorhanden ? `<span class="status-ja">${v.unbekannt ? 'im Vorrat' : (z.menge != null && z.einheit === vorratEinheit(z.zutat) && v.menge < z.menge * f ? 'zu wenig' : 'im Vorrat')}</span>` : '<span class="status-nein">fehlt</span>'; }
     }
     const fz = f * (z._m || 1);   // Alltagsmaße gelten für das Original – bei anderer Menge als solche kennzeichnen
-    const zus = [z.alltagsmass && z.alltagsmass !== z.menge_text ? (Math.abs(fz - 1) > 0.01 ? `im Original ${z.alltagsmass}` : z.alltagsmass) : '', z.zustand, z.vorbereitung, z.bedarf === 'optional' ? 'optional' : '', z.ersatz && z.ersatz !== '–' ? 'Ersatz: ' + z.ersatz : ''].filter(Boolean).join(' · ');
+    const zus = quellKuerzelWeg([z.alltagsmass && z.alltagsmass !== z.menge_text ? (Math.abs(fz - 1) > 0.01 ? `im Original ${z.alltagsmass}` : z.alltagsmass) : '', z.zustand, z.vorbereitung, z.bedarf === 'optional' ? 'optional' : '', z.ersatz && z.ersatz !== '–' ? 'Ersatz: ' + z.ersatz : ''].filter(Boolean).join(' · '));
     const name = z.zutat && Z[z.zutat] ? `<a href="#/zutat/${esc(z.zutat)}">${esc(z.text)}</a>` : esc(z.text);
     const geaendert = z._m && Math.abs(z._m - 1) > 1e-9 ? ` <span class="chip akzent" title="Original: ${esc(fmtMenge(z._orig * f, z.einheit) + ' ' + z.einheit)}">geändert</span>` : '';
     const knopf = anpassbar && z.menge != null ? `<button class="zeilen-knopf" data-a="anp-start" data-r="${esc(r.id)}" data-i="${zi}" aria-label="Menge von ${esc(z.text)} ändern und Rezept anpassen">${ico('stift', 'klein')}</button>` : '';
@@ -412,8 +427,13 @@ function schrittFelder(mdText, f, r) {
   const zeilen = mdText.split('\n'); const felder = []; let i = 0;
   while (i < zeilen.length && /^- \*\*[^*]+:\*\*/.test(zeilen[i])) { const m = zeilen[i].match(/^- \*\*([^*]+):\*\*\s*(.*)$/); felder.push([m[1], m[2]]); i++; }
   const rest = zeilen.slice(i).join('\n');
-  const dl = felder.length ? `<dl class="felder">${felder.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${inline(k === 'Zutaten' ? skaliereZutatenText(r, v, f) : v)}</dd>`).join('')}</dl>` : '';
-  return { dl, rest, felder };
+  // Reihenfolge: Zutaten (Mengen) zuerst, dann Zeit/Geräte; „Fertig, wenn“ als eigener, gut sichtbarer Kasten
+  const rang = k => k === 'Zutaten' ? 0 : /^Zeit/.test(k) ? 1 : 2;
+  const fw = felder.find(([k]) => /^Fertig/.test(k));
+  const sicht = felder.filter(([k]) => !/^Fertig/.test(k)).sort((a, b) => rang(a[0]) - rang(b[0]));
+  const dl = sicht.length ? `<dl class="felder">${sicht.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${inline(k === 'Zutaten' ? skaliereZutatenText(r, v, f) : v)}</dd>`).join('')}</dl>` : '';
+  const fertig = fw ? `<div class="fertig-wenn"><b>${esc(fw[0])}</b> ${inline(fw[1])}</div>` : '';
+  return { dl, rest, felder, fertig };
 }
 function vRezept(id) {
   const r = R[id]; if (!r) return '<p class="leer">Rezept nicht gefunden.</p>';
@@ -421,35 +441,46 @@ function vRezept(id) {
   const fort = D.fortschritt[r.id];
   const inAuswahl = D.auswahl.some(a => a.rezept === r.id);
   const quelle = m.herkunft_quelle ? inline(String(m.herkunft_quelle)) : '';
-  const schritte = r.schritte.map((s, ix) => { const sf = schrittFelder(s.md, f, r); return `<div class="schritt"><span class="nr" aria-hidden="true">${s.nr != null ? s.nr : '·'}</span><div><h3>${inline(s.titel)}</h3>${sf.dl}${md(sf.rest)}</div></div>`; }).join('');
-  const abschnitte = r.abschnitte.map(a => `<h2>${inline(a.titel)}</h2>${md(a.md)}`).join('');
+  const schritte = r.schritte.map((s, ix) => { const an = anleitung(s.md); const sf = schrittFelder(an.text, f, r); return `<div class="schritt"><span class="nr" aria-hidden="true">${s.nr != null ? s.nr : '·'}</span><div><h3>${inline(s.titel)}</h3>${sf.dl}${sf.fertig}${md(sf.rest)}${belegeHtml(an)}</div></div>`; }).join('');
+  const ein = einleitungTeile(r), ab = abschnitteTeile(r);
+  const mdAnl = t => { const an = anleitung(t); return md(an.text) + belegeHtml(an); };
   const pr = rezeptPruefung(r);
+  const geraeteText = `${esc(arr(m.geraete_noetig).map(g => GERAETE[g] || g).join(', ') || '–')}${arr(m.geraete_optional).length ? ` <span class="leise">· optional: ${esc(arr(m.geraete_optional).map(g => GERAETE[g] || g).join(', '))}</span>` : ''}`;
   return `<article class="rezept">
   <p class="klein"><a class="knopf still klein" href="#/entdecken">${ico('zurueck', 'klein')} Kochbuch</a></p>
   ${bildHtml(r, 'hero')}
-  <div class="rezept-kopf" style="margin-top:14px"><span class="ueber">${esc(BEREICH_NAME[m.bereich] || '')}${m.kueche ? ' · ' + esc(m.kueche) : ''}</span><h1>${esc(r.titel)}</h1>
-  <div class="eckdaten">${info.aktiv ? `<span>${ico('hand', 'klein')} ${info.aktiv} Min. aktiv</span>` : ''}${info.gesamt ? `<span>${ico('uhr', 'klein')} ${info.gesamt} Min. gesamt</span>` : ''}${info.schwierigkeit ? `<span>${ico('flamme', 'klein')} Schwierigkeit ${info.schwierigkeit} von 5</span>` : ''}<span>${ico('portion', 'klein')} ${esc(m.portionen)} Portionen im Original</span></div>
-  <div class="chips">${info.veg ? `<span class="chip gut">${istVegan(r) ? 'vegan' : 'vegetarisch'}</span>` : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}<span class="chip">${pruefText(m.pruefstand)}</span>${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div></div>
+  <div class="rezept-kopf" style="margin-top:14px"><span class="ueber">${esc(BEREICH_NAME[m.bereich] || '')}${rezeptKuechen(r).length ? ' · ' + esc(rezeptKuechen(r).map(k => KUECHE_NAME[k]).join(', ')) : ''}</span><h1>${esc(r.titel)}</h1>
+  <div class="eckdaten">${zeitDetailHtml(r)}${info.schwierigkeit ? `<span>${ico('flamme', 'klein')} Schwierigkeit ${info.schwierigkeit} von 5</span>` : ''}</div>
+  <div class="chips">${info.veg ? `<span class="chip gut">${istVegan(r) ? 'vegan' : 'vegetarisch'}</span>` : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div>
+  <details class="herkunft-kurz"><summary><span class="chip">${pruefText(m.pruefstand)}</span> Herkunft und offene Punkte</summary>
+    ${herkunftHtml(r)}<p class="klein">${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p>
+    ${ein.herkunft.map(t => md(t)).join('')}
+    <p class="leise klein">„Quellengeprüft“ heißt: auf Grundlage gelesener Quellen geschrieben – nicht, dass das Rezept in dieser Form schon gekocht wurde. Mit <span class="ug">ungeprüft</span> markierte Angaben sind eigene Vorschläge ohne direkt gelesene Quelle.</p></details></div>
+  ${ein.ueberblick.length ? `<div class="ueberblick">${md(ein.ueberblick.join('\n\n'))}</div>` : ''}
+  ${vortagHinweisHtml(r)}
   ${aus.length ? `<div class="hinweis gefahr">Passt nicht zu deinem Profil: ${esc(aus.join(', '))}</div>` : ''}
   ${pr.warn.length ? `<div class="hinweis warn"><b>Allergene:</b> ${esc(pr.warn.join(' · '))}. Die App kann Verträglichkeit nicht garantieren.</div>` : ''}
   ${ger && ger.length ? `<div class="hinweis warn">Laut deinen Einstellungen fehlt: ${esc(ger.map(g => GERAETE[g] || g).join(', '))}</div>` : ''}
+  ${ein.sicherheit.map(t => md(t)).join('')}${ab.sicherheit.map(a => `<div class="callout c-danger"><div class="ct">${inline(a.titel)}</div><div class="cb">${mdAnl(a.md)}</div></div>`).join('')}
   ${fort ? `<div class="hinweis">Kochfortschritt gespeichert: Schritt ${fort.schritt + 1} von ${r.schritte.length} (${esc(fort.portionen)} Portionen). <a href="#/kochen/${esc(r.id)}">Weiter kochen</a> · <button class="klein" data-a="fortschritt-weg" data-v="${esc(r.id)}">verwerfen</button></div>` : ''}
   <div class="zweispaltig"><div class="seite">
     <div class="karte"><div class="zeile" style="justify-content:space-between"><strong>Portionen</strong>
       <span class="stepper"><button data-a="port" data-v="-1" data-r="${esc(r.id)}" aria-label="weniger">−</button><output>${p}</output><button data-a="port" data-v="1" data-r="${esc(r.id)}" aria-label="mehr">+</button></span></div>
-      ${f !== 1 ? `<p class="leise klein">Rezept ist für ${esc(m.portionen)} Portionen geschrieben; Mengen sind ×${zahlDE(f, 2)} umgerechnet.${m.portionen_pro_durchgang && p > m.portionen_pro_durchgang ? ` <b>Mehr Durchgänge nötig</b> (ca. ${esc(m.portionen_pro_durchgang)} Portionen pro Durchgang) – aktive Zeit steigt.` : ''}</p>` : ''}
+      <p class="leise klein">${f !== 1 ? `Rezept ist für ${esc(m.portionen)} Portionen geschrieben; Mengen sind ×${zahlDE(f, 2)} umgerechnet.${m.portionen_pro_durchgang && p > m.portionen_pro_durchgang ? ` <b>Mehr Durchgänge nötig</b> (ca. ${esc(m.portionen_pro_durchgang)} Portionen pro Durchgang) – aktive Zeit steigt.` : ''}` : `Originalrezept für ${esc(m.portionen)} Portionen.`}</p>
       <h2 style="margin-top:.6em">Zutaten</h2>${anpassungBannerHtml(r)}${anpassPanelHtml(r)}${zutatenListe(r, p, true, !anpassDialog)}<p class="leise klein">${ico('stift', 'klein')} bei einer Zutat: Menge ändern (z. B. ganze Packung) und das Rezept anpassen.</p>
-      <div class="knopfreihe"><a class="knopf haupt" href="#/kochen/${esc(r.id)}">${ico('flamme', 'klein')} Geführt kochen</a><button data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? ico('haken', 'klein') + ' In der Auswahl' : ico('plus', 'klein') + ' Zur Auswahl'}</button><button class="still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">Als gegessen buchen</button></div>
+      <p class="klein"><b>Geräte:</b> ${geraeteText}</p>${ein.geraete.length || geraeteHinweise(r) ? `<details class="klein"><summary>Hinweise zu den Geräten</summary>${ein.geraete.map(t => mdAnl(t)).join('')}${geraeteHinweise(r)}</details>` : ''}
+      <div class="knopfreihe"><a class="knopf haupt" href="#/kochen/${esc(r.id)}">${ico('flamme', 'klein')} Kochen starten</a><button data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? ico('haken', 'klein') + ' In der Auswahl' : ico('plus', 'klein') + ' Zur Auswahl'}</button><button class="still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">Als gegessen buchen</button></div>
     </div>
     <div class="karte"><h3 style="margin-top:0">Nährwerte</h3>${naehrBox(r, p)}</div>
     ${passtDazuHtml(r)}
-    <div class="karte"><h3 style="margin-top:0">Vorkochen</h3>${vorkochBox(r)}</div>
-    <div class="karte klein"><h3 style="margin-top:0">Geräte</h3><p>${esc(arr(m.geraete_noetig).map(g => GERAETE[g] || g).join(', ') || '–')}${arr(m.geraete_optional).length ? `<br><span class="leise">optional: ${esc(arr(m.geraete_optional).map(g => GERAETE[g] || g).join(', '))}</span>` : ''}</p>${geraeteHinweise(r)}
-      <h3>Herkunft</h3>${herkunftHtml(r)}<p>${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p></div>
+    <div class="karte"><h3 style="margin-top:0">Aufbewahren</h3>${vorkochBox(r)}${ab.aufbewahren ? `<details class="klein"><summary>Abkühlen, Lagern, Aufwärmen im Detail</summary>${mdAnl(ab.aufbewahren.md)}</details>` : ''}</div>
   </div><div>
-    ${md(r.einleitung)}
-    <h2>Schritt für Schritt</h2>${r.angepasst ? '<p class="hinweis klein">Mengen in den Schritten sind umgerechnet, soweit sie eindeutig einer Zutat zugeordnet werden können. Stück- und Alltagsangaben im Fließtext (z. B. „2 Zehen“) beziehen sich auf das Original – maßgeblich ist die Zutatenliste. Garzeiten und Temperaturen gelten unverändert; nach den Erkennungsmerkmalen garen.</p>' : ''}<div class="schritt-liste">${schritte}</div>
-    ${abschnitte}
+    <h2>Schritt für Schritt</h2>${ab.ablauf ? `<details class="callout c-abstract"><summary>Ablauf auf einen Blick</summary><div class="cb">${mdAnl(ab.ablauf.md)}</div></details>` : ''}${r.angepasst ? '<p class="hinweis klein">Mengen in den Schritten sind umgerechnet, soweit sie eindeutig einer Zutat zugeordnet werden können. Stück- und Alltagsangaben im Fließtext (z. B. „2 Zehen“) beziehen sich auf das Original – maßgeblich ist die Zutatenliste. Garzeiten und Temperaturen gelten unverändert; nach den Erkennungsmerkmalen garen.</p>' : ''}<div class="schritt-liste">${schritte}</div>
+    ${ab.hinweise.map(a => `<details class="abschnitt-zu"><summary>${inline(a.titel)}</summary>${mdAnl(a.md)}</details>`).join('')}
+    ${ein.sonst.map(t => md(t)).join('')}
+    <details class="abschnitt-zu hintergrund"><summary>Quellen und Hintergrund</summary>
+      ${ab.hintergrund.map(a => `<h3>${inline(a.titel)}</h3>${md(a.md)}`).join('')}
+      <p class="leise klein">Kennzeichnung im Rezepttext: verlinkte Quelle = direkt gelesen · „abgeleitet“ = aus einer Quelle erklärt · „ungeprüft“ = eigener Vorschlag ohne direkt gelesene Quelle.</p></details>
   </div></div></article>`;
 }
 
@@ -468,7 +499,7 @@ function vKochen(id) {
   let fort = D.fortschritt[r.id];
   if (!fort) { fort = { schritt: 0, portionen: standardPortionen(r), start: new Date().toISOString() }; D.fortschritt[r.id] = fort; speichern(); }
   const i = Math.min(fort.schritt, r.schritte.length - 1), s = r.schritte[i], f = faktor(r, fort.portionen);
-  const sf = schrittFelder(s.md, f, r);
+  const an = anleitung(s.md); const sf = schrittFelder(an.text, f, r);
   const zeit = (sf.felder.find(x => x[0].startsWith('Zeit')) || [])[1] || '';
   const mz = zeit.match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*Min/);
   const letzter = i === r.schritte.length - 1;
@@ -479,7 +510,9 @@ function vKochen(id) {
   <h1>${s.nr != null ? s.nr + ' · ' : ''}${inline(s.titel)}</h1>
   ${sf.dl}
   ${mz ? `<div class="knopfreihe"><button data-a="timer" data-min="${mz[1]}" data-name="${esc(s.titel)}">⏱ Timer ${mz[1]} Min.</button>${mz[2] ? `<button data-a="timer" data-min="${mz[2]}" data-name="${esc(s.titel)}">⏱ ${mz[2]} Min.</button>` : ''}<span class="leise klein">Zeiten sind Orientierung – entscheidend ist „Fertig, wenn“.</span></div>` : ''}
+  ${sf.fertig}
   ${md(sf.rest)}
+  ${belegeHtml(an)}
   ${geraeteHinweise(r, true)}
   <details class="klein"><summary>Alle Zutaten (${esc(fort.portionen)} Portionen)</summary>${zutatenListe(r, fort.portionen, false)}</details>
   <div style="height:80px"></div></div>
@@ -774,6 +807,7 @@ function exportDaten() { return { art: 'kochschule-export', schema: SCHEMA, app_
 function importiere(obj) {
   if (!obj || typeof obj !== 'object') throw new Error('Keine gültige Datei.');
   if (obj.art === 'kochschule-privat-import') { const e = obj.einstellungen || {}; return { text: `Profil-Import: Ausschlüsse ${(e.ausschluesse || []).join(', ') || '–'}, ${(e.geraete || []).length} Geräte, ${Object.keys(e.geraete_hinweise || {}).length} Geräte-Hinweise. Vorrat, Tagebuch und alle anderen Daten bleiben unverändert.`, anwenden: d => { if (e.ausschluesse) d.einstellungen.ausschluesse = e.ausschluesse; if (e.geraete) d.einstellungen.geraete = e.geraete; if (e.geraete_hinweise) d.einstellungen.geraete_hinweise = Object.assign({}, d.einstellungen.geraete_hinweise || {}, e.geraete_hinweise); } }; }
+  if (obj.art === 'fitomat-trainingsplan') return trainingsplanImport(obj);
   if (obj.art !== 'kochschule-export' || !obj.daten || typeof obj.daten.schema !== 'number') throw new Error('Unbekanntes Format (erwartet: kochschule-export).');
   if (obj.daten.schema > SCHEMA) throw new Error('Die Datei stammt von einer neueren App-Version – bitte zuerst die App aktualisieren (Mehr).');
   const x = aufSchemaBringen(JSON.parse(JSON.stringify(obj.daten))); if (!x) throw new Error('Unbekanntes Datenformat.'); return { text: `Sicherung vom ${String(obj.exportiert_am).slice(0, 16).replace('T', ' ')}: ${x.vorrat.length} Vorrat, ${x.restportionen.length} Restportionen, ${x.tagebuch.length} Tagebucheinträge, ${x.kochprotokolle.length} Kochprotokolle, ${x.auswahl.length} in Auswahl. Ersetzt alle Daten auf diesem Gerät.`, anwenden: d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), x); } };
@@ -819,9 +853,13 @@ function piep() { try { audioCtx = audioCtx || new (window.AudioContext || windo
 function zeichneTimer() {
   const el = $('#timerleiste'); if (!timer.length) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
-  el.innerHTML = timer.map(t => { const rest = Math.max(0, Math.round((t.ende - Date.now()) / 1000)); const fertig = rest === 0;
-    if (fertig && !t.gemeldet) { t.gemeldet = true; timerSpeichern(); piep(); }
-    return `<span class="timer ${fertig ? 'fertig' : ''}">${esc(t.name.slice(0, 28))} · ${fertig ? 'fertig!' : `${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')}`}<button class="klein" data-a="timer-weg" data-v="${esc(t.id)}" aria-label="Timer beenden">✕</button></span>`; }).join('');
+  // Restzeit immer aus dem gespeicherten Endzeitpunkt – App-Wechsel oder ein pausierter Browser verfälschen den Countdown nicht
+  el.innerHTML = timer.map(t => { const rest = t.pausiert != null ? t.pausiert : Math.max(0, Math.round((t.ende - Date.now()) / 1000)); const fertig = rest === 0 && t.pausiert == null;
+    if (fertig && !t.gemeldet) { t.gemeldet = true; timerSpeichern(); if (t.ton !== false) piep(); }
+    const zeit = fertig ? 'fertig!' : `${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')}${t.pausiert != null ? ' (angehalten)' : ''}`;
+    if (t.art === 'pause') return `<span class="timer pausetimer ${fertig ? 'fertig' : ''}"><span><b>Pause ${zeit}</b>${t.naechstes ? `<br><small>danach: ${esc(t.naechstes)}</small>` : ''}</span>
+      ${fertig ? '' : `<button class="klein" data-a="timer-plus" data-v="${esc(t.id)}" data-s="30">+30</button><button class="klein" data-a="timer-plus" data-v="${esc(t.id)}" data-s="60">+60</button><button class="klein" data-a="timer-halt" data-v="${esc(t.id)}" aria-label="${t.pausiert != null ? 'fortsetzen' : 'anhalten'}">${t.pausiert != null ? '▶' : 'Ⅱ'}</button>`}<button class="klein" data-a="timer-weg" data-v="${esc(t.id)}">${fertig ? 'OK' : 'überspringen'}</button></span>`;
+    return `<span class="timer ${fertig ? 'fertig' : ''}">${esc(t.name.slice(0, 28))} · ${zeit}<button class="klein" data-a="timer-weg" data-v="${esc(t.id)}" aria-label="Timer beenden">✕</button></span>`; }).join('');
 }
 setInterval(zeichneTimer, 1000);
 
@@ -836,6 +874,8 @@ document.addEventListener('click', ev => {
     case 'update-jetzt': updateAnwenden(); break;
     case 'update-suchen': updateSuchen(true); break;
     case 'bereich': f.bereich = v; route(); break;
+    case 'filter-panel': filterOffen = !filterOffen; route(); if (!filterOffen) { const k = $('#kb-ergebnis'); if (k) k.scrollIntoView({ block: 'start' }); } break;
+    case 'sammlung': { const s = SAMMLUNGEN.find(x => x[0] === v); if (s) { Object.assign(f, { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' }, JSON.parse(JSON.stringify(s[2]))); route(); } break; }
     case 'richtung': f.richtung = f.richtung.includes(v) ? f.richtung.filter(x => x !== v) : [...f.richtung, v]; route(); break;
     case 'auswahl-toggle': { ev.preventDefault(); const r = R[v]; const drin = D.auswahl.some(x => x.rezept === v);
       aendere(drin ? 'Aus Auswahl entfernt' : `${r.titel} in der Auswahl`, d => { if (drin) d.auswahl = d.auswahl.filter(x => x.rezept !== v); else d.auswahl.push({ rezept: v, jetzt: Math.min(Number(r.meta.portionen) || 2, d.einstellungen.portionen || 2), vorkochen: 0 }); }); break; }
@@ -848,6 +888,8 @@ document.addEventListener('click', ev => {
     case 'fortschritt-weg': aendere('Kochfortschritt verworfen', d => { delete d.fortschritt[v]; }); break;
     case 'timer': { const min = Number(b.dataset.min); timer.push({ id: uid('t'), name: b.dataset.name || 'Timer', ende: Date.now() + min * 60000 }); timerSpeichern(); zeichneTimer(); toast(`Timer ${min} Min. läuft (nur bei geöffneter App zuverlässig)`); break; }
     case 'timer-weg': timer = timer.filter(t => t.id !== v); timerSpeichern(); zeichneTimer(); break;
+    case 'timer-plus': { const t = timer.find(x => x.id === v); if (t) { const s = Number(b.dataset.s) || 30; if (t.pausiert != null) t.pausiert += s; else t.ende = Math.max(t.ende, Date.now()) + s * 1000; t.gemeldet = false; timerSpeichern(); zeichneTimer(); } break; }
+    case 'timer-halt': { const t = timer.find(x => x.id === v); if (t) { if (t.pausiert != null) { t.ende = Date.now() + t.pausiert * 1000; t.pausiert = null; } else t.pausiert = Math.max(0, Math.round((t.ende - Date.now()) / 1000)); timerSpeichern(); zeichneTimer(); } break; }
     case 'abhaken': aendere(null, d => { if (b.checked) d.einkauf.abgehakt[v] = true; else delete d.einkauf.abgehakt[v]; }); break;
     case 'gv': aendere(null, d => { d.einkauf.bestaetigt[b.dataset.k] = v; }); break;
     case 'einkauf-bestaetigen': { const posten = einkaufsPosten().filter(p => D.einkauf.abgehakt[p.key]);
@@ -877,7 +919,8 @@ document.addEventListener('change', ev => {
   if (el.dataset && el.dataset.f) { filterZustand[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value; route(); }
   if (el.dataset && el.dataset.a === 'tage') aendere(null, d => { d.planung.tage = el.value; });
 });
-document.addEventListener('input', ev => { const el = ev.target; if (el.dataset && el.dataset.f === 'suche') { filterZustand.suche = el.value; clearTimeout(el._t); el._t = setTimeout(() => { route(); const s = $('[data-f="suche"]'); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }, 350); } });
+// Kochbuch-Suche: nur die Trefferliste neu zeichnen, damit Tastatur und Fokus bleiben
+document.addEventListener('input', ev => { const el = ev.target; if (el.id === 'kb-suche') { filterZustand.suche = el.value; clearTimeout(el._t); el._t = setTimeout(() => { filterMerken(); const k = $('#kb-ergebnis'); if (k) k.innerHTML = kbErgebnisHtml(); const sm = $('.sammlungen'); if (sm) sm.hidden = !!filterZustand.suche; }, 200); } });
 window.addEventListener('hashchange', () => { route(); if (!location.hash.startsWith('#/kochen') && wakeLock) { wakeLock.release(); wakeLock = null; } });
 window.addEventListener('storage', e => { if (e.key === SPEICHER) { D = laden(); route(); } });
 document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible' && location.hash.startsWith('#/kochen') && !wakeLock && 'wakeLock' in navigator) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* */ } } });
