@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121717 */
+/* Fitomat-Build 202611121752 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -429,7 +429,11 @@ function trPlaeneHtml() {
   <div class="knopfreihe"><button class="haupt" data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button><a class="knopf" href="#/training/einrichtung">Vorschläge nach deinen Angaben</a></div>
   <section class="karte" id="tr-import"><h2 style="margin-top:0">Eigenen Plan übernehmen</h2>
     <p class="klein">Per <b>Übergabe-QR-Code</b> (mit der iPhone-Kamera scannen), per <b>Plan-Code</b> aus der Zwischenablage oder als Datei. Die Übernahme <b>ergänzt</b> nur: vorhandene Pläne, Trainings, Mahlzeiten und Vorräte bleiben unverändert, ein doppelter Import wird erkannt. Vor der Übernahme siehst du eine Vorschau; danach ist Rückgängig möglich. Nichts wird hochgeladen.</p>
-    ${trImportObj ? trImportVorschauHtml(trImportObj) + (trImportCode && !appVomHomeBildschirm() ? `<div class="hinweis klein"><b>Nutzt du Fitomat als App vom Home-Bildschirm?</b> Die hat auf dem iPhone einen eigenen Speicher. Dann hier nicht übernehmen, sondern: <button class="klein" data-a="tr-code-kopieren">Plan-Code kopieren</button> → Fitomat vom Home-Bildschirm öffnen → Training → Pläne → „Plan-Code einfügen“.</div>` : '') : ''}
+    ${trImportObj ? (trImportCode && !appVomHomeBildschirm() ? `<div class="hinweis warn import-wahl"><b>Wo nutzt du Fitomat?</b>
+      <p class="klein" style="margin:.4em 0">Du bist gerade im <b>Browser (Safari)</b>. Die App vom Home-Bildschirm hat auf dem iPhone einen <b>eigenen Speicher</b> – was du hier übernimmst, ist dort <b>nicht</b> vorhanden.</p>
+      <ol class="klein"><li><b>App vom Home-Bildschirm:</b> <button class="haupt" data-a="tr-code-kopieren">1. Plan-Code kopieren</button><br>2. Fitomat vom Home-Bildschirm öffnen → Training → Pläne → „Plan-Code einfügen“ → Einfügen erlauben → „Plan übernehmen“.</li>
+      <li><b>Nur im Browser:</b> unten in der Vorschau „Plan übernehmen“ tippen.</li></ol>
+      <details class="klein"><summary>Kopieren klappt nicht?</summary><p>Code markieren und kopieren:</p><textarea readonly rows="3" style="width:100%" onfocus="this.select()">${esc(PLANCODE_PREFIX + trImportCode)}</textarea></details></div>` : '') + trImportVorschauHtml(trImportObj) : ''}
     <div class="knopfreihe"><button class="haupt" data-a="tr-code-einfuegen">Plan-Code einfügen</button></div>
     <details class="klein"><summary>Code von Hand einfügen oder Datei wählen</summary><textarea id="tr-import-text" rows="3" style="width:100%" placeholder="FITOMAT-PLAN1:… oder Inhalt einer Plan-Datei"></textarea><button class="klein" data-a="tr-import-text">Prüfen</button>
       <label class="feld"><span>Plan-Datei wählen</span><input type="file" id="tr-import-datei" accept="application/json,.json,text/plain"></label></details></section>

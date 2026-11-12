@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121717 */
+/* Fitomat-Build 202611121752 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -322,6 +322,7 @@ function offUebernehmen() {
    Gesendet wird nur der Suchbegriff bzw. die Barcode-Nummer – nie Profil oder Tagebuch.
    Textsuche laut OFF max. 10/Minute und „nicht beim Tippen“: daher erst nach einer Tipp-Pause, gedrosselt, mit Zwischenspeicher und Abbruch alter Anfragen.
    Ausgewählte Produkte werden privat in „Eigene Produkte“ gespeichert (mit Quelle) und nie zurückgesendet oder veröffentlicht. */
+const datumJahr = d => { try { return new Date(d + 'T12:00:00').toLocaleDateString('de-DE'); } catch (e) { return d; } };
 const OFF_FELDER = 'code,product_name,product_name_de,generic_name_de,brands,quantity,product_quantity,product_quantity_unit,serving_quantity,serving_size,nutrition_data_per,nutrition_data_prepared_per,nutriments,last_modified_t,allergens_tags,ingredients_text_de,countries_tags';
 let offOnline = { q: '', status: 'leer', treffer: [], fehler: '', seq: 0, ctrl: null, timer: null, cache: false };
 const offAufrufe = { suche: [], code: [] };
@@ -395,15 +396,21 @@ function offOnlineHtml() {
   const lokaleCodes = new Set([...(D.lebensmittel || []).map(l => l.gtin), ...(K.produkte || []).map(p => p.gtin)].filter(Boolean));
   const l = o.treffer.filter(p => !lokaleCodes.has(p.code)); const doppelt = o.treffer.length - l.length;
   if (!o.treffer.length) return kopf + `<p class="klein" role="status"><b>Online kein Treffer</b> zu „${esc(o.q)}“.${istBarcode(o.q) ? ' Diese Nummer ist bei Open Food Facts nicht erfasst.' : ' Tipp: Marke und Sorte kombinieren (z. B. „Milbona Skyr“) oder den Barcode verwenden.'}</p>` + anlegen + fuss;
-  if (!l.length) return kopf + `<p class="leise klein" role="status">${doppelt} Online-Treffer – alle schon oben bei deinen Produkten bzw. den Markenprodukten (gleicher Barcode).</p>` + fuss;
-  return kopf + `${doppelt ? `<p class="leise klein">${doppelt} Treffer hast du schon (siehe oben, gleicher Barcode).</p>` : ''}<ul class="eintraege treffer">${l.map(p => { const einh = p.bezug === '100ml' ? 'ml' : 'g'; const start = p.portion || (p.packung && p.packung <= 250 ? p.packung : 100);
+  // Gleiches Produkt aus mehreren Quellen: Abweichungen zeigen, die bekannte (bestätigte/kuratierte) Angabe bleibt maßgeblich
+  const vergleich = o.treffer.filter(p => lokaleCodes.has(p.code)).map(p => { const lok = (D.lebensmittel || []).find(x => x.gtin === p.code) || (K.produkte || []).find(x => x.gtin === p.code); if (!lok || !lok.naehr) return '';
+    const diff = ['kcal', 'protein'].filter(k => lok.naehr[k] != null && p.naehr[k] != null && Math.abs(lok.naehr[k] - p.naehr[k]) > Math.max(2, lok.naehr[k] * 0.03)); if (!diff.length) return '';
+    const lq = lok.quelle_art === 'hersteller' ? 'Herstellerangabe' : lok.pruefstatus === 'bestaetigt' ? 'mit Etikett verglichen' : lok.quelle || 'deine Angabe'; const ld = lok.abgerufen || lok.quelle_datum || '';
+    return `<li>${esc(lok.marke ? lok.marke + ' ' : '')}${esc(lok.name)}: ${diff.map(k => `${k === 'kcal' ? 'Energie' : 'Eiweiß'} ${zahlDE(lok.naehr[k], 1)} (${esc(lq)}${ld ? ', ' + esc(datumDE(ld)) : ''}) vs. ${zahlDE(p.naehr[k], 1)} (Open Food Facts${p.stand ? ', ' + esc(datumJahr(p.stand)) : ''})`).join('; ')}</li>`; }).filter(Boolean);
+  const vergleichHtml = vergleich.length ? `<div class="hinweis klein"><b>Gleicher Barcode, andere Werte:</b><ul>${vergleich.join('')}</ul>Gerechnet wird mit deiner bzw. der geprüften Angabe oben. Im Zweifel gilt das Etikett deiner Packung.</div>` : '';
+  if (!l.length) return kopf + `<p class="leise klein" role="status">${doppelt} Online-Treffer – alle schon oben bei deinen Produkten bzw. den Markenprodukten (gleicher Barcode).</p>` + vergleichHtml + fuss;
+  return kopf + `${doppelt ? `<p class="leise klein">${doppelt} Treffer hast du schon (siehe oben, gleicher Barcode).</p>` : ''}${vergleichHtml}<ul class="eintraege treffer">${l.map(p => { const einh = p.bezug === '100ml' ? 'ml' : 'g'; const start = p.portion || (p.packung && p.packung <= 250 ? p.packung : 100);
       const n = p.naehr; const kurzName = p.marke && !p.name.toLowerCase().startsWith(p.marke.toLowerCase()) ? p.marke + ' ' + p.name : p.name;
       return `<li><span class="tz-name"><b>${esc(kurzName)}</b>${p.menge ? ` · ${esc(p.menge)}` : ''}<br><span class="leise klein">${n.kcal != null ? zahlDE(n.kcal) + ' kcal' : 'kcal ?'} · ${n.protein != null ? zahlDE(n.protein, 1) + ' g Eiweiß' : 'Eiweiß ?'} je 100 ${einh}</span>
         <br><span class="chip">Online-Daten, ungeprüft</span>${p.hinweise.length ? ' <span class="chip warn">Etikett prüfen</span>' : ''}${p.de === false ? ' <span class="chip warn">nicht als in Deutschland verkauft erfasst</span>' : ''}
         ${mengenWahlHtml('off-' + p.code, 'off', { packung: p.packung, packung_einheit: p.packung_einheit, bezug: p.bezug, portionen: p.portion ? [{ name: 'Portion laut Angabe', menge: p.portion }] : [] })}
         <details class="klein tz-details"><summary>Details</summary><p class="klein">Je 100 ${einh}: Fett ${n.fett != null ? zahlDE(n.fett, 1) + ' g' : '?'} · Kohlenhydrate ${n.kh != null ? zahlDE(n.kh, 1) + ' g' : '?'} · Zucker ${n.zucker != null ? zahlDE(n.zucker, 1) + ' g' : '?'} · Ballaststoffe ${n.ballaststoffe != null ? zahlDE(n.ballaststoffe, 1) + ' g' : '?'} · Salz ${n.salz != null ? zahlDE(n.salz, 2) + ' g' : '?'}. Fehlende Angaben = unbekannt, nicht 0.</p>
           ${p.hinweise.length ? `<p class="klein"><b>Auffälligkeiten:</b> ${esc(p.hinweise.join(' · '))}</p>` : ''}${p.portion_text ? `<p class="klein">Portionsangabe im Eintrag: ${esc(p.portion_text)}</p>` : ''}
-          <p class="klein">Barcode ${esc(p.code)}${p.stand ? ' · zuletzt geändert ' + esc(datumDE(p.stand)) : ''} · <a href="https://de.openfoodfacts.org/produkt/${esc(p.code)}" target="_blank" rel="noopener">Eintrag ansehen</a></p>
+          <p class="klein">Barcode ${esc(p.code)}${p.stand ? ' · zuletzt geändert ' + esc(datumJahr(p.stand)) : ''} · <a href="https://de.openfoodfacts.org/produkt/${esc(p.code)}" target="_blank" rel="noopener">Eintrag ansehen</a></p>
           <p class="leise klein">Von Freiwilligen erfasst. Ob Sorte und Rezeptur zu deiner Packung passen, zeigt nur das Etikett.</p></details></span>
         <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge</span><input type="number" min="1" value="${esc(start)}" data-gramm="off-${esc(p.code)}" inputmode="decimal"></label><span class="einh">${einh}</span><button class="haupt klein" data-a="off-eintragen" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled title="Energie unbekannt"' : ''}>${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="off-liste" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled' : ''}>+ Liste</button><button class="klein still" data-a="off-merken" data-v="${esc(p.code)}" title="Als Standardprodukt merken">☆</button></span></li>`; }).join('')}</ul>
     <p class="klein">Nicht dabei? <button class="klein still" data-a="produkt-neu-vorbelegt">Produkt selbst anlegen</button> oder genauer suchen (Marke, Sorte, Barcode).</p>` + fuss;

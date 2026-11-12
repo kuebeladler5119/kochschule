@@ -533,3 +533,26 @@ table.verlauf-tabelle td:first-child, table.verlauf-tabelle th:first-child { wid
 /* Markenprodukt-Details in der Trefferliste */
 .tz-details{margin-top:4px}.tz-details>summary{cursor:pointer;color:var(--leise,inherit);padding:4px 0;min-height:32px}.tz-details p{margin:4px 0;overflow-wrap:anywhere}
 .tb-arten .filterchip{max-width:100%;white-space:normal;text-align:left}
+/* Mein Kochbuch, Varianten, Rückmeldung */
+.pers-leiste{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 4px}
+.pers-leiste button,.pers-leiste select{min-height:40px}
+.pers-leiste .kb-samml{margin:0}
+.mein-kb{margin:4px 0 10px}
+.var-editor fieldset{margin:8px 0}
+.var-eintrag{display:inline-flex;align-items:center;gap:2px;margin:2px 4px 2px 0}
+.rueckmeldung>summary{cursor:pointer;padding:6px 0;min-height:40px}
+.rm-hinweis{margin:8px 0}
+.var-editor fieldset,fieldset{min-width:0}.var-editor .feld{min-width:0;max-width:100%}.var-editor select,.var-editor input{max-width:100%;min-width:0}
+/* Date-Ansicht und gemeinsamer Ablauf */
+.date-gang.aus{opacity:.75}
+.date-rezept{display:flex;gap:12px;align-items:flex-start;text-decoration:none;color:inherit;margin:8px 0}
+.date-rezept .bildrahmen{flex:0 0 96px;width:96px;height:72px;border-radius:10px;overflow:hidden}
+.date-rezept .bildrahmen img{width:100%;height:100%;object-fit:cover}
+.date-rezept .bildrahmen figcaption{display:none}
+ol.ablauf{padding-left:1.2em}
+ol.ablauf>li{margin:14px 0}
+ol.ablauf ul{list-style:none;padding:0}
+.ablauf-punkt label{display:flex;gap:10px;align-items:flex-start;padding:8px 0;min-height:44px}
+.ablauf-punkt input{width:22px;height:22px;flex:0 0 22px;margin-top:2px}
+.ablauf-punkt.erledigt span{opacity:.6;text-decoration:line-through}
+.import-wahl ol{padding-left:1.2em}.import-wahl li{margin:6px 0}.import-wahl .haupt{margin:4px 0}.pl-zusammenfassung{background:var(--flaeche2);padding:8px 10px;border-radius:10px}

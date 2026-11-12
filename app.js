@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.19.1';
-const APP_BUILD = '202611121717';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.20.0';
+const APP_BUILD = '202611121752';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -47,7 +47,7 @@ function leer() {
     einstellungen: { ausschluesse: null, geraete: null, geraete_hinweise: {}, grundvorrat: null, portionen: 2, hilfen_offen: true, ziele: { modus: 'keine' },
       person: {}, ernaehrungsweise: null, allergien: [], abneigungen: {}, budget: null, kochzeit: null, einrichtung: null },
     vorrat: [], auswahl: [], planung: { tage: '' }, einkauf: { abgehakt: {}, bestaetigt: {} },
-    restportionen: [], tagebuch: [], kochprotokolle: [], fortschritt: {}, tage: {}, lebensmittel: [], anpassungen: {}, varianten: {}, mahlzeiten: [], training: { uebungen: [], routinen: [], einheiten: [], aktiv: null, koerpergewicht: [] }, letzter_export: null, geschrieben_von: null };
+    restportionen: [], tagebuch: [], kochprotokolle: [], fortschritt: {}, tage: {}, lebensmittel: [], anpassungen: {}, varianten: {}, kochbuch: { favoriten: [], kochen_wollen: [], sammlungen: [], zuletzt: [], variante_standard: {} }, mahlzeiten: [], training: { uebungen: [], routinen: [], einheiten: [], aktiv: null, koerpergewicht: [] }, letzter_export: null, geschrieben_von: null };
 }
 /* Datenformat-Updates: je Schritt eine Funktion „von Schema n auf n+1“. Vorher wird der unveränderte Stand
    als Zwischenstand gesichert. Nie Felder löschen, die eine ältere Version noch braucht. */
@@ -293,9 +293,9 @@ function weitermachenHtml() {
   D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
   return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';
 }
-function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/planung" aria-selected="${akt === 'planung'}">Mehrere Tage planen</a><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a></div>`; }
+function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/planung" aria-selected="${akt === 'planung'}">Mehrere Tage planen</a><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a><a role="tab" href="#/preise" aria-selected="${akt === 'preise'}">Preise</a></div>`; }
 /* ---------- Drei Hauptbereiche: Food · Training · Mobility – mit Unterreitern und Fortsetzen-Anzeige ---------- */
-const FOOD_SEITEN = ['entdecken', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'planung', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
+const FOOD_SEITEN = ['entdecken', 'jetzt', 'meinkochbuch', 'date', 'ablauf', 'preise', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'planung', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
 function hauptBereich(seite) { return FOOD_SEITEN.includes(seite) ? 'food' : seite === 'training' ? 'training' : seite === 'mobility' ? 'mobility' : ''; }
 const UNTERREITER = {
   food: [['entdecken', '#/entdecken', 'Kochbuch'], ['tagebuch', '#/tagebuch', 'Tagebuch'], ['einkauf', '#/auswahl', 'Einkauf'], ['vorrat', '#/vorrat', 'Vorrat']],
@@ -325,7 +325,7 @@ function route() {
   if (route.letzte && location.hash !== route.letzte) { scrollPos[route.letzte] = window.scrollY; if (typeof tbEdit !== 'undefined') tbEdit = null; if (typeof anpassDialog !== 'undefined' && anpassDialog && !location.hash.includes(anpassDialog.rid)) anpassDialog = null; }
   if (seite === 'entdecken') { try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(filterZustand)); } catch (e) { /* */ } }
   const app = $('#app');
-  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, planung: vPlanung };
+  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, planung: vPlanung, meinkochbuch: vMeinKochbuch, date: vDate, ablauf: vAblauf, preise: vPreise, jetzt: vJetzt };
   const fn = views[seite] || vEntdecken;
   app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
@@ -355,7 +355,7 @@ function vEntdecken() {
   const bereiche = BEREICHE.filter(([id]) => K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id)));
   const zeitSel = (k, werte, titel) => `<label class="feld"><span>${titel}</span><select data-f="${k}"><option value="">egal</option>${werte.map(n => `<option value="${n}" ${String(f[k]) === String(n) ? 'selected' : ''}>${n < 90 ? 'bis ' + n + ' Min.' : 'bis ' + n / 60 + ' Std.'}</option>`).join('')}</select></label>`;
   const keineFilter = !aktiveFilter(f).length;
-  return `<div class="seitenkopf"><h1>Kochbuch</h1></div>${setup}
+  return `<div class="seitenkopf"><h1>Kochbuch</h1><a class="knopf haupt klein" href="#/jetzt">Was passt jetzt?</a></div>${setup}
   <div class="kb-suche"><label class="such-feld"><span class="sr-only">Rezepte suchen</span>${ico('suche', 'klein')}<input id="kb-suche" type="search" enterkeyhint="search" autocomplete="off" value="${esc(f.suche)}" placeholder="Gericht, Zutat oder Küche – z. B. Hähnchen, Ramen"></label>
     <button class="kb-filterknopf" data-a="filter-panel" aria-expanded="${filterOffen}">${ico('filter', 'klein')} Filter${zusatz ? ` <span class="zaehl">${zusatz}</span>` : ''}</button></div>
   <div class="chips-wrap schnell" role="group" aria-label="Schnellfilter">${SCHNELLFILTER.map(id => chip('richtung', id, EIGENSCHAFT[id][1], f.richtung.includes(id), EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : '')).join('')}</div>
@@ -367,7 +367,8 @@ function vEntdecken() {
     <section class="fsec"><h3>Geräte</h3><label><input type="checkbox" data-f="ohneGeraete" ${f.ohneGeraete ? 'checked' : ''}> auch Rezepte zeigen, für die laut Einstellungen ein Gerät fehlt</label></section>
     <p class="leise klein">Persönliche Ausschlüsse (Allergien, Ernährungsweise, „esse ich nie“) gelten immer zusätzlich. Proteinreich: ${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}. Günstig: ${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}.</p>
     <div class="knopfreihe"><button class="haupt" data-a="filter-panel">Treffer anzeigen</button><button class="still" data-a="filter-reset">Alles zurücksetzen</button></div></div>` : ''}
-  ${keineFilter ? `<div class="sammlungen" role="group" aria-label="Sammlungen">${SAMMLUNGEN.map(([id, n, s]) => { const tmp = Object.assign({ bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' }, s); const zahl = K.rezepte.filter(r0 => { const r = R[r0.id]; return !ausgeschlossen(r).length && filterPasst(r, rezeptInfo(r), tmp); }).length; return zahl ? `<button class="sammlung" data-a="sammlung" data-v="${id}"><b>${esc(n)}</b><span>${zahl} Rezepte</span></button>` : ''; }).join('')}</div>` : ''}
+  ${keineFilter ? meinKochbuchLinksHtml() : ''}
+  ${keineFilter ? `<div class="sammlungen" role="group" aria-label="Sammlungen"><a class="sammlung" href="#/date"><b>Date: Menü für zwei</b><span>${K.rezepte.filter(r => r.meta.date_gang).length} Rezepte</span></a>${SAMMLUNGEN.map(([id, n, s]) => { const tmp = Object.assign({ bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' }, s); const zahl = K.rezepte.filter(r0 => { const r = R[r0.id]; return !ausgeschlossen(r).length && filterPasst(r, rezeptInfo(r), tmp); }).length; return zahl ? `<button class="sammlung" data-a="sammlung" data-v="${id}"><b>${esc(n)}</b><span>${zahl} Rezepte</span></button>` : ''; }).join('')}</div>` : ''}
   <div id="kb-ergebnis">${kbErgebnisHtml()}</div>`;
 }
 function kbErgebnisHtml() {
@@ -415,7 +416,7 @@ function zutatenListe(r, p, mitStatus = true, anpassbar = false) {
     const fz = f * (z._m || 1);   // Alltagsmaße gelten für das Original – bei anderer Menge als solche kennzeichnen
     const zus = quellKuerzelWeg([z.alltagsmass && z.alltagsmass !== z.menge_text ? (Math.abs(fz - 1) > 0.01 ? `im Original ${z.alltagsmass}` : z.alltagsmass) : '', z.zustand, z.vorbereitung, z.bedarf === 'optional' ? 'optional' : '', z.ersatz && z.ersatz !== '–' ? 'Ersatz: ' + z.ersatz : ''].filter(Boolean).join(' · '));
     const name = z.zutat && Z[z.zutat] ? `<a href="#/zutat/${esc(z.zutat)}">${esc(z.text)}</a>` : esc(z.text);
-    const geaendert = z._m && Math.abs(z._m - 1) > 1e-9 ? ` <span class="chip akzent" title="Original: ${esc(fmtMenge(z._orig * f, z.einheit) + ' ' + z.einheit)}">geändert</span>` : '';
+    const geaendert = z._ersatz ? ` <span class="chip akzent" title="Ersatz in deiner Variante">statt ${esc(z._ersatz.original)}</span>${z.naehr_status !== 'berechnet' ? ' <span class="ug">Nährwerte unbekannt</span>' : ''}` : z._m && Math.abs(z._m - 1) > 1e-9 ? ` <span class="chip akzent" title="Original: ${esc(fmtMenge(z._orig * f, z.einheit) + ' ' + z.einheit)}">geändert</span>` : '';
     const knopf = anpassbar && z.menge != null ? `<button class="zeilen-knopf" data-a="anp-start" data-r="${esc(r.id)}" data-i="${zi}" aria-label="Menge von ${esc(z.text)} ändern und Rezept anpassen">${ico('stift', 'klein')}</button>` : '';
     return `<li><span class="menge">${menge}</span><span>${name}${geaendert}</span><span>${status}${knopf}</span>${zus ? `<span class="zus">${esc(zus).replace(/\s*\((?:Vorschlag, )?ungeprüft\)/g, ' <span class="ug">ungeprüft</span>')}</span>` : ''}</li>`;
   }).join('')}</ul>`;
@@ -456,6 +457,7 @@ function schrittFelder(mdText, f, r) {
 }
 function vRezept(id) {
   const r = R[id]; if (!r) return '<p class="leer">Rezept nicht gefunden.</p>';
+  zuletztMerken(r.id);
   const m = r.meta, p = standardPortionen(r), f = faktor(r, p), info = rezeptInfo(r), aus = ausgeschlossen(r), ger = geraeteFehlen(r);
   const fort = D.fortschritt[r.id];
   const inAuswahl = D.auswahl.some(a => a.rezept === r.id);
@@ -475,6 +477,8 @@ function vRezept(id) {
     ${herkunftHtml(r)}<p class="klein">${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p>
     ${ein.herkunft.map(t => md(t)).join('')}
     <p class="leise klein">„Quellengeprüft“ heißt: auf Grundlage gelesener Quellen geschrieben – nicht, dass das Rezept in dieser Form schon gekocht wurde. Mit <span class="ug">ungeprüft</span> markierte Angaben sind eigene Vorschläge ohne direkt gelesene Quelle.</p></details></div>
+  ${persoenlichLeisteHtml(r)}
+  ${rueckmeldungHinweisHtml(r)}
   ${ein.ueberblick.length ? `<div class="ueberblick">${md(ein.ueberblick.join('\n\n'))}</div>` : ''}
   ${vortagHinweisHtml(r)}
   ${aus.length ? `<div class="hinweis gefahr">Passt nicht zu deinem Profil: ${esc(aus.join(', '))}</div>` : ''}
@@ -559,10 +563,14 @@ function vFertig(id) {
     <p class="leise klein" id="rest-info"></p>
     <h3>Vom Vorrat abziehen (Vorschlag)</h3>
     ${abzug.length ? `<p class="leise klein">Nur Zutaten, die im Vorrat stehen. Mengen anpassen oder Haken entfernen.</p><ul class="zliste">${abzug.map((x, ix) => `<li><span class="menge"><input type="number" name="abzug-${ix}" value="${x.menge}" min="0" style="width:5.5em"></span><span>${esc(Z[x.z.zutat].name)} <span class="leise klein">(${esc(x.z.einheit)}; im Vorrat: ${x.v.unbekannt ? 'Menge unbekannt' : zahlDE(x.v.menge) + ' ' + esc(vorratEinheit(x.z.zutat) || '')})</span></span><span><input type="checkbox" name="abzug-an-${ix}" checked aria-label="abziehen"></span></li>`).join('')}</ul>` : '<p class="leise klein">Keine passenden Vorratseinträge – nichts abzuziehen.</p>'}
-    <h3>Kurze Rückmeldung (optional)</h3>
-    <div class="zeile"><label class="feld"><span>Wieder kochen?</span><select name="nochmal"><option value="">–</option><option value="ja">ja</option><option value="vielleicht">vielleicht</option><option value="nein">nein</option></select></label>
-    <label class="feld"><span>Eindruck</span><select name="eindruck"><option value="">–</option>${[1, 2, 3, 4, 5].map(n => `<option>${n}</option>`).join('')}</select></label></div>
-    <label class="feld"><span>Was war schwierig oder anders? (Notiz)</span><textarea name="notiz" rows="2"></textarea></label>
+    <details class="rueckmeldung" open><summary><b>Kurze Rückmeldung</b> <span class="leise klein">– optional, alles darf leer bleiben</span></summary>
+    ${(() => { const sel = (name, titel, liste) => `<label class="feld"><span>${titel}</span><select name="${name}"><option value="">–</option>${liste.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select></label>`;
+      const dauer = fort.start ? Math.round((Date.now() - new Date(fort.start)) / 60000) : ''; const dauerOk = dauer && dauer > 0 && dauer < 600;
+      return `<div class="zeile">${sel('nochmal', 'Wieder kochen?', [['ja', 'ja'], ['vielleicht', 'vielleicht'], ['nein', 'nein']])}${sel('geschmack', 'Geschmack', RM_GESCHMACK)}${sel('konsistenz', 'Konsistenz', RM_KONSISTENZ)}</div>
+      <div class="zeile">${sel('portion', 'Portionsgröße', RM_PORTION)}${sel('schwierigkeit', 'Schwierigkeit', RM_SCHWER)}<label class="feld"><span>Tatsächliche Dauer (Min.)</span><input type="number" name="dauer" min="1" max="600" inputmode="numeric" value="${dauerOk ? dauer : ''}" style="width:6em"><small>${dauerOk ? 'seit Kochstart gemessen – bei Pausen anpassen' : ''}</small></label></div>
+      <label class="feld"><span>Nächstes Mal ändern</span><input name="aenderung" maxlength="200" placeholder="z. B. weniger Honig, mehr Gemüse"></label>
+      <label class="feld"><span>Notiz</span><textarea name="notiz" rows="2"></textarea></label>
+      <p class="leise klein">Die Rückmeldung bleibt bei diesem Kochprotokoll. Das Rezept wird nicht automatisch geändert, und eine schlechte Bewertung wird nicht zur allgemeinen Abneigung. Beim nächsten Öffnen des Rezepts erscheint ein kurzer Hinweis.</p>`; })()}</details>
     ${a ? '<label><input type="checkbox" name="ausAuswahl" checked> aus der Auswahl entfernen</label>' : ''}
     <div class="knopfreihe"><button type="submit" class="haupt">Speichern</button><a class="knopf" href="#/kochen/${esc(r.id)}">Zurück zum Kochen</a></div>
   </form>`;
@@ -590,7 +598,7 @@ vFertig.danach = (id) => {
       abzug.forEach((z, ix) => { if (!form['abzug-an-' + ix] || !form['abzug-an-' + ix].checked) return; let rest = Number(form['abzug-' + ix].value) || 0; abgezogen.push({ zutat: z.zutat, menge: rest, einheit: z.einheit });
         for (const v of d.vorrat.filter(v => v.zutat === z.zutat && v.menge != null && v.menge !== '' && v.einheit === z.einheit).sort((a, b) => (b.geoeffnet ? 1 : 0) - (a.geoeffnet ? 1 : 0))) { const nimm = Math.min(rest, Number(v.menge)); v.menge = Math.round((Number(v.menge) - nimm) * 10) / 10; rest -= nimm; if (rest <= 0) break; }
         d.vorrat = d.vorrat.filter(v => !(v.zutat === z.zutat && v.menge !== null && v.menge !== '' && Number(v.menge) <= 0)); });
-      d.kochprotokolle.push({ id: kid, rezept: r.id, rezept_version: r.meta.version || 1, datum: heute(), portionen_gekocht: g, portionen_direkt_gegessen: e, vorrat_abzug: abgezogen.length ? 'bestaetigt' : 'keiner', abgezogen, nochmal: form.nochmal.value, eindruck: form.eindruck.value, notiz: form.notiz.value, naehr_pro_portion: r.naehrwerte.pro_portion, naehr_status: r.naehrwerte.status, angepasst: r.angepasst ? { mengen: r.angepasst.mengen, portionen: r.angepasst.portionen, beschreibung: r.angepasst.beschreibung } : null });
+      d.kochprotokolle.push({ id: kid, rezept: r.id, rezept_version: r.meta.version || 1, datum: heute(), portionen_gekocht: g, portionen_direkt_gegessen: e, vorrat_abzug: abgezogen.length ? 'bestaetigt' : 'keiner', abgezogen, nochmal: form.nochmal.value, geschmack: form.geschmack.value, konsistenz: form.konsistenz.value, portion: form.portion.value, schwierigkeit: form.schwierigkeit.value, dauer_min: Number(form.dauer.value) || null, aenderung: form.aenderung.value.trim(), notiz: form.notiz.value, variante: r.angepasst && r.angepasst.variante ? r.angepasst.variante : null, naehr_pro_portion: r.naehrwerte.pro_portion, naehr_status: r.naehrwerte.status, angepasst: r.angepasst ? { mengen: r.angepasst.mengen, portionen: r.angepasst.portionen, beschreibung: r.angepasst.beschreibung } : null });
       if (e > 0) { const ein = rezeptEintrag(r, e, 'frisch', { kochprotokoll: kid }); ein.datum = heute(); d.tagebuch.push(ein); }
       if (g - e > 0) { const gr = restGrenze(r, lager); d.restportionen.push({ id: uid('rest'), kochprotokoll: kid, rezept: r.id, rezept_version: r.meta.version || 1, titel: r.titel, portionen: g - e, lagerort: lager, gekocht_am: heute(), verbrauchen_bis: gr.bis, grenze_beleg: gr.beleg, naehr_pro_portion: r.naehrwerte.pro_portion, mikro_pro_portion: r.naehrwerte.mikro_pro_portion || null, status: r.naehrwerte.status }); }
       delete d.fortschritt[r.id];
@@ -634,7 +642,8 @@ function vAuswahl() {
   ${gemeinsam.length ? `<li>Gemeinsame Zutaten: ${esc(gemeinsam.join(', '))} – eine Packung reicht eher für beide.</li>` : ''}
   <li><b>Einkaufsreichweite ≠ Lagerdauer:</b> Rohe Zutaten halten je nach Packungsdatum; fertig Gekochtes hält nur so lange wie unten angegeben.</li>
   ${warnungen.map(w => `<li class="status-nein">${esc(w)}</li>`).join('')}</ul>
-  <div class="knopfreihe"><a class="knopf haupt" href="#/einkauf">🛒 Einkaufsliste</a></div></div>`;
+  ${kostenHtml(D.auswahl.filter(a => R[a.rezept]).map(a => ({ rezept: a.rezept, portionen: a.jetzt + a.vorkochen })), (D.wochenplan && D.wochenplan.einst || {}).budget ?? '', 'beide', true)}
+  <div class="knopfreihe"><a class="knopf haupt" href="#/einkauf">🛒 Einkaufsliste</a>${D.auswahl.filter(a => R[a.rezept]).length >= 2 ? '<a class="knopf" href="#/ablauf">Gemeinsamer Kochablauf</a>' : ''}</div></div>`;
 }
 
 /* ---------- Einkaufsliste ---------- */
@@ -830,7 +839,7 @@ function importiere(obj) {
   if (obj.art === 'fitomat-trainingsplan') return trainingsplanImport(obj);
   if (obj.art !== 'kochschule-export' || !obj.daten || typeof obj.daten.schema !== 'number') throw new Error('Unbekanntes Format (erwartet: kochschule-export).');
   if (obj.daten.schema > SCHEMA) throw new Error('Die Datei stammt von einer neueren App-Version – bitte zuerst die App aktualisieren (Mehr).');
-  const x = aufSchemaBringen(JSON.parse(JSON.stringify(obj.daten))); if (!x) throw new Error('Unbekanntes Datenformat.'); return { text: `Sicherung vom ${String(obj.exportiert_am).slice(0, 16).replace('T', ' ')}: ${x.vorrat.length} Vorrat, ${x.restportionen.length} Restportionen, ${x.tagebuch.length} Tagebucheinträge, ${x.kochprotokolle.length} Kochprotokolle, ${x.auswahl.length} in Auswahl. Ersetzt alle Daten auf diesem Gerät.`, anwenden: d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), x); } };
+  const x = aufSchemaBringen(JSON.parse(JSON.stringify(obj.daten))); if (!x) throw new Error('Unbekanntes Datenformat.'); return { text: `Sicherung vom ${String(obj.exportiert_am).slice(0, 16).replace('T', ' ')}: ${x.vorrat.length} Vorrat, ${x.restportionen.length} Restportionen, ${x.tagebuch.length} Tagebucheinträge, ${x.kochprotokolle.length} Kochprotokolle, ${x.auswahl.length} in Auswahl, ${arr((x.training || {}).einheiten).length} Trainingseinheiten, ${arr((x.training || {}).plaene).length} Trainingspläne, ${Object.values(x.varianten || {}).reduce((s, l) => s + arr(l).length, 0)} Rezeptvarianten, ${arr((x.kochbuch || {}).favoriten).length} Favoriten, ${arr(x.preise).length} Preise. Ersetzt alle Daten auf diesem Gerät.${(D.training && D.training.aktiv) || Object.keys(D.fortschritt || {}).length ? ' Achtung: Ein laufendes Training bzw. ein gespeicherter Kochfortschritt auf diesem Gerät wird dabei durch den Stand der Datei ersetzt.' : ''}`, anwenden: d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), x); } };
 }
 function vDaten() {
   return `<h1>Daten sichern</h1>
