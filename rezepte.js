@@ -7,7 +7,8 @@ const KUECHEN_GRUPPEN = [
   ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch']]],
   ['orient', 'Türkei, Nahost & Nordafrika', [['tuerkisch', 'Türkisch'], ['levantinisch', 'Levantinisch'], ['persisch', 'Persisch'], ['nordafrikanisch', 'Nordafrikanisch']]],
   ['europaeisch', 'Europäisch', [['italienisch', 'Italienisch'], ['griechisch', 'Griechisch'], ['spanisch', 'Spanisch'], ['franzoesisch', 'Französisch'], ['deutsch', 'Deutsch'], ['oesterreichisch', 'Österreichisch'], ['britisch', 'Britisch']]],
-  ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch']]]
+  ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch'], ['peruanisch', 'Peruanisch'], ['brasilianisch', 'Brasilianisch']]],
+  ['afrika', 'Afrika (südlich der Sahara)', [['aethiopisch', 'Äthiopisch'], ['westafrikanisch', 'Westafrikanisch']]]
 ];
 const KUECHE_NAME = {}; const KUECHE_GRUPPE = {};
 KUECHEN_GRUPPEN.forEach(([g, gn, subs]) => { KUECHE_NAME[g] = gn; subs.forEach(([k, n]) => { KUECHE_NAME[k] = n; KUECHE_GRUPPE[k] = g; }); });
