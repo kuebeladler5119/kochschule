@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.20.5';
-const APP_BUILD = '202611122114';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.20.6';
+const APP_BUILD = '202611122149';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -323,39 +323,54 @@ function farbeAnwenden(f) {
 const INTRO_AUS = 'kochschule.intro-aus.v1';
 function introAn() { try { return localStorage.getItem(INTRO_AUS) !== '1'; } catch (e) { return true; } }
 const FISCH_SVG = `<svg class="intro-fisch" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
-  <g class="schwanz"><path d="M84,56 C93,46 101,36 115,29 C112,42 107,50 100,56 C107,62 112,70 115,83 C101,76 93,66 84,56 Z" fill="#3E9B4F"/><path d="M88,56 C96,50 103,43 110,38 C107,46 104,51 99,56 C104,61 107,66 110,74 C103,69 96,62 88,56 Z" fill="#57B565"/></g>
-  <ellipse cx="52" cy="57" rx="38" ry="32" fill="#E3402B"/><path d="M18,66 C26,86 70,95 88,68 C80,82 40,90 18,66 Z" fill="#B92E1E" opacity="0.55"/>
-  <path d="M38,31 C30,46 30,68 39,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.8"/><path d="M66,30 C74,45 74,68 65,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
-  <ellipse cx="44" cy="38" rx="10" ry="5" transform="rotate(-24 44 38)" fill="#fff" opacity="0.38"/>
-  <path d="M52,30 C46,26 38,24 31,26 C38,21 45,21 50,24 C48,18 43,13 38,11 C46,12 51,17 53,23 C56,17 62,13 69,13 C63,17 58,21 56,25 C62,22 70,22 76,26 C69,26 60,27 55,31 Z" fill="#3E9B4F"/>
-  <path d="M52,24 C51,18 53,12 58,8" fill="none" stroke="#2F7D3C" stroke-width="3.2" stroke-linecap="round"/>
-  <path class="flosse" d="M50,68 C55,61 64,61 68,69 C61,73 54,73 50,68 Z" fill="#3E9B4F"/>
-  <circle cx="28" cy="49" r="7.5" fill="#fff"/><circle cx="26.5" cy="49.5" r="3.8" fill="#1f1a17"/><circle cx="25.3" cy="48" r="1.3" fill="#fff"/>
-  <path d="M15,62 Q19,66 24,62" fill="none" stroke="#5a1a10" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+  <g class="schwanz"><path d="M36,56 C27,46 19,36 5,29 C8,42 13,50 20,56 C13,62 8,70 5,83 C19,76 27,66 36,56 Z" fill="#3E9B4F"/><path d="M32,56 C24,50 17,43 10,38 C13,46 16,51 21,56 C16,61 13,66 10,74 C17,69 24,62 32,56 Z" fill="#57B565"/></g>
+  <ellipse cx="68" cy="57" rx="38" ry="32" fill="#E3402B"/><path d="M102,66 C94,86 50,95 32,68 C40,82 80,90 102,66 Z" fill="#B92E1E" opacity="0.55"/>
+  <path d="M82,31 C90,46 90,68 81,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.8"/><path d="M54,30 C46,45 46,68 55,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
+  <ellipse cx="76" cy="38" rx="10" ry="5" transform="rotate(24 76 38)" fill="#fff" opacity="0.38"/>
+  <path d="M68,30 C74,26 82,24 89,26 C82,21 75,21 70,24 C72,18 77,13 82,11 C74,12 69,17 67,23 C64,17 58,13 51,13 C57,17 62,21 64,25 C58,22 50,22 44,26 C51,26 60,27 65,31 Z" fill="#3E9B4F"/>
+  <path d="M68,24 C69,18 67,12 62,8" fill="none" stroke="#2F7D3C" stroke-width="3.2" stroke-linecap="round"/>
+  <path class="flosse" d="M70,68 C65,61 56,61 52,69 C59,73 66,73 70,68 Z" fill="#3E9B4F"/>
+  <circle cx="92" cy="49" r="7.5" fill="#fff"/><circle cx="93.5" cy="49.5" r="3.8" fill="#1f1a17"/><circle cx="94.7" cy="48" r="1.3" fill="#fff"/>
+  <path d="M105,62 Q101,66 96,62" fill="none" stroke="#5a1a10" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+/* Schwimmbahn (Fisch schaut im Ruhezustand nach rechts):
+   A) groß von links nach rechts durchs Bild, in Wellen  ·  B) Wende (dreht sich um)  ·  C) kopfvoran zum Logo-Platz, dabei kleiner
+   D) am Platz umdrehen, sodass er wieder nach rechts schaut. Kopf zeigt immer in Schwimmrichtung, Körper neigt sich mit. */
 function logoIntro() {
   if (!introAn() || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
   try { if (sessionStorage.getItem('fitomat-intro')) return; sessionStorage.setItem('fitomat-intro', '1'); } catch (e) { /* */ }
-  const ziel = document.querySelector('.marke-logo'); if (!ziel || !ziel.animate) return;
+  const ziel = document.querySelector('.marke-logo'); if (!ziel || !window.requestAnimationFrame) return;
   const ov = document.createElement('div'); ov.className = 'intro'; ov.setAttribute('aria-hidden', 'true'); ov.innerHTML = `<div class="intro-bg"></div>${FISCH_SVG}`; document.body.appendChild(ov);
-  const f = ov.querySelector('.intro-fisch'); const W = innerWidth, H = innerHeight; const fw = Math.min(W * 0.62, 300), fh = fw * 100 / 120;
-  f.style.width = fw + 'px'; f.style.height = fh + 'px'; ziel.style.visibility = 'hidden';
-  const r = ziel.getBoundingClientRect(); const s = r.width / fw; const cx = (W - fw) / 2, cy = (H - fh) / 2 - H * 0.06;
-  const dauer = 2800;
-  const bahn = f.animate([
-    { transform: `translate(${-fw - 30}px, ${cy + 50}px) rotate(7deg)`, offset: 0 },
-    { transform: `translate(${cx - W * 0.14}px, ${cy - 18}px) rotate(-6deg)`, offset: 0.28 },
-    { transform: `translate(${cx + W * 0.04}px, ${cy + 14}px) rotate(5deg)`, offset: 0.45 },
-    { transform: `translate(${cx}px, ${cy - 4}px) rotate(-3deg) scale(1.06)`, offset: 0.6 },
-    { transform: `translate(${cx}px, ${cy + 4}px) rotate(2deg) scale(1.06)`, offset: 0.72 },
-    { transform: `translate(${r.left}px, ${r.top}px) rotate(0deg) scale(${s})`, offset: 1 }
-  ], { duration: dauer, easing: 'cubic-bezier(.45,.05,.35,1)', fill: 'forwards' });
-  ov.querySelector('.intro-bg').animate([{ opacity: 1 }, { opacity: 1, offset: 0.74 }, { opacity: 0 }], { duration: dauer, fill: 'forwards' });
-  // ein paar Bläschen vor dem Maul
-  [380, 700, 1050].forEach((t, i) => setTimeout(() => { if (!ov.isConnected) return; const m = f.getBoundingClientRect(); const b = document.createElement('span'); b.className = 'blase'; const g = 8 + i * 4; Object.assign(b.style, { width: g + 'px', height: g + 'px', left: (m.left + m.width * 0.08) + 'px', top: (m.top + m.height * 0.55) + 'px' }); ov.appendChild(b);
-    b.animate([{ transform: 'translate(0,0)', opacity: 0.8 }, { transform: `translate(${-14 - i * 6}px, ${-70 - i * 20}px)`, opacity: 0 }], { duration: 1100, easing: 'ease-out', fill: 'forwards' }); }, t));
-  const ende = () => { ziel.style.visibility = ''; ov.remove(); };
-  bahn.onfinish = ende; ov.addEventListener('click', () => { bahn.finish(); ende(); }, { once: true });
-  setTimeout(() => { if (ov.isConnected) ende(); }, dauer + 1500);   // Sicherheitsnetz
+  const f = ov.querySelector('.intro-fisch'), bg = ov.querySelector('.intro-bg'); const W = innerWidth, H = innerHeight; const fw = Math.min(W * 0.6, 300), fh = fw * 100 / 120;
+  Object.assign(f.style, { width: fw + 'px', height: fh + 'px', transformOrigin: '50% 50%' }); ziel.style.visibility = 'hidden';
+  const r = ziel.getBoundingClientRect(); const s = r.width / fw; const tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+  const cy = H * 0.46, wende = W * 0.64; const dauer = 4600;
+  const sanft = x => 0.5 - Math.cos(Math.PI * Math.min(1, Math.max(0, x))) / 2; const lerp = (a, b, x) => a + (b - a) * x;
+  const lage = u => {   // u: 0…1 → Mittelpunkt, Größe, Blickrichtung (+1 rechts, −1 links)
+    if (u < 0.42) { const a = u / 0.42; return { x: lerp(-fw * 0.7, wende, sanft(a)), y: cy + 22 * Math.sin(a * Math.PI * 2.5), sc: 1, fx: 1 }; }
+    if (u < 0.55) { const b = (u - 0.42) / 0.13; return { x: wende + 16 * Math.sin(b * Math.PI), y: cy - 10 * Math.sin(b * Math.PI), sc: 1, fx: Math.cos(b * Math.PI) }; }
+    if (u < 0.9) { const c = sanft((u - 0.55) / 0.35); const kx = W * 0.32, ky = cy - H * 0.22;   // Bogen nach oben links
+      const x = (1 - c) * (1 - c) * wende + 2 * (1 - c) * c * kx + c * c * tx, y0 = (1 - c) * (1 - c) * cy + 2 * (1 - c) * c * ky + c * c * ty;
+      return { x, y: y0 + 14 * (1 - c) * Math.sin(c * Math.PI * 2.5), sc: lerp(1, s, Math.pow(c, 1.4)), fx: -1 }; }
+    const d = sanft((u - 0.9) / 0.1); return { x: tx, y: ty, sc: s, fx: -Math.cos(d * Math.PI) };
+  };
+  let t0 = null, vor = null, laeuft = true; const blasen = [0.16, 0.27, 0.36, 0.66];
+  const bild = (t) => {
+    if (!laeuft) return; if (t0 == null) t0 = t; const u = Math.min(1, (t - t0) / dauer); const l = lage(u);
+    let rot = 0; if (vor && u < 0.9) { const vx = l.x - vor.x, vy = l.y - vor.y; if (Math.abs(vx) + Math.abs(vy) > 0.3) { const w = Math.atan2(-vy, Math.abs(vx)) * 180 / Math.PI; rot = Math.max(-16, Math.min(16, (l.fx >= 0 ? -w : w) * 0.6)); } }
+    const glatt = vor ? lerp(vor.rot, rot, 0.12) : rot; vor = { x: l.x, y: l.y, rot: glatt };
+    const breiteFx = Math.abs(l.fx) < 0.08 ? 0.08 * Math.sign(l.fx || 1) : l.fx;   // beim Wenden nie ganz flach
+    f.style.transform = `translate(${l.x - fw / 2}px, ${l.y - fh / 2}px) rotate(${glatt * (u >= 0.9 ? 1 - (u - 0.9) / 0.1 : 1)}deg) scale(${l.sc * breiteFx}, ${l.sc})`;
+    bg.style.opacity = u < 0.7 ? 1 : Math.max(0, 1 - (u - 0.7) / 0.22);
+    while (blasen.length && u >= blasen[0]) { blasen.shift(); const g = 7 + Math.random() * 7; const b = document.createElement('span'); b.className = 'blase';
+      Object.assign(b.style, { width: g + 'px', height: g + 'px', left: (l.x + Math.sign(l.fx || 1) * fw * 0.4 * l.sc) + 'px', top: (l.y + fh * 0.05 * l.sc) + 'px' }); ov.appendChild(b);
+      b.animate([{ transform: 'translate(0,0) scale(.6)', opacity: 0.85 }, { transform: `translate(${Math.sign(l.fx || 1) * 10}px, ${-80 - Math.random() * 40}px) scale(1)`, opacity: 0 }], { duration: 1300, easing: 'ease-out', fill: 'forwards' }); }
+    if (u < 1) requestAnimationFrame(bild); else ende();
+  };
+  const ende = () => { if (!laeuft) return; laeuft = false; ziel.style.visibility = ''; ov.remove(); };
+  ov.addEventListener('click', ende, { once: true });
+  requestAnimationFrame(bild);
+  setTimeout(() => { if (t0 == null) ende(); }, 450);   // keine Bilder (z. B. im Hintergrund geöffnet) → nichts verdecken
+  setTimeout(ende, dauer + 2000);   // Sicherheitsnetz
 }
 document.addEventListener('change', ev => { const b = ev.target; if (!b.dataset || b.dataset.a !== 'intro-schalter') return;
   try { if (b.checked) localStorage.removeItem(INTRO_AUS); else localStorage.setItem(INTRO_AUS, '1'); } catch (e) { /* */ } toast(b.checked ? 'Start-Animation an' : 'Start-Animation aus'); });

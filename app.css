@@ -573,8 +573,8 @@ ol.ablauf ul{list-style:none;padding:0}
 .intro { position: fixed; inset: 0; z-index: 9999; overflow: hidden; cursor: pointer; }
 .intro-bg { position: absolute; inset: 0; background: var(--papier); }
 .intro-fisch { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; filter: drop-shadow(0 6px 14px rgba(0,0,0,.18)); }
-.intro-fisch .schwanz { transform-box: view-box; transform-origin: 84px 56px; animation: schwanzschlag .32s ease-in-out infinite alternate; }
-.intro-fisch .flosse { transform-box: view-box; transform-origin: 52px 68px; animation: flossenschlag .5s ease-in-out infinite alternate; }
+.intro-fisch .schwanz { transform-box: view-box; transform-origin: 36px 56px; animation: schwanzschlag .32s ease-in-out infinite alternate; }
+.intro-fisch .flosse { transform-box: view-box; transform-origin: 68px 68px; animation: flossenschlag .5s ease-in-out infinite alternate; }
 @keyframes schwanzschlag { from { transform: rotate(-13deg); } to { transform: rotate(13deg); } }
 @keyframes flossenschlag { from { transform: rotate(-10deg); } to { transform: rotate(14deg); } }
 .intro .blase { position: absolute; border-radius: 50%; border: 2px solid #8ab6df; background: rgba(138,182,223,.15); pointer-events: none; }
