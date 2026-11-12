@@ -1,24 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" role="img" aria-label="Fitomat-Logo: Fischtomate">
   <title>Fitomat – Fischtomate</title>
-  <!-- Schwanzflosse aus zwei Kelchblättern -->
-  <path d="M84,56 C93,46 101,36 115,29 C112,42 107,50 100,56 C107,62 112,70 115,83 C101,76 93,66 84,56 Z" fill="#3E9B4F"/>
-  <path d="M88,56 C96,50 103,43 110,38 C107,46 104,51 99,56 C104,61 107,66 110,74 C103,69 96,62 88,56 Z" fill="#57B565"/>
+  <!-- Schwanzflosse aus zwei Kelchblättern (links, Blick nach rechts) -->
+  <path d="M36,56 C27,46 19,36 5,29 C8,42 13,50 20,56 C13,62 8,70 5,83 C19,76 27,66 36,56 Z" fill="#3E9B4F"/>
+  <path d="M32,56 C24,50 17,43 10,38 C13,46 16,51 21,56 C16,61 13,66 10,74 C17,69 24,62 32,56 Z" fill="#57B565"/>
   <!-- Tomatenkörper = Fischkörper -->
-  <ellipse cx="52" cy="57" rx="38" ry="32" fill="#E3402B"/>
-  <path d="M18,66 C26,86 70,95 88,68 C80,82 40,90 18,66 Z" fill="#B92E1E" opacity="0.55"/>
+  <ellipse cx="68" cy="57" rx="38" ry="32" fill="#E3402B"/>
+  <path d="M102,66 C94,86 50,95 32,68 C40,82 80,90 102,66 Z" fill="#B92E1E" opacity="0.55"/>
   <!-- Tomatenrippen, zugleich Kiemenbogen -->
-  <path d="M38,31 C30,46 30,68 39,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.8"/>
-  <path d="M66,30 C74,45 74,68 65,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
+  <path d="M82,31 C90,46 90,68 81,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.8"/>
+  <path d="M54,30 C46,45 46,68 55,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
   <!-- Glanzlicht -->
-  <ellipse cx="44" cy="38" rx="10" ry="5" transform="rotate(-24 44 38)" fill="#fff" opacity="0.38"/>
+  <ellipse cx="76" cy="38" rx="10" ry="5" transform="rotate(24 76 38)" fill="#fff" opacity="0.38"/>
   <!-- Kelch als Rückenflosse und Stiel -->
-  <path d="M52,30 C46,26 38,24 31,26 C38,21 45,21 50,24 C48,18 43,13 38,11 C46,12 51,17 53,23 C56,17 62,13 69,13 C63,17 58,21 56,25 C62,22 70,22 76,26 C69,26 60,27 55,31 Z" fill="#3E9B4F"/>
-  <path d="M52,24 C51,18 53,12 58,8" fill="none" stroke="#2F7D3C" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M68,30 C74,26 82,24 89,26 C82,21 75,21 70,24 C72,18 77,13 82,11 C74,12 69,17 67,23 C64,17 58,13 51,13 C57,17 62,21 64,25 C58,22 50,22 44,26 C51,26 60,27 65,31 Z" fill="#3E9B4F"/>
+  <path d="M68,24 C69,18 67,12 62,8" fill="none" stroke="#2F7D3C" stroke-width="3.2" stroke-linecap="round"/>
   <!-- Brustflosse als kleines Blatt -->
-  <path d="M50,68 C55,61 64,61 68,69 C61,73 54,73 50,68 Z" fill="#3E9B4F"/>
+  <path d="M70,68 C65,61 56,61 52,69 C59,73 66,73 70,68 Z" fill="#3E9B4F"/>
   <!-- Auge und Mund -->
-  <circle cx="28" cy="49" r="7.5" fill="#fff"/>
-  <circle cx="26.5" cy="49.5" r="3.8" fill="#1f1a17"/>
-  <circle cx="25.3" cy="48" r="1.3" fill="#fff"/>
-  <path d="M15,62 Q19,66 24,62" fill="none" stroke="#5a1a10" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="92" cy="49" r="7.5" fill="#fff"/>
+  <circle cx="93.5" cy="49.5" r="3.8" fill="#1f1a17"/>
+  <circle cx="94.7" cy="48" r="1.3" fill="#fff"/>
+  <path d="M105,62 Q101,66 96,62" fill="none" stroke="#5a1a10" stroke-width="2.4" stroke-linecap="round"/>
 </svg>
