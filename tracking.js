@@ -292,6 +292,7 @@ document.addEventListener('click', ev => {
     case 'tb-edit': tbEdit = v; route(); break;
     case 'tb-edit-ab': tbEdit = null; route(); break;
     case 'tb-tag': tbKopieVon = null; break;
+    case 'tb-fokus': { const s = $('#tb-suche'); if (s) { s.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => s.focus(), 250); } break; }
     case 'tb-suche-setzen': { tbSuche = v; const s = $('#tb-suche'); if (s) s.value = v; const t = $('#tb-treffer'); if (t) t.innerHTML = tbTreffer(); break; }
     case 'tb-kopie-vorschau': tbKopieVon = { slot: v || '' }; route(); { const p = $('#tb-kopie-form'); if (p) p.scrollIntoView({ block: 'center' }); } break;
     case 'tb-kopie-ab': tbKopieVon = null; route(); break;

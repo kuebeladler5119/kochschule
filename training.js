@@ -323,7 +323,7 @@ function trPlanHtml(id) {
       <span><button class="klein still" data-a="tr-pe-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="klein still" data-a="tr-pe-weg" data-v="${i}">entfernen</button></span></div>
       <label class="feld"><span>Wochentag (optional)</span><select data-tr-pe-tag="${i}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n]) => `<option value="${k}" ${pe.tag === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></li>`).join('')}</ol>` : '<p class="leise">Noch keine Einheit im Plan.</p>'}
   <div class="zeile"><label class="feld" style="flex:1 1 200px"><span>Einheit hinzufügen</span><select id="tr-pe-neu"><option value="">– Routine wählen –</option>${t.routinen.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label><button data-a="tr-pe-add" data-v="${esc(p.id)}">hinzufügen</button><button class="still" data-a="tr-pe-neu" data-v="${esc(p.id)}">neue Einheit anlegen</button></div>
-  <div class="knopfreihe">${p.aktiv ? '' : `<button class="haupt" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Als aktiven Plan verwenden</button>`}<button data-a="tr-plan-kopie" data-v="${esc(p.id)}">Als eigene Variante kopieren</button><button class="still" data-a="tr-plan-weg" data-v="${esc(p.id)}">Plan löschen</button></div>
+  <div class="knopfreihe">${p.aktiv ? `<button data-a="tr-plan-inaktiv" data-v="${esc(p.id)}">Deaktivieren</button>` : `<button class="haupt" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Als aktiven Plan verwenden</button>`}<button data-a="tr-plan-kopie" data-v="${esc(p.id)}">Duplizieren (eigene Variante)</button><button class="still" data-a="tr-plan-weg" data-v="${esc(p.id)}">✕ Plan löschen</button></div>
   <p class="leise klein">Die Kopie bekommt eigene Einheiten (Routinen); Änderungen daran lassen das Original und alle gespeicherten Trainings unverändert. Beim Löschen eines Plans bleiben Routinen und Trainingsverlauf erhalten.</p>`;
 }
 
@@ -335,7 +335,10 @@ function trEinheitHtml() {
   return `<div class="seitenkopf"><h1>${esc(e.name)}</h1><span class="leise klein">seit ${esc(new Date(e.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))}</span></div>
   <p class="leise klein">Alles wird sofort gespeichert – du kannst die App schließen und später fortsetzen. ${RIR_TEXT}</p>
   <div class="tr-hilfen">
-    <details class="karte klein"${e.check ? '' : ''}><summary><b>Kurz-Check</b> <span class="leise">(freiwillig)</span>${e.check && (e.check.beschwerden === 'ja' || e.check.kater === 'stark' || e.check.muede === 'erhoeht') ? ' <span class="chip warn">heute vorsichtiger</span>' : ''}</summary>
+    <details class="karte klein"><summary><b>Training beenden oder abbrechen</b></summary>
+      <div class="knopfreihe"><button class="haupt klein" data-a="tr-ende">${ico('haken', 'klein')} Beenden und speichern</button><button class="klein" data-a="tr-verwerfen">✕ Abbrechen – nichts speichern</button></div>
+      <p class="leise klein">„Beenden“ speichert die abgeschlossenen Sätze; offene Sätze zählen nicht. „Abbrechen“ verwirft die ganze Einheit (direkt danach rückgängig machbar). Zum Pausieren einfach die App verlassen – die Einheit bleibt offen.</p></details>
+    <details class="karte klein"><summary><b>Kurz-Check</b> <span class="leise">(freiwillig)</span>${e.check && (e.check.beschwerden === 'ja' || e.check.kater === 'stark' || e.check.muede === 'erhoeht') ? ' <span class="chip warn">heute vorsichtiger</span>' : ''}</summary>
       <div class="zeile">${[['muede', 'Müdigkeit', [['', '–'], ['normal', 'normal'], ['erhoeht', 'ungewöhnlich hoch']]], ['kater', 'Muskelkater', [['', '–'], ['nein', 'keiner'], ['leicht', 'leicht'], ['stark', 'stark']]], ['beschwerden', 'Beschwerden', [['', '–'], ['nein', 'keine'], ['ja', 'ja']]]].map(([k, n, o]) => `<label class="feld"><span>${n}</span><select data-tr-check="${k}">${o.map(([v, t]) => `<option value="${v}" ${((e.check || {})[k] || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`).join('')}</div>
       <p class="leise klein">Nur ein Merker für dich – daraus wird keine Erholungs-„Diagnose“ berechnet. Bei Beschwerden oder starkem Muskelkater schlägt die App heute keine Steigerung vor.</p></details>
     <details class="karte klein"><summary><b>Heute weniger Zeit?</b></summary>
@@ -478,7 +481,8 @@ document.addEventListener('click', ev => {
     case 'tr-plan-neu': { const id = uid('plan'); aendere(null, d => { trDaten(); d.training.plaene.push({ id, name: 'Neuer Plan', art: 'eigen', aktiv: !d.training.plaene.some(p => p.aktiv), erstellt: heute(), einheiten: [] }); }, { neuZeichnen: false }); location.hash = '#/training/plan/' + id; break; }
     case 'tr-plan-aktiv': aendere('Plan aktiv', d => { d.training.plaene.forEach(p => { p.aktiv = p.id === v; }); }); break;
     case 'tr-plan-kopie': { const p = trDaten().plaene.find(x => x.id === v); if (!p) return; let neu; aendere('Kopie angelegt – das Original bleibt unverändert', d => { neu = planKopie(d, p); }, { neuZeichnen: false }); if (neu) location.hash = '#/training/plan/' + neu.id; break; }
-    case 'tr-plan-weg': { const p = trDaten().plaene.find(x => x.id === v); if (!p || !confirm(`Plan „${p.name}“ löschen? Routinen und gespeicherte Trainings bleiben erhalten.`)) return; aendere('Plan gelöscht', d => { d.training.plaene = d.training.plaene.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/training'; break; }
+    case 'tr-plan-inaktiv': aendere('Plan deaktiviert – er bleibt gespeichert', d => { d.training.plaene.forEach(p => { if (p.id === v) p.aktiv = false; }); }); break;
+    case 'tr-plan-weg': { const p = trDaten().plaene.find(x => x.id === v); if (!p) return; aendere('Plan gelöscht – Routinen und Trainings bleiben; Rückgängig möglich', d => { d.training.plaene = d.training.plaene.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/training'; break; }
     case 'tr-pe-hoch': { const pid = location.hash.split('/')[3]; const i = Number(v); aendere(null, d => { const l = d.training.plaene.find(x => x.id === pid).einheiten; [l[i - 1], l[i]] = [l[i], l[i - 1]]; }); break; }
     case 'tr-pe-weg': { const pid = location.hash.split('/')[3]; aendere(null, d => { d.training.plaene.find(x => x.id === pid).einheiten.splice(Number(v), 1); }); break; }
     case 'tr-pe-add': { const sel = $('#tr-pe-neu'); if (!sel || !sel.value) { toast('Bitte eine Routine wählen'); return; } aendere(null, d => { d.training.plaene.find(x => x.id === v).einheiten.push({ routine: sel.value, tag: '' }); }); break; }
@@ -490,7 +494,7 @@ document.addEventListener('click', ev => {
     case 'tr-ende': { const e = trEinheit(); const offen = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => !x.erledigt && x.art === 'arbeit').length, 0);
       if (offen && !confirm(`${offen} Arbeitssätze sind nicht als fertig markiert. Trotzdem beenden? (Sie werden nicht gezählt.)`)) return;
       aendere('Einheit gespeichert', d => { trEinheit().ende = new Date().toISOString(); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break; }
-    case 'tr-verwerfen': if (!confirm('Diese Einheit verwerfen? Rückgängig ist direkt danach möglich.')) return; aendere('Einheit verworfen', d => { d.training.einheiten = d.training.einheiten.filter(x => x.id !== d.training.aktiv); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break;
+    case 'tr-verwerfen': aendere('Training abgebrochen – nichts gespeichert; Rückgängig möglich', d => { d.training.einheiten = d.training.einheiten.filter(x => x.id !== d.training.aktiv); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break;
     case 'tr-kg-weg': aendere('Eintrag gelöscht', d => { d.training.koerpergewicht = d.training.koerpergewicht.filter(x => x.datum !== v); }); break;
   }
 });

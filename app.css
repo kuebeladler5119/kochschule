@@ -341,6 +341,10 @@ body[data-bereich="training"] { --akzent: #3b4f7a; --akzent-hell: #e4e8f3; --akz
 /* Rezeptseite */
 .ueberblick { font-size: 1.02rem; margin: 6px 0 12px; }
 .tb-kompakt { padding: 12px 14px; }
+.weiter-gruppe { display: inline-flex; align-items: stretch; gap: 0; flex: none; }
+.weiter-gruppe .weiter-chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.weiter-x { min-height: 40px; border-radius: 0 999px 999px 0; padding: 4px 12px; font-size: .8rem; background: var(--flaeche); border: 1px solid color-mix(in srgb, var(--akzent) 35%, transparent); border-left: 0; }
+.koch-kopf { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .wahl-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rand); border-radius: 999px; padding: 4px 12px; min-height: 40px; background: var(--flaeche); font-size: .9rem; }
 fieldset { border: 0; padding: 0; margin: 10px 0; } legend { font-weight: 600; font-size: .92rem; margin-bottom: 6px; }
 .tr-hilfen { display: grid; gap: 0; margin-bottom: 6px; }
@@ -355,6 +359,34 @@ fieldset { border: 0; padding: 0; margin: 10px 0; } legend { font-weight: 600; f
 .pausetimer button { min-height: 40px; padding: 4px 14px; }
 #tb-treffer .eintraege li { grid-template-columns: 1fr; }
 #tb-treffer .eintraege li > span:last-child { justify-content: flex-start; flex-wrap: wrap; }
+.gross-plus { width: 100%; min-height: 52px; font-size: 1.05rem; margin: 4px 0 10px; }
+.tg-titel { margin: 14px 0 2px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--leise); font-family: var(--sans); }
+.treffer .tz-name { min-width: 0; overflow-wrap: anywhere; }
+.tz-aktion { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.tz-aktion .menge-feld { margin: 0; } .tz-aktion .menge-feld input { width: 5.5em; }
+.tz-aktion button { min-height: 44px; }
+.einh { color: var(--leise); font-size: .9rem; }
+/* Lange deutsche Wörter, große Zahlen: umbrechen statt überlaufen */
+.eintraege li, .zliste li, .karte, .flaeche, .balken .zeile2, .mahlzeit-kopf { min-width: 0; overflow-wrap: anywhere; }
+.eintraege li > span { min-width: 0; }
+.schnellwahl { flex-wrap: wrap; overflow: visible; }
+.schnellwahl button, .schnellwahl .knopf { white-space: normal; text-align: left; height: auto; max-width: 100%; flex: 0 1 auto; }
+/* Energie-/Makrozeilen: Name und Wert oben, Balken darunter über die volle Breite – nichts wird abgeschnitten */
+.balken .zeile2 { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "name wert" "spur spur"; row-gap: 4px; overflow-wrap: normal; }
+.balken .zeile2 > span:first-child { grid-area: name; white-space: nowrap; }
+.balken .zeile2 .spur { grid-area: spur; }
+.balken .zeile2 .wert { grid-area: wert; white-space: normal; text-align: right; min-width: 0; }
+.balken .ziel-info { text-align: right; }
+.zweispaltig > *, .raster > * { min-width: 0; }
+.schritt-liste .schritt > div { min-width: 0; overflow-wrap: anywhere; }
+.felder { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+@media (max-width: 420px) { .felder { grid-template-columns: minmax(0, 1fr); gap: 0 8px; } .felder dd { margin-bottom: 6px; } }
+.naehr { grid-template-columns: repeat(auto-fit, minmax(min(100%, 4.5em), 1fr)) !important; }
+.kb-suche { flex-wrap: wrap; } .kb-suche .such-feld { flex: 1 1 12em; min-width: 0; } .such-feld input { min-width: 0; width: 100%; }
+.zeile > .feld, .zeile > label { min-width: 0; max-width: 100%; }
+main .filterleiste[aria-label="Neue Einträge zu"] { flex-wrap: wrap; overflow: visible; }
+table.mikro { display: block; max-width: 100%; overflow-x: auto; }
+.stepper output { min-width: 3.5em; text-align: center; white-space: nowrap; }
 .tb-kompakt .balken { gap: 6px; }
 .zeit-davon { flex-basis: 100%; font-size: .84rem; color: var(--leise); margin-top: -2px; }
 .ueberblick > :first-child { margin-top: 0; }

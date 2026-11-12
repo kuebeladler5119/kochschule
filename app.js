@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.12.0';
-const APP_BUILD = '202611112249';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.13.0';
+const APP_BUILD = '202611120747';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -286,7 +286,7 @@ const BEREICH_VON_SEITE = { tagebuch: 'ernaehrung', ziele: 'ernaehrung', produkt
 /* „Weitermachen“: laufendes Kochen, laufendes Training, bald fällige Restportionen */
 function weitermachenHtml() {
   const teile = [];
-  Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a>`); });
+  Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<span class="weiter-gruppe"><a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a><button class="weiter-x" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">✕ abbrechen</button></span>`); });
   if (D.training && D.training.aktiv) teile.push(`<a class="weiter-chip" href="#/training/einheit">${ico('hantel', 'klein')} Training fortsetzen</a>`);
   D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
   return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';
@@ -503,7 +503,8 @@ function vKochen(id) {
   const zeit = (sf.felder.find(x => x[0].startsWith('Zeit')) || [])[1] || '';
   const mz = zeit.match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*Min/);
   const letzter = i === r.schritte.length - 1;
-  return `<div class="koch"><p class="leise klein"><a href="#/rezept/${esc(r.id)}">← ${esc(r.titel)}</a> · ${esc(zahlDE(Number(fort.portionen), 1))} Portionen${f !== 1 || r.angepasst ? ' · Mengen im Schritt umgerechnet' : ''}${r.angepasst ? ` · <b>angepasst:</b> ${esc(r.angepasst.beschreibung || '')} – maßgeblich ist die Zutatenliste` : ''}
+  return `<div class="koch"><div class="koch-kopf"><a class="knopf still klein" href="#/rezept/${esc(r.id)}">${ico('zurueck', 'klein')} Pause – zum Rezept</a><button class="klein" data-a="kochen-abbrechen" data-v="${esc(r.id)}">✕ Kochen abbrechen</button></div>
+  <p class="leise klein">${esc(r.titel)} · ${esc(zahlDE(Number(fort.portionen), 1))} Portionen · Fortschritt wird gespeichert; Abbrechen bucht nichts und zieht keine Zutaten ab${f !== 1 || r.angepasst ? ' · Mengen im Schritt umgerechnet' : ''}${r.angepasst ? ` · <b>angepasst:</b> ${esc(r.angepasst.beschreibung || '')} – maßgeblich ist die Zutatenliste` : ''}
     <span class="kochfarbe" role="group" aria-label="Darstellung im Kochmodus">${[['hell', 'Hell'], ['dunkel', 'Dunkel'], ['system', 'System']].map(([k, n]) => `<button class="klein" data-a="kochfarbe" data-v="${k}" aria-pressed="${((D.einstellungen.kochmodus_farbe || 'hell') === k)}">${n}</button>`).join('')}</span></p>
   <div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / r.schritte.length)}%"></i></div>
   <p class="leise klein">Schritt ${i + 1} von ${r.schritte.length} · ${esc(s.phase || '')}</p>
@@ -885,7 +886,8 @@ document.addEventListener('click', ev => {
       if (a2) aendere(null, () => { const diff = neu - (a2.jetzt + a2.vorkochen); a2.jetzt = Math.max(1, a2.jetzt + diff); }); else { portionenWahl[r.id] = neu; route(); } break; }
     case 'schritt': { const id = location.hash.split('/')[2]; const r = R[decodeURIComponent(id)]; const fo = D.fortschritt[r.id]; fo.schritt = Math.max(0, Math.min(r.schritte.length - 1, fo.schritt + Number(v))); fo.aktualisiert = new Date().toISOString(); speichern(); route(); window.scrollTo(0, 0); break; }
     case 'fertig': location.hash = '#/fertig/' + encodeURIComponent(v); break;
-    case 'fortschritt-weg': aendere('Kochfortschritt verworfen', d => { delete d.fortschritt[v]; }); break;
+    case 'fortschritt-weg': aendere('Kochvorgang abgebrochen – nichts gebucht, keine Zutaten abgezogen', d => { delete d.fortschritt[v]; }); break;
+    case 'kochen-abbrechen': aendere('Kochvorgang abgebrochen – nichts gebucht, keine Zutaten abgezogen', d => { delete d.fortschritt[v]; }, { neuZeichnen: false }); location.hash = '#/rezept/' + encodeURIComponent(v); break;
     case 'timer': { const min = Number(b.dataset.min); timer.push({ id: uid('t'), name: b.dataset.name || 'Timer', ende: Date.now() + min * 60000 }); timerSpeichern(); zeichneTimer(); toast(`Timer ${min} Min. läuft (nur bei geöffneter App zuverlässig)`); break; }
     case 'timer-weg': timer = timer.filter(t => t.id !== v); timerSpeichern(); zeichneTimer(); break;
     case 'timer-plus': { const t = timer.find(x => x.id === v); if (t) { const s = Number(b.dataset.s) || 30; if (t.pausiert != null) t.pausiert += s; else t.ende = Math.max(t.ende, Date.now()) + s * 1000; t.gemeldet = false; timerSpeichern(); zeichneTimer(); } break; }
