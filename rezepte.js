@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121536 */
+/* Fitomat-Build 202611121717 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */

@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121536 */
+/* Fitomat-Build 202611121717 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -82,6 +82,7 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
   let trKcal = 0, palT = 0, trText = 'kein regelmäßiges Training';
   if (tr.art === 'kraft' && tr.n > 0) { trKcal = (3.5 - 1) * p.gewicht * (tr.min / 60) * tr.n / 7; trText = `Krafttraining ${zahlDE(tr.n, 1)} × ${tr.min} Min./Woche: (3,5 − 1) MET × ${p.gewicht} kg × ${zahlDE(tr.min / 60, 2)} h × ${zahlDE(tr.n, 1)} ÷ 7 ≈ +${Math.round(trKcal)} kcal/Tag (Compendium 2024, Code 02054; Ruheanteil abgezogen)`; }
   else if (tr.art === 'ausdauer' && tr.n > 0) { palT = tr.n >= 4 ? 0.3 : 0.15; trKcal = ree * palT; trText = `Ausdauer/anstrengender Sport ${zahlDE(tr.n, 1)}×/Woche: +${palT.toLocaleString('de-DE')} PAL ≈ +${Math.round(trKcal)} kcal/Tag (DGE-Zuschlag${tr.n < 4 ? ', anteilig – eigene Festlegung' : ''})`; }
+  else if ((tr.art === 'kraft' || tr.art === 'ausdauer') && !(tr.n > 0)) trText = 'Trainingsart angegeben, aber ohne Einheiten pro Woche – deshalb nicht angerechnet. Bitte unter „Angaben ändern“ ergänzen';
   else if (tr.art === 'unklar') { const alsKraft = (3.5 - 1) * p.gewicht * (tr.min / 60) * tr.n / 7; const alsAusd = ree * (tr.n >= 4 ? 0.3 : 0.15); trText = `Trainingsart unbekannt (ältere Angabe ohne Art) – deshalb NICHT angerechnet. Als Krafttraining wären es etwa +${Math.round(alsKraft)} kcal/Tag, als Ausdauer etwa +${Math.round(alsAusd)} kcal/Tag. Bitte unter „Angaben ändern“ Art, Einheiten und Minuten eintragen`; }
   const alltagKcal = ree * palA; const gesamt = alltagKcal + trKcal; const pal = Math.round(gesamt / ree * 100) / 100;
   const zf = ZIELE[p.ziel][1]; const abbauKcal = p.ziel === 'abbau' && p.defizit_kcal ? Number(p.defizit_kcal) : null; const abbauStufe = p.ziel === 'abbau' && !abbauKcal ? (p.defizit || 0.10) : null;
@@ -231,6 +232,7 @@ function vZiele() {
     <label><input type="radio" name="modus" value="manuell" ${z.modus === 'manuell' ? 'checked' : ''}><span>Selbst festlegen<small>z. B. aus deinem Fitnessplan</small></span></label>
     <label><input type="radio" name="modus" value="keine" ${(!z.modus || z.modus === 'keine') ? 'checked' : ''}><span>Keine Ziele<small>nur protokollieren</small></span></label></div>
   <p class="klein"><b>Gerade wirksam:</b> ${wirk ? `${wirk.herkunft === 'manuell' ? 'selbst festgelegtes Ziel' : 'berechnete Schätzung'} – ${wirk.kcal != null && wirk.kcal !== '' ? zahlDE(wirk.kcal) + ' kcal' : 'ohne kcal-Ziel'}` : 'keine Ziele'}. Unten getrennt: berechnete Schätzung, selbst festgelegtes Ziel und Schätzung aus deinem Verlauf – keiner überschreibt einen anderen automatisch.</p>
+  ${trainingRueckfrageHtml(false)}
   <h2>1. Berechnete Schätzung</h2>
   ${eingabenHtml(p, b)}
   ${b.ok ? `<div class="flaeche"><div class="naehr"><div><b>${b.kcal.toLocaleString('de-DE')}</b><span>kcal</span></div><div><b>${b.protein}</b><span>g Protein</span></div><div><b>${b.kh}</b><span>g Kohlenh.</span></div><div><b>${b.fett}</b><span>g Fett</span></div></div>
@@ -251,6 +253,17 @@ vZiele.danach = () => { const f = $('#ziel-form'); if (!f) return; f.addEventLis
     e.ziele_verlauf = [...arr(e.ziele_verlauf), { zeit: new Date().toISOString(), ziele: JSON.parse(JSON.stringify(e.ziele || {})), defizit: (e.person || {}).defizit ?? null, defizit_kcal: (e.person || {}).defizit_kcal ?? null }].slice(-10);
     e.ziele = { modus: fd.get('modus') || 'keine', manuell: { kcal: n('m_kcal'), protein: n('m_protein'), kh: n('m_kh'), fett: n('m_fett'), ballaststoffe: n('m_ballaststoffe') }, quelle: fd.get('m_quelle') || '', geaendert_am: heute() };
     const df = fd.get('defizit'); if (df) { const pp = Object.assign({}, e.person); if (df.startsWith('k')) { pp.defizit_kcal = Number(df.slice(1)); } else { pp.defizit = Number(df); delete pp.defizit_kcal; } e.person = pp; } }, { mitUndo: true }); }); };
+/* Ältere Profile ohne Trainingsart (vor 2.19.0 still als Ausdauer gerechnet): sichtbar nachfragen, nichts ohne Bestätigung ändern */
+function trainingRueckfrageHtml(kurz) {
+  const e = D.einstellungen || {}; const p = e.person || {}; if ((e.ziele || {}).modus !== 'auto') return '';
+  const tr = trainingAngaben(p); if (tr.art !== 'unklar' && !(tr.art !== 'keins' && tr.art !== 'leistung' && !(tr.n > 0))) return '';
+  if (tr.art !== 'unklar') return `<div class="hinweis warn klein" role="status"><b>Training ohne Einheiten pro Woche</b> – es wird deshalb nicht angerechnet. <a href="#/einrichtung/2">Einheiten und Minuten eintragen</a></div>`;
+  const b = zielBerechnung(p); if (!b.ok) return '';
+  const alsAusd = Math.round(b.alltagKcal + b.ree * (tr.n >= 4 ? 0.3 : 0.15)); const alsKraft = Math.round(b.alltagKcal + (3.5 - 1) * p.gewicht * tr.n / 7);
+  return `<div class="hinweis warn ${kurz ? 'klein' : ''}" role="status"><b>Bitte Trainingsart bestätigen.</b> Deine Angabe „${esc(TRAINING[p.training] ? TRAINING[p.training][1] : '')}“ hat keine Art. Bis Version 2.18 wurde sie still als Ausdauer gerechnet (Erhalt ≈ ${zahlDE(alsAusd)} kcal). Jetzt wird sie nicht angerechnet (≈ ${zahlDE(Math.round(b.gesamt))} kcal), bis du wählst. Als Krafttraining mit 60 Min. wären es ≈ ${zahlDE(alsKraft)} kcal.
+    <div class="knopfreihe" style="margin-top:8px"><button class="klein" data-a="tr-art-bestaetigen" data-v="kraft">Krafttraining</button><button class="klein" data-a="tr-art-bestaetigen" data-v="ausdauer">Ausdauer / anstrengender Sport</button><a class="knopf klein still" href="#/einrichtung/2">Genauer angeben</a></div>
+    <span class="leise">Deine Angaben werden erst geändert, wenn du hier tippst. Selbst festgelegte Ziele bleiben unberührt.</span></div>`;
+}
 /* Gespeicherte Eingaben der Berechnung sichtbar machen – fehlende werden als fehlend gezeigt, nie ergänzt */
 function eingabenHtml(p, b) {
   const tr = trainingAngaben(p); const f = v => v == null || v === '' ? '<span class="chip warn">fehlt</span>' : esc(String(v));
@@ -388,6 +401,7 @@ function vTagebuch2(datum) {
   return `<div class="tagnav"><button class="klein" data-a="tb-tag" data-v="-1" aria-label="Vortag">${ico('zurueck', 'klein')}</button>
     <strong>${tag === heute() ? 'Heute' : datumDE(tag)}</strong>
     <button class="klein" data-a="tb-tag" data-v="1" aria-label="Nächster Tag" ${tag >= heute() ? 'disabled' : ''}>${ico('weiter', 'klein')}</button></div>
+  ${tag === heute() ? trainingRueckfrageHtml(true) : ''}
   <button class="haupt gross-plus" data-a="tb-fokus">${ico('plus')} Essen hinzufügen</button>
   <div class="flaeche tb-kompakt"><div class="balken">${MAKROS.filter(([k]) => k === 'kcal' || k === 'protein').map(zeileBalken).join('')}</div>
     <p class="klein" style="margin:4px 0 0">${MAKROS.filter(([k]) => k !== 'kcal' && k !== 'protein').map(([k, n, einh]) => `${n} <b>${zahlDE(s[k], 1)}</b>${ziele && ziele[k] ? ' / ' + zahlDE(ziele[k]) : ''} ${einh}`).join(' · ')}</p>

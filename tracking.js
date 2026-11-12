@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121536 */
+/* Fitomat-Build 202611121717 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -338,7 +338,8 @@ function offNormalisieren(p) {
   const fehlt = [['kcal', 'Energie'], ['protein', 'Eiweiß'], ['kh', 'Kohlenhydrate'], ['fett', 'Fett']].filter(([k]) => naehr[k] == null).map(x => x[1]); if (fehlt.length) hinweise.push('fehlt: ' + fehlt.join(', '));
   if (p.nutrition_data_per === 'serving') hinweise.push('Etikettangabe je Portion – Werte je 100 von OFF umgerechnet');
   if (n['energy-kcal_prepared_100g'] != null || n['energy_prepared_100g'] != null) hinweise.push('auch „zubereitet“-Werte vorhanden – verwendet werden die Werte wie verkauft (z. B. Pulver)');
-  if (kcal != null && naehr.protein != null && naehr.kh != null && naehr.fett != null) { const r = naehr.protein * 4 + naehr.kh * 4 + naehr.fett * 9; if (Math.abs(r - kcal) > Math.max(40, kcal * 0.3)) hinweise.push('Energie passt nicht zu Eiweiß/Kohlenhydraten/Fett – Etikett prüfen'); }
+  if (kcal != null && naehr.protein != null && naehr.protein * 4 > kcal * 1.15 + 5) hinweise.push('mehr Energie aus Eiweiß als angegebene Energie – Werte widersprüchlich, Etikett prüfen');
+  else if (kcal != null && naehr.protein != null && naehr.kh != null && naehr.fett != null) { const r = naehr.protein * 4 + naehr.kh * 4 + naehr.fett * 9; if (Math.abs(r - kcal) > Math.max(40, kcal * 0.3)) hinweise.push('Energie passt nicht zu Eiweiß/Kohlenhydraten/Fett – Etikett prüfen'); }
   const menge = String(p.quantity || '').trim(); const ml = /\d\s*(ml|cl|l)\b/i.test(menge) || p.product_quantity_unit === 'ml';
   return { code: String(p.code || ''), name: (p.product_name_de || p.product_name || p.generic_name_de || '').trim(), marke: String(p.brands || '').split(',')[0].trim(), menge, packung: Number(p.product_quantity) || null, packung_einheit: ml ? 'ml' : 'g',
     portion: Number(p.serving_quantity) || null, portion_text: p.serving_size || '', bezug: ml ? '100ml' : '100g', naehr, stand: p.last_modified_t ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10) : null, hinweise,
@@ -358,7 +359,8 @@ function offOnlineSuche(q, sofort) {
 }
 async function offOnlineAbfrage(qn, key, code, seq) {
   const liste = offAufrufe[code ? 'code' : 'suche']; const jetzt = Date.now(); while (liste.length && jetzt - liste[0] > 60000) liste.shift();
-  if (liste.length >= (code ? 12 : 7)) { offOnline.status = 'limit'; offOnline.warte = Math.ceil((60000 - (jetzt - liste[0])) / 1000); offOnlineZeichnen(); return; }
+  /* unter der OFF-Grenze bleiben (Text 10/min, Barcode 15/min), auch wenn ein zweiter Server versucht wird */
+  if (liste.length >= (code ? 12 : 5)) { offOnline.status = 'limit'; offOnline.warte = Math.ceil((60000 - (jetzt - liste[0])) / 1000); offOnlineZeichnen(); return; }
   liste.push(jetzt); offOnline.status = 'laedt'; offOnlineZeichnen();
   const urls = code ? [`https://world.openfoodfacts.org/api/v2/product/${qn}.json?fields=${OFF_FELDER}`]
     : [`https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`, `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`];
@@ -374,7 +376,7 @@ async function offOnlineAbfrage(qn, key, code, seq) {
       const gesehen = new Set(); const treffer = roh.map(offNormalisieren).filter(p => p.name && p.code && !gesehen.has(p.code) && gesehen.add(p.code))   // Dubletten nur über den Barcode
         .map((p, i) => [p, i]).sort((a, b) => (b[0].de - a[0].de) || a[1] - b[1]).map(x => x[0]);   // in Deutschland verkaufte zuerst, sonst Reihenfolge von OFF
       offOnline.ctrl = null; offOnline.status = 'ok'; offOnline.treffer = treffer; offOnline.cache = false; offCache(key, treffer); offOnlineZeichnen(); return;
-    } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return; fehler = e.name === 'AbortError' ? 'keine Antwort nach 12 s' : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'Verbindung fehlgeschlagen (Netz oder Überlastung bei Open Food Facts)' : e.message;
+    } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return; fehler = e.name === 'AbortError' ? 'keine Antwort nach 12 s' : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'keine Verbindung – Open Food Facts ist gerade überlastet oder bremst kurz zu viele Suchen; meist klappt es nach 1–2 Minuten wieder' : e.message;
       if (e.name === 'AbortError') break; }   // nach Zeitüberschreitung keinen zweiten Server probieren – Wartezeit bleibt begrenzt
   }
   offOnline.ctrl = null; offOnline.status = 'fehler'; offOnline.fehler = fehler; offOnlineZeichnen();
@@ -504,6 +506,8 @@ document.addEventListener('click', ev => {
       else { const l = (D.lebensmittel || []).find(x => x.id === v); if (l) k = { name: l.name, menge: eingabe > 0 ? eingabe : (l.portion || 100), einheit: l.bezug === '100ml' ? 'ml' : 'g' }; }
       if (!k) return; tbKorb.push(Object.assign({ typ: t, id: v }, k)); korbNeuZeichnen(); toast(`${k.name} auf der Sammelliste`); break; }
     case 'off-jetzt': offOnlineSuche(tbSuche, true); break;
+    case 'tr-art-bestaetigen': { if (!['kraft', 'ausdauer'].includes(v)) break; const tr = trainingAngaben(D.einstellungen.person || {});
+      aendere(v === 'kraft' ? 'Als Krafttraining gespeichert – Rückgängig möglich' : 'Als Ausdauer gespeichert – Rückgängig möglich', d => { const pp = Object.assign({}, d.einstellungen.person); pp.training_art = v; pp.training_einheiten = tr.n; pp.training_minuten = tr.min || 60; if (v === 'kraft') pp.kraft = true; d.einstellungen.person = pp; }, { mitUndo: true }); break; }
     case 'off-eintragen': case 'off-liste': case 'off-merken': { const p = offOnline.treffer.find(x => x.code === v); if (!p) return; const inp = $(`[data-gramm="off-${v}"]`); const menge = Number(String((inp || {}).value || '').replace(',', '.')) || p.portion || 100; let l;
       if (a === 'off-eintragen') { if (!(menge > 0)) { toast('Bitte eine Menge eingeben'); return; } aendere(`${p.name} eingetragen – Produkt mit Quelle gespeichert`, d => { l = offProduktUebernehmen(d, p); d.tagebuch.push(eigenerEintrag(l, menge)); }); break; }
       aendere(null, d => { l = offProduktUebernehmen(d, p); }, { neuZeichnen: false });
