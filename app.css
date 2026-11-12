@@ -503,3 +503,20 @@ figure.diagramm svg { width: 100%; height: auto; max-width: 560px; display: bloc
 table.verlauf-tabelle { width: 100%; table-layout: fixed; }
 table.verlauf-tabelle td, table.verlauf-tabelle th { white-space: normal; overflow-wrap: anywhere; vertical-align: top; text-align: left; }
 table.verlauf-tabelle td:first-child, table.verlauf-tabelle th:first-child { width: 6.5em; }
+
+/* QR-Übergabe */
+.qr-gross { width: min(100%, 520px); margin: 8px auto; background: #fff; padding: 8px; border-radius: var(--r); }
+.qr-gross svg { width: 100%; height: auto; display: block; }
+
+/* Buchung: Trefferarten und Mengenschnellwahl */
+.tb-arten { margin: 8px 0 4px; }
+.mengen-wahl { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.mengen-wahl button { min-height: 36px; padding: 4px 10px; border: 1px solid var(--linie); }
+
+/* Mehrere Tage planen */
+.pl-gericht { border-top: 1px solid var(--linie); padding-top: 10px; margin-top: 10px; min-width: 0; overflow-wrap: anywhere; }
+.pl-gericht:first-of-type { border-top: 0; margin-top: 0; }
+
+/* Segment-Reiter dürfen umbrechen (3 Reiter im Einkauf, große Schrift) */
+.segment { flex-wrap: wrap; max-width: 100%; }
+.segment a { white-space: normal; text-align: center; min-width: 0; flex: 1 1 auto; }

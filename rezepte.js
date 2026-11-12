@@ -28,13 +28,27 @@ const EIGENSCHAFTEN = [
   ['wenig', 'wenig Aufwand', (r, i) => i.aktiv != null && i.aktiv <= 20 && (i.schwierigkeit || 1) <= 2],
   ['fitness', 'fitnessgeeignet', (r, i) => i.kat.includes('fitness')],
   ['lernen', 'Neues lernen', (r, i) => i.kat.includes('lerngericht')],
-  ['anspruchsvoll', 'anspruchsvoll', (r, i) => i.kat.includes('restaurant') || (i.schwierigkeit || 0) >= 3]
+  ['anspruchsvoll', 'anspruchsvoll', (r, i) => i.kat.includes('restaurant') || (i.schwierigkeit || 0) >= 3],
+  ['eine-pfanne', 'eine Pfanne', r => rezeptGefaesse(r).join() === 'pfanne'],
+  ['ein-topf', 'ein Topf', r => rezeptGefaesse(r).join() === 'topf'],
+  ['ein-blech', 'ein Blech', r => rezeptGefaesse(r).join() === 'backblech'],
+  ['wenig-abwasch', 'wenig Abwasch', r => rezeptGefaesse(r).length <= 1 && arr(r.meta.geraete_noetig).length <= 5],
+  ['wenige-zutaten', 'wenige Zutaten', r => r.zutaten.filter(z => z.bedarf !== 'grundvorrat' && z.bedarf !== 'optional').length <= 7],
+  ['mehrere-portionen', 'gut für mehrere Portionen', r => Number(r.meta.portionen) >= 4 && r.meta.vorkochen_kuehlschrank === 'ja']
 ];
+// Koch- und Backgefäße laut „Geräte nötig“ (Topf, Pfanne, Blech, Auflaufform)
+function rezeptGefaesse(r) { return arr(r.meta.geraete_noetig).filter(g => ['topf', 'pfanne', 'backblech', 'auflaufform'].includes(g)); }
 const EIGENSCHAFT = Object.fromEntries(EIGENSCHAFTEN.map(e => [e[0], e]));
 const EIGENSCHAFT_ERKLAERUNG = {
   proteinreich: 'mind. 20 % der Energie einer Portion aus Protein – Kriterium „hoher Proteingehalt“ der EU-Verordnung 1924/2006, auf die berechnete Portion übertragen',
   guenstig: 'grobe Schätzung nach Zutatenklassen, keine Preise',
-  vegan: 'alle Zutaten laut Zutatennotiz vegan; bei Produkten zählt das Etikett'
+  vegan: 'alle Zutaten laut Zutatennotiz vegan; bei Produkten zählt das Etikett',
+  'eine-pfanne': 'laut „Geräte nötig“ genau ein Garbehälter: eine Pfanne (Schüssel, Messer, Brett zählen nicht)',
+  'ein-topf': 'laut „Geräte nötig“ genau ein Garbehälter: ein Topf',
+  'ein-blech': 'laut „Geräte nötig“ genau ein Garbehälter: ein Backblech',
+  'wenig-abwasch': 'höchstens ein Topf/Pfanne/Blech/Auflaufform und insgesamt höchstens 5 nötige Geräte',
+  'wenige-zutaten': 'höchstens 7 Zutaten ohne Grundvorrat (Salz, Öl …) und ohne optionale',
+  'mehrere-portionen': 'Grundrezept für mindestens 4 Portionen und laut Rezept im Kühlschrank vorkochbar'
 };
 
 /* Prüft die gewählten Filter (ohne persönliche Ausschlüsse). ohne = Filterschlüssel, der für Lockerungsvorschläge weggelassen wird. */
@@ -462,4 +476,131 @@ document.addEventListener('change', ev => {
   if (el.name === 'anp-opt') { anpassDialog.option = el.value; anpassDialog.manuell = {}; anpassVorschauNeu(); }
   else if (el.name === 'anp-port-art') { anpassDialog.portionenArt = el.value; if (el.value === 'mehr') { const r = R[anpassDialog.rid]; const z = r.zutaten[anpassDialog.i]; const F = Number(anpassDialog.neu) / z.menge; anpassDialog.portionen = Math.max(0.5, Math.round(Number(r.meta.portionen) * F * 2) / 2); const inp = $('#anp-port'); if (inp) inp.value = anpassDialog.portionen; } const fe = $('#anp-port-feld'); if (fe) fe.hidden = el.value !== 'mehr'; anpassVorschauNeu(); }
   else if (el.dataset && el.dataset.anpManuell != null) { anpassDialog.manuell[el.dataset.anpManuell] = el.value; anpassVorschauNeu(); }
+});
+
+/* ---------- Mehrere Tage planen: freiwilliger Vorschlag für Kochtermine, Portionen, Lagerung und Einkauf ----------
+   Nichts wird dadurch gekauft, gekocht oder gegessen. Ziele sind Näherungen. Kosten nur aus belegten Preisen – sonst ehrlich „nicht belastbar“.
+   Haltbarkeit fertig gekochter Portionen nur aus den belegten Rezeptangaben (Kühlschrank-Tage, Tiefkühlen ja/nein). */
+const PL_SLOTS = [['fruehstueck', 'Frühstück'], ['mittag', 'Mittagessen'], ['abend', 'Abendessen'], ['snack', 'Snack']];
+const PL_ANTEIL = { fruehstueck: 0.25, mittag: 0.3, abend: 0.3, snack: 0.15 };
+function planEinst() { const p = D.wochenplan || (D.wochenplan = {}); return p.einst || (p.einst = { tage: 7, personen: 1, slots: ['abend'], termine: 3, zwei: false, max_aktiv: 45, wiederholen: 3, einfrieren: true, abwechslung: 'mittel', kuechen: [], budget: '', haendler: 'beide', restportionen: true, ziele: true }); }
+const plArt = slot => slot === 'fruehstueck' ? 'fruehstueck' : slot === 'snack' ? 'snack' : 'haupt';
+function plPasstArt(r, art) { const b = arr(r.meta.bereiche); return art === 'haupt' ? b.includes('hauptgericht') || b.includes('suppe') : b.includes(art); }
+const plHauptzutat = r => { const z = r.zutaten.map(x => Z[x.zutat]).find(z => z && (['fleisch', 'fisch'].includes(z.kategorie) || /tofu|tempeh|linse|kichererbse|bohne|ei$|^ei,/i.test(z.name))); return z ? z.id : ''; };
+function plBewertung(r, c, ziel, gewaehlt) {
+  const m = r.meta, np = r.naehrwerte.pro_portion || {}; let s = 0; const gruende = [];
+  if (arr(m.kategorien).includes('meal_prep')) { s += 3; gruende.push('gut vorzubereiten'); }
+  if (c.kuechen.length && [m.kueche, ...arr(m.kuechen)].some(k => c.kuechen.includes(k))) { s += 3; gruende.push('bevorzugte Küche'); }
+  if (c.budget !== '' && m.kosten_klasse === 'guenstig') { s += 2; gruende.push('eher günstig (Schätzklasse)'); } if (m.kosten_klasse === 'hoeher') s -= 1;
+  const prio = new Set(D.vorrat.filter(v => v.geoeffnet || v.prioritaet === 'hoch' || (v.verbrauchsdatum && tageBis(v.verbrauchsdatum) <= 3)).map(v => v.zutat)); const vorrat = new Set(D.vorrat.map(v => v.zutat));
+  const nutzt = r.zutaten.filter(z => z.zutat && z.bedarf !== 'grundvorrat' && vorrat.has(z.zutat)); if (nutzt.length) { s += nutzt.length + 2 * nutzt.filter(z => prio.has(z.zutat)).length; gruende.push('nutzt Vorrat: ' + [...new Set(nutzt.map(z => Z[z.zutat].name))].slice(0, 3).join(', ')); }
+  if (ziel && np.protein != null) { s -= Math.abs(np.protein - ziel.protein) / 8; if (np.kcal != null) s -= Math.abs(np.kcal - ziel.kcal) / 200; if (np.protein >= ziel.protein * 0.9) gruende.push(`${zahlDE(np.protein)} g Protein je Portion`); }
+  const strafe = { niedrig: 1, mittel: 3, hoch: 6 }[c.abwechslung] || 3;
+  gewaehlt.forEach(g => { if (g.meta.kueche === m.kueche) s -= strafe / 2; if (plHauptzutat(g) && plHauptzutat(g) === plHauptzutat(r)) s -= strafe; });
+  return { s, gruende };
+}
+// Lagerung je Gericht: Portionen über die abgedeckten Tage verteilen (frisch am Kochtag, dann Kühlschrank bis zur belegten Grenze, danach Tiefkühler)
+function plLagerung(r, tage, proTag, c) {
+  const m = r.meta; const kuehl = m.vorkochen_kuehlschrank === 'ja' ? Number(m.kuehl_max_tage) || 0 : 0; const tk = c.einfrieren && m.vorkochen_tiefkuehl === 'ja';
+  const v = { jetzt: 0, kuehl: 0, tk: 0, unmoeglich: 0 };
+  for (let t = 0; t < tage; t++) { if (t === 0) v.jetzt += proTag; else if (t <= kuehl) v.kuehl += proTag; else if (tk) v.tk += proTag; else v.unmoeglich += proTag; }
+  return Object.assign(v, { kuehlTage: kuehl, tkOk: tk });
+}
+function planErstellen(c) {
+  const ziele = c.ziele ? aktuelleZiele() : null; const k = Math.max(1, Math.min(Number(c.termine) || 1, Number(c.tage) || 1)); const tage = Number(c.tage) || 1, pers = Number(c.personen) || 1;
+  const termTag = Array.from({ length: k }, (_, i) => Math.floor(i * tage / k));
+  const gerichte = [], konflikte = [], gewaehlt = [];
+  let rest = c.restportionen ? (D.restportionen || []).filter(p => p.portionen > 0 && (!p.verbrauchen_bis || tageBis(p.verbrauchen_bis) >= 0)).reduce((s, p) => s + Number(p.portionen), 0) : 0; const restGenutzt = rest;
+  ['haupt', 'fruehstueck', 'snack'].forEach(art => {
+    const slots = c.slots.filter(s => plArt(s) === art); if (!slots.length) return;
+    const ziel = ziele && ziele.kcal ? { kcal: Number(ziele.kcal) * slots.reduce((a, s) => a + PL_ANTEIL[s], 0) / slots.length, protein: Number(ziele.protein || 0) * slots.reduce((a, s) => a + PL_ANTEIL[s], 0) / slots.length } : null;
+    const proTermin = art === 'haupt' && c.zwei ? 2 : 1;
+    termTag.forEach((tag, i) => {
+      const tageAbgedeckt = (termTag[i + 1] != null ? termTag[i + 1] : tage) - tag; let bedarf = tageAbgedeckt * slots.length * pers;
+      if (art === 'haupt' && rest > 0) { const n = Math.min(rest, bedarf); rest -= n; bedarf -= n; }
+      if (bedarf <= 0) return;
+      for (let d = 0; d < proTermin; d++) {
+        const portionen = Math.ceil(bedarf / proTermin); const proTag = slots.length * pers / proTermin;
+        const kand = K.rezepte.filter(r => plPasstArt(r, art) && !arr(ausgeschlossen(r)).length && !(geraeteFehlen(r) || []).length && !gewaehlt.includes(r));
+        const zeitOk = kand.filter(r => (Number(r.meta.zeit_aktiv_min) || 999) <= Number(c.max_aktiv));
+        const lagerOk = zeitOk.filter(r => !plLagerung(r, tageAbgedeckt, proTag, c).unmoeglich);
+        const zuOft = proTermin === 1 && tageAbgedeckt > Number(c.wiederholen);   // mit zwei Gerichten je Termin wird abgewechselt
+        const pool = lagerOk.length ? lagerOk : zeitOk;
+        if (!pool.length) { konflikte.push({ art, termin: i, grund: kand.length ? `Kein ${art === 'haupt' ? 'Hauptgericht' : PL_SLOTS.find(s => s[0] === slots[0])[1]} mit höchstens ${c.max_aktiv} Min. aktiver Zeit gefunden.` : 'Keine passenden Rezepte (Ausschlüsse, Geräte).', fix: kand.length ? 'zeit' : '' }); continue; }
+        const best = pool.map(r => Object.assign({ r }, plBewertung(r, c, ziel, gewaehlt))).sort((a, b) => b.s - a.s)[0];
+        gewaehlt.push(best.r);
+        const warn = []; const lag = plLagerung(best.r, tageAbgedeckt, proTag, c);
+        if (zuOft) warn.push(`Dasselbe Gericht ${tageAbgedeckt} Tage lang – mehr als deine ${c.wiederholen} Tage. Mehr Kochtermine oder „zwei Gerichte je Termin“ wählen.`);
+        if (lag.unmoeglich) warn.push(`${lag.unmoeglich} Portionen halten laut Rezept nicht bis zum Verzehrtag (Kühlschrank ${lag.kuehlTage} Tage${c.einfrieren ? ', Tiefkühlen nicht belegt' : ', Einfrieren abgewählt'}).`);
+        gerichte.push({ rezept: best.r.id, art, termin: i, tag, tage: tageAbgedeckt, portionen, proTag, gruende: best.gruende, warn });
+      }
+    });
+  });
+  const ungeplant = PL_SLOTS.filter(([s]) => !c.slots.includes(s)).map(([, n]) => n);
+  return { erstellt: new Date().toISOString(), gerichte, konflikte, ungeplant, rest_genutzt: restGenutzt - rest };
+}
+function planNaehrwerte(plan, c) {
+  const tage = Number(c.tage) || 1, pers = Number(c.personen) || 1; let kcal = 0, protein = 0, luecke = false;
+  plan.gerichte.forEach(g => { const r = R[g.rezept]; const np = r && r.naehrwerte.pro_portion; if (!np || np.kcal == null) { luecke = true; return; } kcal += np.kcal * g.portionen; protein += (np.protein || 0) * g.portionen; if (r.naehrwerte.status !== 'vollstaendig') luecke = true; });
+  return { kcalTag: kcal / tage / pers, proteinTag: protein / tage / pers, luecke };
+}
+function vPlanung() {
+  const c = planEinst(); const plan = D.wochenplan.vorschlag; const ziele = aktuelleZiele();
+  const chk = (name, wert, an, text) => `<label class="wahl-chip"><input type="checkbox" data-pl-liste="${name}" value="${wert}" ${an ? 'checked' : ''}> ${text}</label>`;
+  const zahl = (k, text, min, max, step = 1) => `<label class="feld"><span>${text}</span><input type="number" inputmode="numeric" data-pl="${k}" min="${min}" max="${max}" step="${step}" value="${esc(c[k])}" style="width:6em"></label>`;
+  const kuechen = [...new Set(K.rezepte.map(r => r.meta.kueche).filter(Boolean))].sort();
+  const form = `<details class="karte" ${plan ? '' : 'open'}><summary><b>Vorgaben</b> <span class="leise klein">– ${c.tage} Tage · ${c.personen} Pers. · ${c.termine}× kochen · ${esc(c.slots.map(s => PL_SLOTS.find(x => x[0] === s)[1]).join(', '))}</span></summary>
+    <div class="zeile">${zahl('tage', 'Für wie viele Tage', 1, 14)}${zahl('personen', 'Personen', 1, 8)}${zahl('termine', 'Wie oft kochen', 1, 14)}${zahl('max_aktiv', 'Aktive Zeit je Termin (Min.)', 10, 180, 5)}${zahl('wiederholen', 'Gleiches Gericht höchstens (Tage)', 1, 7)}</div>
+    <p class="klein" style="margin:.4em 0 .2em"><b>Welche Mahlzeiten planen?</b></p><div class="chips-wrap">${PL_SLOTS.map(([k, n]) => chk('slots', k, c.slots.includes(k), n)).join('')}</div>
+    <div class="chips-wrap" style="margin-top:6px">${chk('opt', 'zwei', c.zwei, 'zwei Gerichte je Kochtermin')}${chk('opt', 'einfrieren', c.einfrieren, 'vorkochen und einfrieren ok')}${chk('opt', 'restportionen', c.restportionen, 'vorhandene Restportionen einplanen')}${chk('opt', 'ziele', c.ziele, 'Ernährungsziele berücksichtigen')}</div>
+    <div class="zeile" style="margin-top:6px"><label class="feld"><span>Abwechslung</span><select data-pl="abwechslung">${['niedrig', 'mittel', 'hoch'].map(x => `<option ${c.abwechslung === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label class="feld"><span>Budget € (optional)</span><input type="number" inputmode="decimal" data-pl="budget" min="0" step="1" value="${esc(c.budget)}" style="width:6em"></label>
+      <label class="feld"><span>Händler</span><select data-pl="haendler">${[['beide', 'REWE und Lidl'], ['rewe', 'nur REWE'], ['lidl', 'nur Lidl']].map(([k, n]) => `<option value="${k}" ${c.haendler === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+    <details class="klein"><summary>Bevorzugte Küchen (optional)</summary><div class="chips-wrap">${kuechen.map(k => chk('kuechen', k, c.kuechen.includes(k), esc(KUECHE_NAME[k] || k))).join('')}</div></details>
+    <p class="leise klein">Ausschlüsse, Allergien und deine Geräte aus dem Profil gelten automatisch. Vorrat wird bevorzugt verwendet.</p>
+    <button class="haupt" data-a="pl-erstellen">${plan ? 'Neu vorschlagen' : 'Vorschlag erstellen'}</button></details>`;
+  if (!plan) return `<h1>Mehrere Tage planen</h1>${planTabs('planung')}<p class="leise">Freiwillig: Lass dir Gerichte, Kochtermine, Portionen und Lagerung für einen Zeitraum vorschlagen. Nichts wird dadurch gekauft, gekocht oder gegessen – du übernimmst den Plan erst in die Einkaufsliste, wenn er passt.</p>${form}`;
+  const nw = planNaehrwerte(plan, c); const proTagSlots = c.slots.length;
+  const termine = [...new Set(plan.gerichte.map(g => g.termin))].sort((a, b) => a - b);
+  const kartenHtml = termine.map(t => { const gs = plan.gerichte.map((g, i) => [g, i]).filter(([g]) => g.termin === t); const tag = gs[0][0].tag; const aktiv = gs.reduce((s, [g]) => s + (Number((R[g.rezept] || {}).meta && R[g.rezept].meta.zeit_aktiv_min) || 0), 0);
+    return `<section class="karte"><h2 style="margin-top:0">Kochtermin ${t + 1} · Tag ${tag + 1}</h2><p class="leise klein" style="margin-top:-.4em">aktive Arbeit ca. ${aktiv} Min.${gs.length > 1 ? ' (Gerichte nacheinander; Wartezeiten können sich überlappen)' : ''}</p>
+      ${gs.map(([g, i]) => { const r = R[g.rezept]; if (!r) return ''; const lag = plLagerung(r, g.tage, g.portionen / g.tage, c); const np = r.naehrwerte.pro_portion;
+        return `<div class="pl-gericht"><div class="zeile" style="justify-content:space-between;align-items:flex-start"><span><b><a href="#/rezept/${esc(r.id)}">${esc(kurztitel(r.titel))}</a></b><br><span class="leise klein">${esc((PL_SLOTS.find(s => plArt(s[0]) === g.art && c.slots.includes(s[0])) || ['', 'Mahlzeit'])[1])} · ${r.meta.zeit_aktiv_min || '?'} Min. aktiv · ${np.kcal != null ? zahlDE(np.kcal) + ' kcal, ' + zahlDE(np.protein) + ' g Protein je Portion' : 'Nährwerte unvollständig'}</span></span>
+          <span class="stepper">${g.portionen} Port. <button data-a="pl-port" data-v="${i}" data-d="-1" aria-label="weniger Portionen">−</button><button data-a="pl-port" data-v="${i}" data-d="1" aria-label="mehr Portionen">+</button></span></div>
+          <p class="klein" style="margin:.3em 0">Für ${g.tage} Tag${g.tage > 1 ? 'e' : ''}: ${lag.jetzt ? `<b>${zahlDE(lag.jetzt)}</b> frisch` : ''}${lag.kuehl ? ` · <b>${zahlDE(lag.kuehl)}</b> Kühlschrank (bis ${lag.kuehlTage} Tage, laut Rezept)` : ''}${lag.tk ? ` · <b>${zahlDE(lag.tk)}</b> Tiefkühler` : ''}</p>
+          ${g.gruende.length ? `<p class="leise klein" style="margin:0">Warum: ${esc(g.gruende.join(' · '))}</p>` : ''}${g.warn.map(w => `<p class="hinweis warn klein">${esc(w)}</p>`).join('')}
+          <div class="knopfreihe"><button class="klein" data-a="pl-tausch" data-v="${i}">Anderes Gericht</button>${termine.length > 1 ? `<button class="klein still" data-a="pl-schieben" data-v="${i}">anderer Kochtermin</button>` : ''}<button class="klein still" data-a="pl-weg" data-v="${i}">streichen</button></div></div>`; }).join('')}</section>`; }).join('');
+  const gesamtMz = Number(c.tage) * Number(c.personen) * proTagSlots; const geplantMz = plan.gerichte.reduce((s, g) => s + g.portionen, 0) + (plan.rest_genutzt || 0);
+  const zk = ziele && ziele.kcal ? Number(ziele.kcal) : null;
+  return `<h1>Mehrere Tage planen</h1>${planTabs('planung')}${form}
+    <section class="karte"><h2 style="margin-top:0">Überblick</h2>
+      <p class="klein">${plan.gerichte.length} Gerichte · ${termine.length} Kochtermine · ${geplantMz} von ${gesamtMz} geplanten Mahlzeiten${plan.rest_genutzt ? ` (davon ${plan.rest_genutzt} aus Restportionen)` : ''}.${plan.ungeplant.length ? ` Nicht geplant: ${esc(plan.ungeplant.join(', '))} – bitte selbst einplanen.` : ''}</p>
+      <p class="klein">Geplante Gerichte liefern im Schnitt <b>${zahlDE(nw.kcalTag)} kcal</b> und <b>${zahlDE(nw.proteinTag)} g Protein</b> pro Person und Tag${nw.luecke ? ' (einige Werte unvollständig)' : ''}.${zk ? ` Dein Tagesziel: ${zahlDE(zk)} kcal${ziele.protein ? ', ' + zahlDE(ziele.protein) + ' g Protein' : ''} – Spielraum für Ungeplantes: ca. ${zahlDE(Math.max(0, zk - nw.kcalTag))} kcal.` : ' Ohne Ziele kein Abgleich.'} Ziele sind Näherungen; die Tage müssen nicht gleich aussehen.</p>
+      <p class="klein"><b>Kosten:</b> Für die Zutaten sind noch keine belegten Preise hinterlegt – ${c.budget !== '' ? `die Budgetprüfung (${esc(c.budget)} €) ist deshalb <b>nicht belastbar</b>.` : 'eine Kostenrechnung ist noch nicht möglich.'} Grobe Kostenklassen der Gerichte (Schätzung): ${esc([...new Set(plan.gerichte.map(g => (R[g.rezept] || { meta: {} }).meta.kosten_klasse).filter(Boolean))].map(k => ({ guenstig: 'günstig', mittel: 'mittel', hoeher: 'höher' }[k] || k)).join(', ') || '–')}.</p>
+      ${plan.konflikte.length ? `<div class="hinweis warn klein"><b>Nicht alles erfüllbar:</b><ul>${plan.konflikte.map(k => `<li>Kochtermin ${k.termin + 1}: ${esc(k.grund)}${k.fix === 'zeit' ? ` <button class="klein" data-a="pl-fix-zeit">Aktive Zeit auf ${Number(c.max_aktiv) + 15} Min. erhöhen</button>` : ''}</li>`).join('')}</ul></div>` : ''}</section>
+    ${kartenHtml}
+    <div class="karte"><p class="klein">Übernimmt die Gerichte mit Portionen in „Gerichte“ und die Einkaufsliste (dort wird dein Vorrat abgezogen). Gekauft, gekocht oder gegessen ist damit noch nichts.</p>
+      <div class="knopfreihe"><button class="haupt" data-a="pl-uebernehmen" data-v="ersetzen">In den Einkauf übernehmen</button>${D.auswahl.length ? `<button data-a="pl-uebernehmen" data-v="ergaenzen">zur bisherigen Auswahl hinzufügen</button>` : ''}<button class="still" data-a="pl-verwerfen">Plan verwerfen</button></div></div>`;
+}
+document.addEventListener('change', ev => { const el = ev.target; if (!el.dataset) return;
+  if (el.dataset.pl) { const k = el.dataset.pl; aendere(null, () => { const c = planEinst(); c[k] = el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value; }, { neuZeichnen: false }); }
+  else if (el.dataset.plListe) { const k = el.dataset.plListe; aendere(null, () => { const c = planEinst(); if (k === 'opt') c[el.value] = el.checked; else { const l = new Set(arr(c[k])); if (el.checked) l.add(el.value); else l.delete(el.value); c[k] = [...l]; } }, { neuZeichnen: false }); } });
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-a^="pl-"]'); if (!b) return; const a = b.dataset.a, i = Number(b.dataset.v); const c = planEinst(); const plan = D.wochenplan.vorschlag;
+  switch (a) {
+    case 'pl-erstellen': if (!c.slots.length) { toast('Bitte mindestens eine Mahlzeit wählen'); return; } aendere('Vorschlag erstellt – nichts gekauft oder gebucht', () => { D.wochenplan.vorschlag = planErstellen(c); }); break;
+    case 'pl-fix-zeit': aendere('Aktive Zeit erhöht, neu vorgeschlagen', () => { c.max_aktiv = Number(c.max_aktiv) + 15; D.wochenplan.vorschlag = planErstellen(c); }); break;
+    case 'pl-port': aendere(null, () => { const g = plan.gerichte[i]; g.portionen = Math.max(1, g.portionen + Number(b.dataset.d)); }); break;
+    case 'pl-weg': aendere('Gericht gestrichen – Rückgängig möglich', () => { plan.gerichte.splice(i, 1); }); break;
+    case 'pl-schieben': aendere(null, () => { const g = plan.gerichte[i]; const ts = [...new Set(plan.gerichte.map(x => x.termin))].sort((x, y) => x - y); const n = ts[(ts.indexOf(g.termin) + 1) % ts.length]; const ziel = plan.gerichte.find(x => x.termin === n); g.termin = n; g.tag = ziel.tag; }); break;
+    case 'pl-tausch': { const g = plan.gerichte[i]; const benutzt = new Set(plan.gerichte.map(x => x.rezept)); const abgelehnt = new Set([...(g.abgelehnt || []), g.rezept]);
+      const kand = K.rezepte.filter(r => plPasstArt(r, g.art) && !arr(ausgeschlossen(r)).length && !(geraeteFehlen(r) || []).length && !benutzt.has(r.id) && !abgelehnt.has(r.id) && (Number(r.meta.zeit_aktiv_min) || 999) <= Number(c.max_aktiv));
+      const ziele = c.ziele ? aktuelleZiele() : null; const ziel = ziele && ziele.kcal ? { kcal: Number(ziele.kcal) * 0.3, protein: Number(ziele.protein || 0) * 0.3 } : null;
+      const best = kand.map(r => Object.assign({ r }, plBewertung(r, c, ziel, plan.gerichte.filter((x, j) => j !== i).map(x => R[x.rezept]).filter(Boolean)))).sort((x, y) => y.s - x.s)[0];
+      if (!best) { toast('Kein weiteres passendes Gericht – Vorgaben lockern'); return; }
+      aendere(`Getauscht: ${kurztitel(best.r.titel)}`, () => { g.abgelehnt = [...abgelehnt]; g.rezept = best.r.id; g.gruende = best.gruende; const lag = plLagerung(best.r, g.tage, g.portionen / g.tage, c); g.warn = lag.unmoeglich ? [`${lag.unmoeglich} Portionen halten laut Rezept nicht bis zum Verzehrtag.`] : []; }); break; }
+    case 'pl-verwerfen': aendere('Plan verworfen – Rückgängig möglich', () => { delete D.wochenplan.vorschlag; }); break;
+    case 'pl-uebernehmen': { const neu = plan.gerichte.filter(g => R[g.rezept]).map(g => { const jetzt = Math.min(g.portionen, Math.max(1, Math.round(g.proTag || g.portionen / g.tage))); /* frisch am Kochtag, der Rest wird vorgekocht */ return { rezept: g.rezept, jetzt, vorkochen: g.portionen - jetzt, plan: true }; });
+      aendere(`${neu.length} Gerichte im Einkauf – gekauft oder gekocht ist noch nichts`, d => { if (b.dataset.v === 'ersetzen') d.auswahl = []; neu.forEach(n => { const vorh = d.auswahl.find(x => x.rezept === n.rezept); if (vorh) { vorh.jetzt += n.jetzt; vorh.vorkochen += n.vorkochen; } else d.auswahl.push(n); }); d.planung.tage = Number(c.tage) || d.planung.tage; }, { neuZeichnen: false }); location.hash = '#/auswahl'; break; }
+  }
 });

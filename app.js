@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.16.1';
-const APP_BUILD = '202611121117';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.17.0';
+const APP_BUILD = '202611121301';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -293,9 +293,9 @@ function weitermachenHtml() {
   D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
   return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';
 }
-function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a></div>`; }
+function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/planung" aria-selected="${akt === 'planung'}">Mehrere Tage planen</a><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a></div>`; }
 /* ---------- Drei Hauptbereiche: Food · Training · Mobility – mit Unterreitern und Fortsetzen-Anzeige ---------- */
-const FOOD_SEITEN = ['entdecken', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
+const FOOD_SEITEN = ['entdecken', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'planung', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
 function hauptBereich(seite) { return FOOD_SEITEN.includes(seite) ? 'food' : seite === 'training' ? 'training' : seite === 'mobility' ? 'mobility' : ''; }
 const UNTERREITER = {
   food: [['entdecken', '#/entdecken', 'Kochbuch'], ['tagebuch', '#/tagebuch', 'Tagebuch'], ['einkauf', '#/auswahl', 'Einkauf'], ['vorrat', '#/vorrat', 'Vorrat']],
@@ -304,9 +304,9 @@ const UNTERREITER = {
 };
 function kopfLeiste(seite, a) {
   const haupt = hauptBereich(seite);
-  const zeigeReiter = (haupt === 'food' && ['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'vorrat'].includes(seite)) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a)));
+  const zeigeReiter = (haupt === 'food' && ['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'planung', 'vorrat'].includes(seite)) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a)));
   if (!zeigeReiter) return '';
-  const akt = haupt === 'food' ? (seite === 'auswahl' ? 'einkauf' : seite) : (a || '');
+  const akt = haupt === 'food' ? (seite === 'auswahl' || seite === 'planung' ? 'einkauf' : seite) : (a || '');
   const nAusw = D.auswahl.length;
   return `${seite === 'kochen' ? '' : weitermachenHtml()}<nav class="unterreiter" aria-label="${haupt === 'food' ? 'Food' : haupt === 'training' ? 'Training' : 'Mobility'}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
 }
@@ -325,7 +325,7 @@ function route() {
   if (route.letzte && location.hash !== route.letzte) { scrollPos[route.letzte] = window.scrollY; if (typeof tbEdit !== 'undefined') tbEdit = null; if (typeof anpassDialog !== 'undefined' && anpassDialog && !location.hash.includes(anpassDialog.rid)) anpassDialog = null; }
   if (seite === 'entdecken') { try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(filterZustand)); } catch (e) { /* */ } }
   const app = $('#app');
-  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility };
+  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, planung: vPlanung };
   const fn = views[seite] || vEntdecken;
   app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);

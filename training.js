@@ -97,7 +97,7 @@ function vTraining(teil, id) {
       ${naechste != null && naechste !== heutig ? `<p style="margin:.4em 0">Nächste in der Reihenfolge: <b>${esc(rn(ap.einheiten[naechste].routine))}</b> ${startKnopf(naechste, heutig < 0)}</p>` : ''}
       <ul class="eintraege">${ap.einheiten.map((pe, i) => `<li><span>${pe.tag ? `<span class="chip">${esc((WOCHENTAGE.find(w => w[0] === pe.tag) || [])[1] || '')}</span> ` : ''}<a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}</a></span><span>${startKnopf(i, false)}</span></li>`).join('')}</ul>
       <p class="leise klein">Verpasste Einheiten zählen nicht als erledigt – du startest einfach die passende als Nächstes.</p></div>`
-    : `<p class="leise">Kein Plan aktiv. Ein Plan fasst mehrere Einheiten zusammen – mit Wochentagen oder flexibel in Reihenfolge.</p>`}
+    : `<p class="leise">Kein Plan aktiv. Ein Plan fasst mehrere Einheiten zusammen – mit Wochentagen oder flexibel in Reihenfolge.</p>${t.plaene.some(p => p.art === 'historisch') ? '' : '<p><a class="knopf haupt" href="#/training/plaene">Eigenen Plan übernehmen (QR-Code oder Plan-Code)</a></p>'}`}
   ${t.plaene.filter(p => !p.aktiv).length ? `<p class="klein">Weitere Pläne: ${t.plaene.filter(p => !p.aktiv).map(p => `<a href="#/training/plan/${esc(p.id)}">${esc(p.name)}</a>`).join(' · ')}</p>` : ''}
   <div class="knopfreihe"><button data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button><a class="knopf still" href="#/training/einrichtung">Einrichtung und Planvorschläge</a><a class="knopf still" href="#/training/cardio">Cardio</a></div>
   <details class="karte klein"><summary><b>Pausentimer und Vorschläge</b></summary>
@@ -304,7 +304,113 @@ function trEinrichtungHtml() {
 }
 
 /* ---------- Pläne und Verlauf (Unterreiter im Training) ---------- */
-let trImportObj = null;
+let trImportObj = null; let trImportCode = '';
+/* ---------- Plan-Code: private Übergabe ohne Datei ----------
+   Kompakter, komprimierter Plan im Link-Fragment (#/plan-import/…) oder als kopierbarer Text „FITOMAT-PLAN1:…“.
+   Das Fragment wird vom Browser nie an den Server gesendet; die App entfernt es sofort aus der Adresse und der Verlaufsseite.
+   Es wird nichts hochgeladen und nichts gespeichert, bevor du in der Vorschau „Plan übernehmen“ tippst. */
+const PLANCODE_PREFIX = 'FITOMAT-PLAN1:';
+const AW_ERSTE = [{ pct: 50, wdh: '8–10' }, { pct: 70, wdh: '5' }, { pct: 80, wdh: '1–2' }], AW_WEITERE = [{ pct: 50, wdh: '6–8' }];
+function planKompaktErweitern(k) {
+  if (!k || k.v !== 1 || !Array.isArray(k.d)) throw new Error('Unbekannter oder beschädigter Plan-Code.');
+  return { art: 'fitomat-trainingsplan', schema: 1, import_id: k.id, unerwuenschte_uebungen: arr(k.x), plan: { name: k.n, art: k.a || 'eigen', hinweis: k.h || (k.a === 'historisch' ? 'Originalplan übernommen. Gewichte sind historische Startwerte, keine bestätigten Leistungen.' : '') },
+    einstellungen: { aufwaermen_text: k.w || 'Erste Übung: ca. 50 % × 8–10, 70 % × 5, 80 % × 1–2. Weitere Übungen: ca. 50 % × 6–8. Persönliche Vorgehensweise; Gewichte werden auf die Gewichtsschritte des Geräts gerundet.' }, uebungen: [],
+    routinen: k.d.map(([key, name, ex]) => ({ key, name, uebungen: ex.map(([id, s, kg, fl, va, gh, no, wv, wb]) => Object.assign({ uebung: id, aufwaerm: fl & 2 ? 3 : 1, aufwaerm_schema: fl & 2 ? AW_ERSTE : AW_WEITERE, saetze: s || null, wdh_von: wv || 10, wdh_bis: wb || wv || 10, pause_s: 150, ziel_rir: 'ca. 1–2' },
+      kg ? { referenz_kg: kg } : {}, s ? {} : { saetze_offen: true }, fl & 1 ? { je_seite: true } : {}, fl & 4 ? { optional: true } : {}, va ? { variante: va } : {}, gh ? { gewicht_hinweis: gh } : {}, no ? { notiz: no } : {})) })),
+    einheiten: k.d.map(([key]) => ({ routine: key, tag: WOCHENTAGE.some(w => w[0] === key) ? key : '' })) };
+}
+// Umkehrung (für die lokale Erzeugung eines Codes aus einer Plan-Datei): eigene Übungen werden auf Bibliotheksübungen abgebildet
+function planKompakt(obj) {
+  const map = trImportZuordnung(obj); const def = id => arr(obj.uebungen).find(u => u.id === id) || {};
+  return { v: 1, id: obj.import_id, n: obj.plan.name, a: obj.plan.art, x: arr(obj.unerwuenschte_uebungen),
+    d: obj.routinen.map(r => [r.key, r.name, r.uebungen.map(x => { const d = def(x.uebung); const e = [map[x.uebung] || x.uebung, x.saetze_offen ? 0 : (Number(x.saetze) || 0), x.referenz_kg || 0, (x.je_seite ? 1 : 0) | (arr(x.aufwaerm_schema).length > 1 ? 2 : 0) | (x.optional ? 4 : 0), x.variante || (map[x.uebung] ? d.bibliothek_variante || '' : ''), x.gewicht_hinweis || '', x.notiz || '', x.wdh_von !== 10 ? x.wdh_von : 0, x.wdh_bis !== x.wdh_von ? x.wdh_bis : 0];
+      while (e.length > 4 && !e[e.length - 1]) e.pop(); return e; })]) };
+}
+const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function planCodeErzeugen(obj) { const daten = new TextEncoder().encode(JSON.stringify(planKompakt(obj))); const z = new Uint8Array(await new Response(new Blob([daten]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); let s = ''; for (let i = 0; i < z.length; i += 8192) s += String.fromCharCode(...z.subarray(i, i + 8192)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+async function planCodeLesen(text) {
+  const t = String(text || '').trim(); if (t.startsWith('{')) { const o = JSON.parse(t); return o.v === 1 ? planKompaktErweitern(o) : o; }
+  const m = t.match(/(?:FITOMAT-PLAN1:|plan-import\/)([A-Za-z0-9_-]+)/) || t.match(/^([A-Za-z0-9_-]{40,})$/); if (!m) throw new Error('Kein Plan-Code gefunden.');
+  if (!('DecompressionStream' in window)) throw new Error('Dieser Browser kann den Plan-Code nicht entpacken (auf dem iPhone ab iOS 16.4).');
+  const b = m[1].replace(/-/g, '+').replace(/_/g, '/'); const bin = Uint8Array.from(atob(b + '==='.slice((b.length + 3) % 4)), c => c.charCodeAt(0));
+  const txt = await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  trImportCode = m[1]; return planKompaktErweitern(JSON.parse(txt));
+}
+/* ---------- QR-Code (eigene Umsetzung nach ISO/IEC 18004, Byte-Modus, Fehlerkorrektur L/M) – läuft nur lokal, ohne fremde Dienste ---------- */
+const QR_ECC = { L: [-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30], M: [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28] };
+const QR_BLOECKE = { L: [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25], M: [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49] };
+const QR_FORMAT_BITS = { L: 1, M: 0 };
+const qrRohModule = v => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+const qrDatenCw = (v, e) => Math.floor(qrRohModule(v) / 8) - QR_ECC[e][v] * QR_BLOECKE[e][v];
+const qrMul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z & 0xFF; };
+function qrDivisor(grad) { const r = new Array(grad).fill(0); r[grad - 1] = 1; let root = 1; for (let i = 0; i < grad; i++) { for (let j = 0; j < r.length; j++) { r[j] = qrMul(r[j], root); if (j + 1 < r.length) r[j] ^= r[j + 1]; } root = qrMul(root, 2); } return r; }
+function qrRest(daten, div) { const r = new Array(div.length).fill(0); for (const b of daten) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= qrMul(c, f); }); } return r; }
+const qrAusrichtung = v => { if (v === 1) return []; const n = Math.floor(v / 7) + 2; const groesse = v * 4 + 17; const schritt = v === 32 ? 26 : Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2; const r = [6]; for (let p = groesse - 7; r.length < n; p -= schritt) r.splice(1, 0, p); return r; };
+function qrMaske(m, x, y) { switch (m) { case 0: return (x + y) % 2 === 0; case 1: return y % 2 === 0; case 2: return x % 3 === 0; case 3: return (x + y) % 3 === 0; case 4: return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0; case 5: return x * y % 2 + x * y % 3 === 0; case 6: return (x * y % 2 + x * y % 3) % 2 === 0; default: return ((x + y) % 2 + x * y % 3) % 2 === 0; } }
+function qrErzeugen(text, stufe = 'L') {
+  const bytes = Array.from(new TextEncoder().encode(text)); let v = 1;
+  for (; v <= 40; v++) if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= qrDatenCw(v, stufe) * 8) break;
+  if (v > 40) throw new Error('Zu viele Daten für einen QR-Code.');
+  const bits = []; const add = (wert, n) => { for (let i = n - 1; i >= 0; i--) bits.push((wert >>> i) & 1); };
+  add(4, 4); add(bytes.length, v < 10 ? 8 : 16); bytes.forEach(b => add(b, 8));
+  const kap = qrDatenCw(v, stufe) * 8; add(0, Math.min(4, kap - bits.length)); add(0, (8 - bits.length % 8) % 8);
+  for (let p = 0xEC; bits.length < kap; p ^= 0xEC ^ 0x11) add(p, 8);
+  const daten = []; for (let i = 0; i < bits.length; i += 8) daten.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+  // Fehlerkorrektur je Block, dann verschränken
+  const nb = QR_BLOECKE[stufe][v], ecl = QR_ECC[stufe][v], roh = Math.floor(qrRohModule(v) / 8); const kurz = nb - roh % nb, kurzLen = Math.floor(roh / nb); const div = qrDivisor(ecl);
+  const bloecke = []; for (let i = 0, k = 0; i < nb; i++) { const d = daten.slice(k, k + kurzLen - ecl + (i < kurz ? 0 : 1)); k += d.length; const e = qrRest(d, div); if (i < kurz) d.push(0); bloecke.push(d.concat(e)); }
+  const cw = []; for (let i = 0; i < bloecke[0].length; i++) bloecke.forEach((b, j) => { if (i !== kurzLen - ecl || j >= kurz) cw.push(b[i]); });
+  const n = v * 4 + 17; const m = Array.from({ length: n }, () => new Array(n).fill(false)); const fn = Array.from({ length: n }, () => new Array(n).fill(false));
+  const setz = (x, y, d) => { m[y][x] = d; fn[y][x] = true; };
+  for (let i = 0; i < n; i++) { setz(6, i, i % 2 === 0); setz(i, 6, i % 2 === 0); }
+  [[3, 3], [n - 4, 3], [3, n - 4]].forEach(([cx, cy]) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy; if (x >= 0 && x < n && y >= 0 && y < n) { const d = Math.max(Math.abs(dx), Math.abs(dy)); setz(x, y, d !== 2 && d !== 4); } } });
+  const ap = qrAusrichtung(v); ap.forEach((a, i) => ap.forEach((b, j) => { if ((i === 0 && j === 0) || (i === 0 && j === ap.length - 1) || (i === ap.length - 1 && j === 0)) return; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) setz(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); }));
+  const formatBits = maske => { const d = QR_FORMAT_BITS[stufe] << 3 | maske; let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); return ((d << 10) | r) ^ 0x5412; };
+  const formatSetzen = maske => { const f = formatBits(maske); const g = i => ((f >>> i) & 1) === 1;
+    for (let i = 0; i <= 5; i++) setz(8, i, g(i)); setz(8, 7, g(6)); setz(8, 8, g(7)); setz(7, 8, g(8)); for (let i = 9; i < 15; i++) setz(14 - i, 8, g(i));
+    for (let i = 0; i < 8; i++) setz(n - 1 - i, 8, g(i)); for (let i = 8; i < 15; i++) setz(8, n - 15 + i, g(i)); setz(8, n - 8, true); };
+  formatSetzen(0);
+  if (v >= 7) { let r = v; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25); const vb = v << 12 | r; for (let i = 0; i < 18; i++) { const bit = ((vb >>> i) & 1) === 1; const a = n - 11 + i % 3, b = Math.floor(i / 3); setz(a, b, bit); setz(b, a, bit); } }
+  // Datenmodule im Zickzack setzen
+  let i = 0; for (let rechts = n - 1; rechts >= 1; rechts -= 2) { if (rechts === 6) rechts = 5; for (let vert = 0; vert < n; vert++) for (let j = 0; j < 2; j++) { const x = rechts - j; const hoch = ((rechts + 1) & 2) === 0; const y = hoch ? n - 1 - vert : vert; if (!fn[y][x] && i < cw.length * 8) { m[y][x] = ((cw[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; } } }
+  // Maske mit geringster Strafe wählen (Regeln 1, 2 und 4)
+  const strafe = g => { let p = 0; for (let a = 0; a < n; a++) for (const zeile of [true, false]) { let lauf = 1; for (let b = 1; b <= n; b++) { const w = b < n && (zeile ? g[a][b] === g[a][b - 1] : g[b][a] === g[b - 1][a]); if (w) lauf++; else { if (lauf >= 5) p += lauf - 2; lauf = 1; } } }
+    for (let y = 0; y < n - 1; y++) for (let x = 0; x < n - 1; x++) { const c = g[y][x]; if (c === g[y][x + 1] && c === g[y + 1][x] && c === g[y + 1][x + 1]) p += 3; }
+    const dunkel = g.reduce((s, z) => s + z.filter(Boolean).length, 0); p += Math.floor(Math.abs(dunkel * 20 - n * n * 10) / (n * n)) * 10; return p; };
+  let beste = null, bestP = Infinity, bestM = 0;
+  for (let mk = 0; mk < 8; mk++) { formatSetzen(mk); const g = m.map((z, y) => z.map((d, x) => fn[y][x] ? d : d !== qrMaske(mk, x, y))); const p = strafe(g); if (p < bestP) { bestP = p; beste = g; bestM = mk; } }
+  formatSetzen(bestM); const end = m.map((z, y) => z.map((d, x) => fn[y][x] ? d : d !== qrMaske(bestM, x, y)));
+  return { module: end, version: v, maske: bestM, stufe, funktion: fn, codewoerter: cw };
+}
+// Gegenprobe: Module zurücklesen, entmasken, Blöcke trennen, Reed-Solomon-Syndrome prüfen und Text zurückgewinnen
+function qrPruefen(q, stufe) {
+  const n = q.module.length, v = q.version; const bits = []; for (let rechts = n - 1; rechts >= 1; rechts -= 2) { if (rechts === 6) rechts = 5; for (let vert = 0; vert < n; vert++) for (let j = 0; j < 2; j++) { const x = rechts - j; const hoch = ((rechts + 1) & 2) === 0; const y = hoch ? n - 1 - vert : vert; if (!q.funktion[y][x]) bits.push(q.module[y][x] !== qrMaske(q.maske, x, y) ? 1 : 0); } }
+  const roh = Math.floor(qrRohModule(v) / 8); const cw = []; for (let i = 0; i < roh; i++) cw.push(bits.slice(i * 8, i * 8 + 8).reduce((a, b) => (a << 1) | b, 0));
+  const nb = QR_BLOECKE[stufe][v], ecl = QR_ECC[stufe][v]; const kurz = nb - roh % nb, kurzLen = Math.floor(roh / nb); const bl = Array.from({ length: nb }, () => []); let k = 0;
+  for (let i = 0; i < kurzLen + 1; i++) for (let j = 0; j < nb; j++) { if (i === kurzLen - ecl && j < kurz) continue; if (k < cw.length) bl[j].push(cw[k++]); }
+  const exp = [1]; for (let i = 1; i < 255; i++) exp.push(qrMul(exp[i - 1], 2));
+  const syndromOk = bl.every(b => { for (let s = 0; s < ecl; s++) { let r = 0; for (const c of b) r = qrMul(r, exp[s]) ^ c; if (r) return false; } return true; });
+  const daten = bl.flatMap(b => b.slice(0, b.length - ecl)); const db = []; daten.forEach(c => { for (let i = 7; i >= 0; i--) db.push((c >>> i) & 1); });
+  const lies = (a, l) => db.slice(a, a + l).reduce((x, y) => (x << 1) | y, 0); const len = lies(4, v < 10 ? 8 : 16); const st = 4 + (v < 10 ? 8 : 16); const out = []; for (let i = 0; i < len; i++) out.push(lies(st + i * 8, 8));
+  return { syndromOk, modus: lies(0, 4), text: new TextDecoder().decode(new Uint8Array(out)) };
+}
+function qrSvg(q, rand = 4) { const n = q.module.length; let p = ''; q.module.forEach((z, y) => z.forEach((d, x) => { if (d) p += `M${x + rand},${y + rand}h1v1h-1z`; })); return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + 2 * rand} ${n + 2 * rand}" shape-rendering="crispEdges" role="img" aria-label="QR-Code"><rect width="100%" height="100%" fill="#fff"/><path d="${p}" fill="#000"/></svg>`; }
+// Gespeicherten Plan als Übergabe-Objekt (für QR/Plan-Code) – nur lokal, nichts wird gesendet
+function planAlsUebergabe(p) {
+  const t = trDaten(); const rs = p.einheiten.map((pe, i) => ({ pe, r: t.routinen.find(x => x.id === pe.routine), i })).filter(x => x.r);
+  return { art: 'fitomat-trainingsplan', import_id: p.import_id || ('plan-' + p.id), plan: { name: p.name, art: p.art || 'eigen' }, unerwuenschte_uebungen: arr((t.einrichtung || {}).unerwuenscht), uebungen: [],
+    routinen: rs.map(({ pe, r, i }) => ({ key: pe.tag || ('e' + (i + 1)), name: r.name, uebungen: r.uebungen.map(x => Object.assign({}, x, { referenz_kg: x.referenz_kg || x.start_kg || 0 })) })), einheiten: [] };
+}
+let trQrAnzeige = null;
+const appVomHomeBildschirm = () => !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+// Übergabelink: Fragment sofort aus Adresse und Verlauf entfernen, dann Vorschau unter Training → Pläne zeigen (nichts wird automatisch übernommen)
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#/plan-import/')) planImportAusAdresse(); });
+planImportAusAdresse();
+async function planImportAusAdresse() { const h = location.hash; if (!h.startsWith('#/plan-import/')) return; const code = h.slice('#/plan-import/'.length);
+  history.replaceState(null, '', location.pathname + location.search + '#/training/plaene');
+  await new Promise(r => document.readyState === 'complete' ? r() : addEventListener('load', r, { once: true }));   // App vollständig geladen
+  try { trImportObj = await planCodeLesen('plan-import/' + code); trainingsplanImport(trImportObj); } catch (err) { trImportObj = null; trImportCode = ''; setTimeout(() => toast('Plan-Code nicht lesbar: ' + err.message), 500); }
+  if (typeof route === 'function') route(); setTimeout(() => { const k = document.getElementById('tr-import'); if (k) k.scrollIntoView({ block: 'start' }); }, 300); }
 function trImportVorschauHtml(obj) {
   let plan; try { plan = trainingsplanImport(obj); } catch (err) { return `<p class="hinweis warn klein">${esc(err.message)}</p>`; }
   const ab = arr(obj.einheiten).map(pe => pe.tag); const map = trImportZuordnung(obj);
@@ -320,11 +426,12 @@ function trPlaeneHtml() {
   <h2>Meine Pläne</h2>
   ${aktiv.length ? `<ul class="eintraege">${aktiv.map(zeile).join('')}</ul>` : '<p class="leise">Noch kein Plan. Importiere deinen eigenen Plan, lege einen neuen an oder lass dir einen vorschlagen.</p>'}
   <div class="knopfreihe"><button class="haupt" data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button><a class="knopf" href="#/training/einrichtung">Vorschläge nach deinen Angaben</a></div>
-  <section class="karte" id="tr-import"><h2 style="margin-top:0">Eigenen Plan importieren</h2>
-    <p class="klein">Für deine private Plan-Datei (z. B. <code>trainingsplan-import.json</code>). Der Import <b>ergänzt</b> nur: vorhandene Pläne, Trainings, Mahlzeiten und Vorräte bleiben unverändert, ein doppelter Import wird erkannt. Vor der Übernahme siehst du eine Vorschau; danach ist Rückgängig möglich. Die Datei wird nur auf diesem Gerät gelesen und nirgends hochgeladen.</p>
-    <label class="feld"><span>Datei wählen</span><input type="file" id="tr-import-datei" accept="application/json,.json,text/plain"></label>
-    <details class="klein"><summary>oder Text einfügen</summary><textarea id="tr-import-text" rows="4" style="width:100%"></textarea><button class="klein" data-a="tr-import-text">Prüfen</button></details>
-    ${trImportObj ? trImportVorschauHtml(trImportObj) : ''}</section>
+  <section class="karte" id="tr-import"><h2 style="margin-top:0">Eigenen Plan übernehmen</h2>
+    <p class="klein">Per <b>Übergabe-QR-Code</b> (mit der iPhone-Kamera scannen), per <b>Plan-Code</b> aus der Zwischenablage oder als Datei. Die Übernahme <b>ergänzt</b> nur: vorhandene Pläne, Trainings, Mahlzeiten und Vorräte bleiben unverändert, ein doppelter Import wird erkannt. Vor der Übernahme siehst du eine Vorschau; danach ist Rückgängig möglich. Nichts wird hochgeladen.</p>
+    ${trImportObj ? trImportVorschauHtml(trImportObj) + (trImportCode && !appVomHomeBildschirm() ? `<div class="hinweis klein"><b>Nutzt du Fitomat als App vom Home-Bildschirm?</b> Die hat auf dem iPhone einen eigenen Speicher. Dann hier nicht übernehmen, sondern: <button class="klein" data-a="tr-code-kopieren">Plan-Code kopieren</button> → Fitomat vom Home-Bildschirm öffnen → Training → Pläne → „Plan-Code einfügen“.</div>` : '') : ''}
+    <div class="knopfreihe"><button class="haupt" data-a="tr-code-einfuegen">Plan-Code einfügen</button></div>
+    <details class="klein"><summary>Code von Hand einfügen oder Datei wählen</summary><textarea id="tr-import-text" rows="3" style="width:100%" placeholder="FITOMAT-PLAN1:… oder Inhalt einer Plan-Datei"></textarea><button class="klein" data-a="tr-import-text">Prüfen</button>
+      <label class="feld"><span>Plan-Datei wählen</span><input type="file" id="tr-import-datei" accept="application/json,.json,text/plain"></label></details></section>
   ${archiv.length ? `<details class="karte"><summary>Archivierte Pläne (${archiv.length})</summary><ul class="eintraege">${archiv.map(zeile).join('')}</ul></details>` : ''}
   <h2>Einzelne Routinen</h2>
   ${t.routinen.length ? `<ul class="eintraege">${t.routinen.map(r => `<li><span><a href="#/training/routine/${esc(r.id)}">${esc(r.name)}</a><br><span class="leise klein">${r.uebungen.length} Übungen</span></span></li>`).join('')}</ul>` : '<p class="leise">Keine.</p>'}`;
@@ -595,7 +702,7 @@ function trainingsplanImport(obj) {
   if (schon) return { doppelt: true, etwasNeu: fehlendNein.length > 0, text: `„${obj.plan.name}“ wurde bereits importiert – es wird nichts doppelt angelegt.${fehlendNein.length ? ' Nur die Liste unerwünschter Übungen für Vorschläge wird ergänzt.' : ''}`, anwenden: d => { if (!fehlendNein.length) return; const t = d.training; t.einrichtung = Object.assign({}, t.einrichtung); t.einrichtung.unerwuenscht = [...new Set([...arr(t.einrichtung.unerwuenscht), ...fehlendNein])]; } };
   const map = trImportZuordnung(obj);
   const neueUeb = arr(obj.uebungen).filter(u => !map[u.id] && !alleUebungen().some(x => x.id === u.id));
-  return { text: `${obj.routinen.length} Einheiten, ${obj.routinen.reduce((s, r) => s + r.uebungen.length, 0)} Übungseinträge, ${Object.keys(map).length} Übungen aus der Bibliothek zugeordnet, ${neueUeb.length} als eigene Übung angelegt. Startgewichte sind historische Angaben – sie werden vorausgefüllt, aber nicht als Leistung gespeichert. Vorhandene Pläne, Trainings, Mahlzeiten und Vorräte bleiben unverändert.`,
+  return { text: `${obj.routinen.length} Einheiten, ${obj.routinen.reduce((s, r) => s + r.uebungen.length, 0)} Übungseinträge${Object.keys(map).length ? `, ${Object.keys(map).length} Übungen aus der Bibliothek zugeordnet` : ''}${neueUeb.length ? `, ${neueUeb.length} als eigene Übung angelegt` : ''}. Startgewichte sind historische Angaben – sie werden vorausgefüllt, aber nicht als Leistung gespeichert. Vorhandene Pläne, Trainings, Mahlzeiten und Vorräte bleiben unverändert.`,
     anwenden: d => { const t = d.training || (d.training = { uebungen: [], routinen: [], einheiten: [], aktiv: null, koerpergewicht: [] }); t.plaene = t.plaene || []; t.einstellungen = t.einstellungen || { auto_pause: true, ton: true };
       neueUeb.forEach(u => t.uebungen.push(JSON.parse(JSON.stringify(u))));
       const ids = {}; obj.routinen.forEach(r => { const id = uid('rou'); ids[r.key] = id; t.routinen.push({ id, name: r.name, historisch: obj.plan.art === 'historisch', import_id: obj.import_id, uebungen: JSON.parse(JSON.stringify(r.uebungen)).map(x => { const def = arr(obj.uebungen).find(u => u.id === x.uebung); if (map[x.uebung]) { if (!x.variante && def && def.bibliothek_variante) x.variante = def.bibliothek_variante; x.uebung = map[x.uebung]; } return x; }) }); });
@@ -621,7 +728,12 @@ function trPlanHtml(id) {
       <label class="feld"><span>Wochentag (optional)</span><select data-tr-pe-tag="${i}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n]) => `<option value="${k}" ${pe.tag === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       ${(() => { const r = t.routinen.find(x => x.id === pe.routine); return r && r.uebungen.length ? `<details class="klein"><summary>Übungen (${r.uebungen.length}) mit Anleitung</summary><ul class="anl-liste">${r.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}${x.variante ? ` <span class="leise">· ${esc(x.variante)}</span>` : ''}</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul></details>` : ''; })()}</li>`).join('')}</ol>` : '<p class="leise">Noch keine Einheit im Plan.</p>'}
   <div class="zeile"><label class="feld" style="flex:1 1 200px"><span>Einheit hinzufügen</span><select id="tr-pe-neu"><option value="">– Routine wählen –</option>${t.routinen.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label><button data-a="tr-pe-add" data-v="${esc(p.id)}">hinzufügen</button><button class="still" data-a="tr-pe-neu" data-v="${esc(p.id)}">neue Einheit anlegen</button></div>
-  <div class="knopfreihe">${p.aktiv ? `<button data-a="tr-plan-inaktiv" data-v="${esc(p.id)}">Deaktivieren</button>` : `<button class="haupt" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Als aktiven Plan verwenden</button>`}<button data-a="tr-plan-kopie" data-v="${esc(p.id)}">Duplizieren (eigene Variante)</button>${p.archiviert ? `<button data-a="tr-plan-zurueck" data-v="${esc(p.id)}">Aus dem Archiv holen</button>` : `<button data-a="tr-plan-archiv" data-v="${esc(p.id)}">Archivieren</button>`}<button class="still" data-a="tr-plan-weg" data-v="${esc(p.id)}">✕ Plan löschen</button></div>
+  <div class="knopfreihe">${p.aktiv ? `<button data-a="tr-plan-inaktiv" data-v="${esc(p.id)}">Deaktivieren</button>` : `<button class="haupt" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Als aktiven Plan verwenden</button>`}<button data-a="tr-plan-kopie" data-v="${esc(p.id)}">Duplizieren (eigene Variante)</button><button data-a="tr-plan-qr" data-v="${esc(p.id)}">Auf anderes Gerät übertragen (QR)</button>${p.archiviert ? `<button data-a="tr-plan-zurueck" data-v="${esc(p.id)}">Aus dem Archiv holen</button>` : `<button data-a="tr-plan-archiv" data-v="${esc(p.id)}">Archivieren</button>`}<button class="still" data-a="tr-plan-weg" data-v="${esc(p.id)}">✕ Plan löschen</button></div>
+  ${trQrAnzeige && trQrAnzeige.id === p.id ? `<section class="karte" id="tr-qr"><h2 style="margin-top:0">Auf anderes Gerät übertragen</h2>
+    <p class="hinweis warn klein"><b>Privat:</b> Der Code enthält diesen Plan mit Startgewichten. Nur mit dem eigenen Gerät scannen, nicht fotografieren oder teilen.</p>
+    <div class="qr-gross">${trQrAnzeige.svg}</div>
+    <p class="klein">Mit der Kamera des anderen Geräts scannen → Fitomat öffnet sich mit einer Vorschau unter Training → Pläne. Der Plan steht nur im Teil der Adresse nach „#“, der nicht an den Server gesendet wird.</p>
+    <div class="knopfreihe"><button class="klein" data-a="tr-qr-kopieren">Plan-Code kopieren</button><button class="klein still" data-a="tr-qr-zu">Ausblenden</button></div></section>` : ''}
   <p class="leise klein">Die Kopie bekommt eigene Einheiten (Routinen); Änderungen daran lassen das Original und alle gespeicherten Trainings unverändert. Beim Löschen eines Plans bleiben Routinen und Trainingsverlauf erhalten.</p>`;
 }
 
@@ -1099,11 +1211,18 @@ document.addEventListener('click', ev => {
     case 'tr-plan-aktiv': aendere('Plan aktiv', d => { d.training.plaene.forEach(p => { p.aktiv = p.id === v; }); }); break;
     case 'tr-plan-kopie': { const p = trDaten().plaene.find(x => x.id === v); if (!p) return; let neu; aendere('Kopie angelegt – das Original bleibt unverändert', d => { neu = planKopie(d, p); }, { neuZeichnen: false }); if (neu) location.hash = '#/training/plan/' + neu.id; break; }
     case 'tr-plan-inaktiv': aendere('Plan deaktiviert – er bleibt gespeichert', d => { d.training.plaene.forEach(p => { if (p.id === v) p.aktiv = false; }); }); break;
-    case 'tr-import-text': { const tx = ($('#tr-import-text') || {}).value || ''; try { trImportObj = JSON.parse(tx); trainingsplanImport(trImportObj); } catch (err) { trImportObj = null; toast('Nicht lesbar: ' + err.message); } route(); break; }
-    case 'tr-import-ab': trImportObj = null; route(); break;
-    case 'tr-import-ok': { const obj = trImportObj; if (!obj) return; let plan; try { plan = trainingsplanImport(obj); } catch (err) { toast(err.message); return; } trImportObj = null; zwischenstand('vor Plan-Import');
+    case 'tr-import-text': { const tx = ($('#tr-import-text') || {}).value || ''; (async () => { try { trImportCode = ''; trImportObj = await planCodeLesen(tx); trainingsplanImport(trImportObj); } catch (err) { trImportObj = null; toast('Nicht lesbar: ' + err.message); } route(); })(); break; }
+    case 'tr-code-einfuegen': (async () => { let tx = ''; try { tx = await navigator.clipboard.readText(); } catch (err) { toast('Kein Zugriff auf die Zwischenablage – Code bitte unten von Hand einfügen'); const d = $('#tr-import details'); if (d) d.open = true; return; }
+      try { trImportCode = ''; trImportObj = await planCodeLesen(tx); trainingsplanImport(trImportObj); } catch (err) { trImportObj = null; toast('In der Zwischenablage ist kein gültiger Plan-Code'); } route(); })(); break;
+    case 'tr-code-kopieren': (async () => { try { await navigator.clipboard.writeText(PLANCODE_PREFIX + trImportCode); toast('Plan-Code kopiert – jetzt Fitomat vom Home-Bildschirm öffnen'); } catch (err) { toast('Kopieren nicht möglich'); } })(); break;
+    case 'tr-import-ab': trImportObj = null; trImportCode = ''; route(); break;
+    case 'tr-import-ok': { const obj = trImportObj; if (!obj) return; let plan; try { plan = trainingsplanImport(obj); } catch (err) { toast(err.message); return; } trImportObj = null; trImportCode = ''; zwischenstand('vor Plan-Import');
       aendere(plan.doppelt ? 'Ergänzungen übernommen' : `„${obj.plan.name}“ importiert – Rückgängig möglich`, plan.anwenden, { neuZeichnen: false });
       const p = trDaten().plaene.find(x => x.import_id === obj.import_id); location.hash = p ? '#/training/plan/' + p.id : '#/training/plaene'; route(); break; }
+    case 'tr-plan-qr': { const p = trDaten().plaene.find(x => x.id === v); if (!p) return; (async () => { try { const code = await planCodeErzeugen(planAlsUebergabe(p)); const url = location.origin + location.pathname + '#/plan-import/' + code; const q = qrErzeugen(url, 'L'); const pr = qrPruefen(q, 'L'); if (!pr.syndromOk || pr.text !== url) throw new Error('Gegenprobe fehlgeschlagen');
+      trQrAnzeige = { id: p.id, svg: qrSvg(q), code }; route(); setTimeout(() => { const k = $('#tr-qr'); if (k) k.scrollIntoView({ block: 'start' }); }, 100); } catch (err) { toast('QR-Code nicht möglich: ' + err.message); } })(); break; }
+    case 'tr-qr-zu': trQrAnzeige = null; route(); break;
+    case 'tr-qr-kopieren': (async () => { try { await navigator.clipboard.writeText(PLANCODE_PREFIX + trQrAnzeige.code); toast('Plan-Code kopiert'); } catch (err) { toast('Kopieren nicht möglich'); } })(); break;
     case 'tr-plan-archiv': aendere('Plan archiviert – unter „Archivierte Pläne“', d => { const p = d.training.plaene.find(x => x.id === v); if (p) { p.archiviert = true; p.aktiv = false; } }); break;
     case 'tr-plan-zurueck': aendere('Plan wieder in „Meine Pläne“', d => { const p = d.training.plaene.find(x => x.id === v); if (p) delete p.archiviert; }); break;
     case 'tr-plan-weg': { const p = trDaten().plaene.find(x => x.id === v); if (!p) return; aendere('Plan gelöscht – Routinen und Trainings bleiben; Rückgängig möglich', d => { d.training.plaene = d.training.plaene.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/training'; break; }

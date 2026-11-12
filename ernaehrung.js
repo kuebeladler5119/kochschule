@@ -312,6 +312,28 @@ function lebensmittelEintrag(z, menge, einheit = 'g') {
   if (ml) { e.dichte = d; e.dichte_basis = z.dichte ? (z.dichte_quelle || 'belegte Dichte') : 'Näherung 1 g/ml (keine belegte Dichte)'; }
   eintragSkalieren(e, menge * d); return e;
 }
+/* Oberbegriffe für Markenprodukte (Suchwort → Produktart); nur für die Suche, keine Werteübertragung */
+const istProt = p => /protein/i.test(`${p.name} ${p.linie || ''} ${p.variante || ''}`);
+const MARKEN_OBERBEGRIFFE = { proteinmilch: p => p.kategorie === 'getraenk' && istProt(p), proteindrink: p => p.kategorie === 'getraenk' && istProt(p), proteinshake: p => p.kategorie === 'getraenk' && istProt(p) || p.kategorie === 'proteinpulver',
+  proteinpulver: p => p.kategorie === 'proteinpulver', eiweisspulver: p => p.kategorie === 'proteinpulver', whey: p => p.kategorie === 'proteinpulver', proteinriegel: p => p.kategorie === 'riegel', proteinpudding: p => p.kategorie === 'dessert' && istProt(p),
+  hafermilch: p => p.kategorie === 'pflanzendrink' && /hafer/i.test(p.name), sojamilch: p => p.kategorie === 'pflanzendrink' && /soja/i.test(p.name), pflanzenmilch: p => p.kategorie === 'pflanzendrink' };
+/* Kuratierte Markenprodukte aus dem Katalog: Werte des konkreten Produkts (Hersteller-/Händlerangabe), nie als allgemeiner Wert */
+const markeName = p => `${p.marke ? p.marke + ' ' : ''}${p.name}${p.variante ? ' – ' + p.variante : ''}`;
+const PRODUKT = id => (K.produkte || []).find(p => p.id === id);
+function markenEintrag(p, menge) {
+  const e = eigenerEintrag({ id: p.id, name: markeName(p), naehr: p.naehr || {}, bezug: p.bezug, quelle: { hersteller: 'Herstellerangabe', haendler: 'Händlerangabe', verpackung: 'Verpackungsangabe' }[p.quelle_art] || 'Produktangabe', quelle_datum: p.abgerufen, pruefstatus: p.pruefstatus }, menge);
+  e.quelle = 'marke'; e.produkt = p.id; delete e.lebensmittel; return e;
+}
+// Mengen-Schnellwahl: nur belegte Mengen (Packung, Abtropfgewicht, Herstellerportionen)
+function mengenWahlHtml(id, typ, p) {
+  const opt = []; const einh = p.bezug === '100ml' ? 'ml' : 'g'; const pe = p.packung_einheit || einh;
+  // Packung in ml, Werte je 100 g (oder umgekehrt): Menge wird 1:1 übernommen und so gekennzeichnet
+  const packText = pe === einh ? `${zahlDE(p.packung)} ${einh}` : `${zahlDE(p.packung)} ${pe}, als ≈ ${zahlDE(p.packung)} ${einh} gerechnet`;
+  if (Number(p.packung) > 0) { opt.push([`Packung (${packText})`, p.packung]); opt.push([`½ Packung`, Math.round(p.packung / 2)]); }
+  if (Number(p.abtropf) > 0) opt.push([`abgetropft (${zahlDE(p.abtropf)} g)`, p.abtropf]);
+  arr(p.portionen).forEach(x => opt.push([`${x.name} (${zahlDE(x.menge)} ${einh})`, x.menge]));
+  return opt.length ? `<span class="mengen-wahl">${opt.map(([n, m]) => `<button type="button" class="klein still" data-a="tb-menge-setzen" data-v="${esc(id)}" data-m="${m}">${esc(n)}</button>`).join('')}</span>` : '';
+}
 function eigenerEintrag(l, gramm) {
   const naehr = {}; ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz'].forEach(k => { naehr[k] = l.naehr[k] == null ? null : l.naehr[k] / 100; });
   const e = { id: uid('mz'), datum: tbDatum || heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'eigen', lebensmittel: l.id, titel: l.name + (l.marke ? ' (' + l.marke + ')' : ''), gramm, einheit: l.bezug === '100ml' ? 'ml' : 'g', naehr, mikro: null, status: Object.values(l.naehr).some(v => v == null) ? 'unvollstaendig' : 'vollstaendig', datenquelle: (l.quelle || 'eigene Angabe') + (l.quelle_datum ? ', Stand ' + l.quelle_datum : ''), mahlzeit: neuerEintragSlot(), produkt_version: l.version || 1, produkt_pruefstatus: l.pruefstatus || 'ungeprueft' };
@@ -340,6 +362,7 @@ function vTagebuch2(datum) {
   <h2 id="tb-hinzufuegen">Essen hinzufügen</h2>
   <div class="zeile"><label class="such-feld" style="flex:1 1 220px"><span class="sr-only">Suchen: Rezept, Lebensmittel, eigenes Produkt</span>${ico('suche', 'klein')}<input id="tb-suche" type="search" enterkeyhint="search" value="${esc(tbSuche)}" placeholder="Lebensmittel, Rezept oder Produkt" autocomplete="off"></label></div>
   ${slotWahlHtml()}
+  <div id="tb-standard">${standardListeHtml()}</div>
   <div id="tb-korb">${korbHtml()}</div>
   <div id="tb-treffer">${tbTreffer()}</div>
   ${rest.length ? `<h4>Restportionen</h4><div class="schnellwahl">${rest.map(p => `<button class="klein" data-a="rest-essen" data-v="${esc(p.id)}" data-p="1">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))} · 1 Portion</button>${p.portionen >= 0.5 ? `<button class="klein still" data-a="rest-essen" data-v="${esc(p.id)}" data-p="0.5" aria-label="halbe Portion ${esc(kurztitel(p.titel))}">½</button>` : ''}`).join('')}</div>` : ''}
@@ -360,26 +383,35 @@ const TB_VERWANDT = { skyr: ['Magerquark', 'Joghurt, fettarm', 'Hüttenkäse'], 
    Name vor Alias; Wortanfang vor Wortinnerem; ein Treffer nur auf ein Beiwort im Alias (z. B. „mageres Rindfleisch“ bei „mager“) ist schwach
    und wird ausgeblendet, sobald es passende Treffer gibt. Mehrere Wörter müssen alle vorkommen (Reihenfolge egal). */
 const RE_ESC = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Suchfelder einmal vorbereiten (normalisiert, Wortteile, Originalwörter) – sonst kostet jede Eingabe bei ~900 Einträgen spürbar Zeit
+const SUCH_FELD_CACHE = new Map();
+function suchFeld(o) {
+  let f = SUCH_FELD_CACHE.get(o); if (f) return f;
+  const s = suchNorm(o); const orig = String(o).split(/[\s,()–-]+/).filter(Boolean);
+  f = { o: String(o), ol: String(o).toLowerCase(), s, sk: s.replace(/,/g, ''), tok: s.split(/[^a-z0-9]+/).filter(Boolean), teile: s.split(/[\s,]+/).filter(Boolean), orig: orig.map(w => [w, suchNorm(w)]) };
+  SUCH_FELD_CACHE.set(o, f); return f;
+}
 function suchBewertung(name, aliases, qn, roh) {
-  const worte = qn.split(/[\s,]+/).filter(Boolean); const wortAnfang = (s, w) => new RegExp('(^|[^a-z0-9])' + RE_ESC(w)).test(s);
+  const worte = qn.split(/[\s,]+/).filter(Boolean);
   const umlaut = roh && /[äöüß]/.test(roh) ? roh : '';   // „öl“ soll nicht zuerst „Oliven“ treffen
   let best = 99;
-  [[name, false], ...arr(aliases).map(a => [a, true])].forEach(([o, alias]) => {
-    const s = suchNorm(o); const sk = s.replace(/,/g, ''); let p;
-    if (s === qn || sk === qn) p = 0;
+  const pruefe = (o, alias) => {
+    if (!o) return; const f = suchFeld(o); const s = f.s; let p;
+    if (s === qn || f.sk === qn) p = 0;
     else if (s.startsWith(qn + ',') || s.startsWith(qn + ' ')) p = 0.5;
     else if (s.startsWith(qn)) p = 1;
-    else if (worte.length > 1 && worte.every(w => wortAnfang(s, w))) p = 1.5;
-    else if (worte.length === 1 && wortAnfang(s, qn)) p = 2;
-    else if (worte.length === 1 && s.split(/[\s,]+/).some(x => x.length > qn.length && x.endsWith(qn))) p = 2.5;   // Grundwort eines zusammengesetzten Worts, z. B. „Rapsöl“ bei „öl“
+    else if (worte.length > 1 && worte.every(w => f.tok.some(t => t.startsWith(w)))) p = 1.5;
+    else if (worte.length === 1 && f.tok.some(t => t.startsWith(qn))) p = 2;
+    else if (worte.length === 1 && f.teile.some(x => x.length > qn.length && x.endsWith(qn))) p = 2.5;   // Grundwort eines zusammengesetzten Worts, z. B. „Rapsöl“ bei „öl“
     else if (qn.length >= 4 && worte.every(w => s.includes(w))) p = 3;   // sonstiges Wortinneres
     else return;
     // Trifft ein einzelnes Suchwort nur ein klein geschriebenes Beiwort („mageres“, „gekocht“), ist das kein passender Name
-    if (worte.length === 1 && p > 0) { const w = String(o).split(/[\s,()–-]+/).find(x => suchNorm(x).startsWith(worte[0])); if (w && /^[a-zäöüß]/.test(w)) p = Math.max(p, 2) + 2; }
-    if (umlaut && !String(o).toLowerCase().includes(umlaut)) p += 2;
+    if (worte.length === 1 && p > 0) { const w = f.orig.find(x => x[1].startsWith(worte[0])); if (w && /^[a-zäöüß]/.test(w[0])) p = Math.max(p, 2) + 2; }
+    if (umlaut && !f.ol.includes(umlaut)) p += 2;
     if (alias) p += p >= 2 ? 2 : 0.3;
-    best = Math.min(best, p);
-  });
+    if (p < best) best = p;
+  };
+  pruefe(name, false); const al = arr(aliases); for (let i = 0; i < al.length; i++) pruefe(al[i], true);
   return best;
 }
 // Vorsichtige Tippfehlertoleranz: höchstens 1 Fehler (ab 5 Zeichen) bzw. 2 (ab 9 Zeichen), Vertauschung zählt als 1
@@ -401,9 +433,11 @@ function tbTreffer() {
   const stark = bewertet.some(([, p]) => p < 3);
   const zt = bewertet.filter(([, p]) => !stark || p < 3.5).sort((a, b) => a[1] - b[1] || a[0].name.length - b[0].name.length).slice(0, 8).map(([z]) => z);
   const eg = (D.lebensmittel || []).map(l => [l, suchBewertung(l.name + (l.marke ? ' ' + l.marke : ''), [l.gtin || ''], qn, roh)]).filter(([, p]) => p < 99).sort((a, b) => a[1] - b[1]).slice(0, 6).map(([l]) => l);
+  const art = MARKEN_OBERBEGRIFFE[qn]; const ober = p => art && art(p) ? 2.5 : 99;   // z. B. „Proteinmilch“ → Protein-Milchgetränke
+  const mk = (K.produkte || []).map(p => [p, Math.min(suchBewertung(p.name, [markeName(p), (p.marke || '') + ' ' + p.name, p.linie || '', p.gtin || ''], qn, roh), suchBewertung(markeName(p), [], qn, roh), ober(p))]).filter(([, s]) => s < 99).sort((a, b) => a[1] - b[1] || markeName(a[0]).length - markeName(b[0]).length).slice(0, 10).map(([p]) => p);
   const rz = K.rezepte.map(r => [r, rang(r.titel)]).filter(([, p]) => p < 99).sort((a, b) => a[1] - b[1]).slice(0, 5).map(([r]) => r);
   const mz = (D.mahlzeiten || []).filter(m => rang(m.name) < 99).slice(0, 4);
-  if (!zt.length && !eg.length && !mz.length) {
+  if (!zt.length && !eg.length && !mz.length && !mk.length) {
     // Verwandte allgemeine Einträge nur als Hinweis anbieten – keine automatische Gleichsetzung; Tippfehler nur als Rückfrage
     const verw = (TB_VERWANDT[qn] || []).map(n => K.zutaten.find(z => z.name === n && Object.keys(z.bls || {}).length)).filter(Boolean);
     const tipp = verw.length ? [] : tippVorschlaege(qn);
@@ -415,12 +449,17 @@ function tbTreffer() {
   const lmZeile = z => { const c = Object.keys(z.bls)[0]; const sm = startMenge(z); const fl = istFluessig(z); const zust = zustandText(z);
     return `<li><span class="tz-name"><b>${esc(z.name)}</b>${zust ? ` <span class="chip">${esc(zust)}</span>` : ''}${z.wert_hinweis ? ' <span class="chip warn">Näherung</span>' : ''}<br><span class="leise klein">allgemeiner Wert (${/^USDA-/.test(c) ? 'USDA' : 'BLS'}) · ${zahlDE(z.bls[c].werte.kcal)} kcal/100 g${fl ? (z.dichte ? ` · ${zahlDE(z.dichte, 2)} g/ml` : ' · ml ≈ g (Näherung)') : ''}${z.wert_hinweis ? `<br>${esc(z.wert_hinweis)}` : ''}</span></span>
       <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge ${esc(z.name)}</span><input type="number" min="1" value="${sm.m}" data-gramm="${esc(z.id)}" inputmode="decimal"></label>${fl ? `<select data-einheit="${esc(z.id)}" aria-label="Einheit"><option value="ml" ${sm.e === 'ml' ? 'selected' : ''}>ml</option><option value="g" ${sm.e === 'g' ? 'selected' : ''}>g</option></select>` : '<span class="einh">g</span>'}
-      <button class="haupt klein" data-a="tb-lm" data-v="${esc(z.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="lm" data-v="${esc(z.id)}">+ Liste</button></span></li>`; };
+      <button class="haupt klein" data-a="tb-lm" data-v="${esc(z.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="lm" data-v="${esc(z.id)}">+ Liste</button>${standardKnopf('lm', z.id)}</span></li>`; };
   const egZeile = l => `<li><span class="tz-name"><b>${esc(l.name)}</b>${l.marke ? ' · ' + esc(l.marke) : ''}<br><span class="leise klein">eigenes Produkt · ${l.naehr.kcal != null ? zahlDE(l.naehr.kcal) + ' kcal/100 ' + (l.bezug === '100ml' ? 'ml' : 'g') : 'kcal unbekannt'}</span></span>
-      <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge ${esc(l.name)}</span><input type="number" min="1" value="${esc(l.portion || 100)}" data-gramm="${esc(l.id)}" inputmode="decimal"></label><span class="einh">${l.bezug === '100ml' ? 'ml' : 'g'}</span><button class="haupt klein" data-a="tb-eigen" data-v="${esc(l.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="eigen" data-v="${esc(l.id)}">+ Liste</button></span></li>`;
+      <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge ${esc(l.name)}</span><input type="number" min="1" value="${esc(l.portion || 100)}" data-gramm="${esc(l.id)}" inputmode="decimal"></label><span class="einh">${l.bezug === '100ml' ? 'ml' : 'g'}</span><button class="haupt klein" data-a="tb-eigen" data-v="${esc(l.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="eigen" data-v="${esc(l.id)}">+ Liste</button>${standardKnopf('eigen', l.id)}</span></li>`;
   const rzZeile = r => `<li><span class="tz-name"><b>${esc(r.titel)}</b><br><span class="leise klein">Rezept · ${r.naehrwerte.pro_portion.kcal != null ? zahlDE(r.naehrwerte.pro_portion.kcal) + ' kcal/Portion' : 'kcal unbekannt'}</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">${ico('plus', 'klein')} 1 Portion</button><button class="klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="0.5">½ Portion</button><button class="klein" data-a="tb-korb-add" data-t="rezept" data-v="${esc(r.id)}" data-p="1">+ Liste</button></span></li>`;
   const mzZeile = m => `<li><span class="tz-name"><b>${esc(m.name)}</b><br><span class="leise klein">eigene Mahlzeit · ${m.eintraege.length} Teile</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-mz-buchen" data-v="${esc(m.id)}">${ico('plus', 'klein')} Eintragen</button></span></li>`;
-  return gruppe('Lebensmittel', zt.map(lmZeile).join('')) + gruppe('Eigene Produkte', eg.map(egZeile).join('')) + gruppe('Gespeicherte Mahlzeiten', mz.map(mzZeile).join('')) + gruppe('Rezepte', rz.map(rzZeile).join(''))
+  const mkZeile = p => { const einh = p.bezug === '100ml' ? 'ml' : 'g'; const start = (standardFuer('marke', p.id) || {}).menge || (arr(p.portionen)[0] || {}).menge || (Number(p.packung) && p.packung <= 250 ? p.packung : 100);
+    return `<li><span class="tz-name"><b>${esc(p.marke ? p.marke + ' ' : '')}${esc(p.name)}</b>${p.variante ? ` · ${esc(p.variante)}` : ''}<br><span class="leise klein">Markenprodukt${p.linie ? ': ' + esc(p.linie) : ''}${arr(p.haendler).length ? ' · ' + esc(arr(p.haendler).map(h => ({ rewe: 'REWE', lidl: 'Lidl' }[h] || h)).join('/')) : ''} · ${p.naehr && p.naehr.kcal != null ? zahlDE(p.naehr.kcal) + ' kcal' : 'kcal ?'}${p.naehr && p.naehr.protein != null ? ' · ' + zahlDE(p.naehr.protein, 1) + ' g Protein' : ''} je 100 ${einh} · ${esc(p.pruefstatus || 'ungeprüft')}${p.abgerufen ? ', Stand ' + esc(datumDE(p.abgerufen)) : ''}</span>${p.zubereitung ? `<br><span class="leise klein">${esc(p.zubereitung)}</span>` : ''}${mengenWahlHtml(p.id, 'marke', p)}</span>
+      <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge ${esc(p.name)}</span><input type="number" min="1" value="${esc(start)}" data-gramm="${esc(p.id)}" inputmode="decimal"></label><span class="einh">${einh}</span><button class="haupt klein" data-a="tb-marke" data-v="${esc(p.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="marke" data-v="${esc(p.id)}">+ Liste</button>${standardKnopf('marke', p.id)}</span></li>`; };
+  const nurArt = a => tbArt === 'alle' || tbArt === a;
+  const artChips = `<div class="chips-wrap tb-arten" role="group" aria-label="Trefferart">${[['alle', 'Alle'], ['lm', `Lebensmittel (${zt.length})`], ['marke', `Marken (${mk.length})`], ['rezept', `Rezepte (${rz.length})`], ['mz', `Mahlzeiten (${mz.length + eg.length})`]].map(([k, n]) => `<button class="filterchip" data-a="tb-art" data-v="${k}" aria-pressed="${tbArt === k}">${n}</button>`).join('')}</div>`;
+  return artChips + (nurArt('lm') ? gruppe('Lebensmittel', zt.map(lmZeile).join('')) : '') + (nurArt('marke') ? gruppe('Markenprodukte', mk.map(mkZeile).join('')) : '') + (nurArt('mz') ? gruppe('Eigene Produkte', eg.map(egZeile).join('')) + gruppe('Gespeicherte Mahlzeiten', mz.map(mzZeile).join('')) : '') + (nurArt('rezept') ? gruppe('Rezepte', rz.map(rzZeile).join('')) : '')
     + `<p class="leise klein">Startmengen sind Vorschläge – bitte anpassen. „+ Liste“ sammelt mehrere Lebensmittel (z. B. Magerquark und Haferflocken) und trägt sie gemeinsam ein; danach lässt sich die Mahlzeit speichern.</p>`;
 }
 /* Praktische Startmenge je Lebensmittelart (Eingabevorschlag, keine Datenangabe) */
@@ -440,7 +479,7 @@ function startMenge(z) {
 /* Zubereitungszustand sichtbar machen: gekocht/gebraten/abgetropft im Namen, sonst „roh/trocken“, wenn es eine gegarte Variante gibt */
 function zustandText(z) {
   const m = z.name.match(/(gekocht|gebraten|gebacken|abgetropft|getrocknet|aus der Dose|aus dem Glas|aus dem Ofen)/i); if (m) return m[1];
-  const basis = suchNorm(z.name); return K.zutaten.some(x => x !== z && suchNorm(x.name).startsWith(basis + ', gekocht')) ? 'roh/trocken' : '';
+  const basis = suchFeld(z.name).s; return K.zutaten.some(x => x !== z && suchFeld(x.name).s.startsWith(basis + ', gekocht')) ? 'roh/trocken' : '';
 }
 function tbFormulare() {
   const f = (k, n) => `<label class="feld"><span>${n}</span><input type="number" name="${k}" min="0" step="any" inputmode="decimal" style="width:6.5em"></label>`;
@@ -475,6 +514,7 @@ document.addEventListener('click', ev => {
     case 'tb-rezept': { const r = R[v]; aendere(`${kurztitel(r.titel)} eingetragen`, d => d.tagebuch.push(rezeptEintrag(r, Number(b.dataset.p) || 1))); break; }
     case 'tb-lm': { const z = Z[v]; const g = Number(String(($(`[data-gramm="${v}"]`) || {}).value || '').replace(',', '.')) || 100; const einh = ($(`[data-einheit="${v}"]`) || {}).value || 'g'; aendere(`${z.name} eingetragen`, d => d.tagebuch.push(lebensmittelEintrag(z, g, einh))); break; }
     case 'tb-eigen': { const l = (D.lebensmittel || []).find(x => x.id === v); const g = Number(($(`[data-gramm="${v}"]`) || {}).value) || 100; aendere(`${l.name} eingetragen`, d => d.tagebuch.push(eigenerEintrag(l, g))); break; }
+    case 'tb-marke': { const p = PRODUKT(v); if (!p) return; const g = Number(String(($(`[data-gramm="${v}"]`) || {}).value || '').replace(',', '.')); if (!(g > 0)) { toast('Bitte eine Menge eingeben'); return; } aendere(`${markeName(p)} eingetragen`, d => d.tagebuch.push(markenEintrag(p, g))); break; }
     case 'tb-menge': { aendere(null, d => { const e = d.tagebuch.find(x => x.id === v); const dir = Number(b.dataset.d);
       if (e.einheit === 'Portion' || !e.einheit) { const alt = e.portionen || 1; let neu = Math.max(0.25, Math.round((alt + dir * 0.25) * 100) / 100); const q = e.restportion ? d.restportionen.find(x => x.id === e.restportion) : null; if (q && neu - alt > q.portionen) neu = alt; if (q) q.portionen = Math.round((q.portionen - (neu - alt)) * 100) / 100; eintragSkalieren(e, neu / alt); e.portionen = neu; }
       else { const alt = e.gramm || 100; const schritt = alt >= 200 ? 25 : 10; const neu = Math.max(5, alt + dir * schritt); eintragSkalieren(e, neu / alt); e.gramm = neu; } }); break; }
