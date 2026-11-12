@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.13.0';
-const APP_BUILD = '202611120747';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.14.0';
+const APP_BUILD = '202611120828';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -131,6 +131,7 @@ function linkHtml(ziel, alias) {
     if (q && q.url) return `<a class="q" href="${esc(q.url)}" target="_blank" rel="noopener" title="${esc(q.titel + (q.status ? ' – ' + q.status : ''))}">${esc(alias || 'Quelle')} ↗</a>`;
     return `<span class="q">${esc(alias || 'Quelle')}</span>`;
   }
+  if (name === 'Mobility – Grundlagen' && anker) { const q = ((K.mobility || {}).quellen || {})[anker.replace(/^\^/, '')]; return q && q.url ? `<a class="q" href="${esc(q.url)}" target="_blank" rel="noopener" title="${esc(q.titel)}">${esc(alias || 'Quelle')} ↗</a>` : `<span class="q">${esc(alias || 'Quelle')}</span>`; }
   const text = alias || name;
   if (TN[name]) return `<a href="#/technik/${esc(TN[name].id)}">${esc(text)}</a>`;
   if (RN[name]) return `<a href="#/rezept/${esc(RN[name].id)}">${esc(text)}</a>`;
@@ -288,10 +289,27 @@ function weitermachenHtml() {
   const teile = [];
   Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<span class="weiter-gruppe"><a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a><button class="weiter-x" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">✕ abbrechen</button></span>`); });
   if (D.training && D.training.aktiv) teile.push(`<a class="weiter-chip" href="#/training/einheit">${ico('hantel', 'klein')} Training fortsetzen</a>`);
+  if (D.mobility && D.mobility.lauf) teile.push(`<a class="weiter-chip" href="#/mobility/lauf">${ico('dehnen', 'klein')} Mobility-Routine fortsetzen</a>`);
   D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
   return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';
 }
 function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a></div>`; }
+/* ---------- Drei Hauptbereiche: Food · Training · Mobility – mit Unterreitern und Fortsetzen-Anzeige ---------- */
+const FOOD_SEITEN = ['entdecken', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
+function hauptBereich(seite) { return FOOD_SEITEN.includes(seite) ? 'food' : seite === 'training' ? 'training' : seite === 'mobility' ? 'mobility' : ''; }
+const UNTERREITER = {
+  food: [['entdecken', '#/entdecken', 'Kochbuch'], ['tagebuch', '#/tagebuch', 'Tagebuch'], ['einkauf', '#/auswahl', 'Einkauf'], ['vorrat', '#/vorrat', 'Vorrat']],
+  training: [['', '#/training', 'Übersicht'], ['plaene', '#/training/plaene', 'Pläne'], ['uebungen', '#/training/uebungen', 'Übungen'], ['verlauf', '#/training/verlauf', 'Verlauf'], ['cardio', '#/training/cardio', 'Cardio']],
+  mobility: [['', '#/mobility', 'Routinen'], ['plan', '#/mobility/plan', 'Mein Plan'], ['verlauf', '#/mobility/verlauf', 'Verlauf']]
+};
+function kopfLeiste(seite, a) {
+  const haupt = hauptBereich(seite);
+  const zeigeReiter = (haupt === 'food' && ['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'vorrat'].includes(seite)) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a)));
+  if (!zeigeReiter) return '';
+  const akt = haupt === 'food' ? (seite === 'auswahl' ? 'einkauf' : seite) : (a || '');
+  const nAusw = D.auswahl.length;
+  return `${seite === 'kochen' ? '' : weitermachenHtml()}<nav class="unterreiter" aria-label="${haupt === 'food' ? 'Food' : haupt === 'training' ? 'Training' : 'Mobility'}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
+}
 function route() {
   rezepteAktualisieren();   // angepasste Mengen (nur für diesen Kochvorgang) wirken überall über R
   const h = location.hash.replace(/^#\/?/, '') || 'entdecken';
@@ -301,14 +319,15 @@ function route() {
   document.body.classList.toggle('koch-hell', kf === 'hell'); document.body.classList.toggle('koch-dunkel', kf === 'dunkel');
   // Neue Nutzer (leerer Speicher) sehen einmal die Einrichtung – bestehende nie erzwungen
   if (istNeu && !D.einstellungen.einrichtung && seite !== 'einrichtung' && !sessionStorage.getItem('einr-gezeigt-' + PROFIL)) { try { sessionStorage.setItem('einr-gezeigt-' + PROFIL, '1'); } catch (e) { /* */ } location.replace('#/einrichtung/0'); return; }
-  $$('.nav a').forEach(n => { const an = n.dataset.nav === seite || (['rezept', 'kochen', 'fertig'].includes(seite) && n.dataset.nav === 'entdecken') || (seite === 'auswahl' && n.dataset.nav === 'einkauf'); n.classList.toggle('aktiv', an); if (an) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
-  document.body.dataset.bereich = BEREICH_VON_SEITE[seite] || 'kochen';
+  const haupt = hauptBereich(seite);
+  $$('.nav a').forEach(n => { const an = n.dataset.nav === haupt; n.classList.toggle('aktiv', an); if (an) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
+  document.body.dataset.bereich = haupt || 'neutral';
   if (route.letzte && location.hash !== route.letzte) { scrollPos[route.letzte] = window.scrollY; if (typeof tbEdit !== 'undefined') tbEdit = null; if (typeof anpassDialog !== 'undefined' && anpassDialog && !location.hash.includes(anpassDialog.rid)) anpassDialog = null; }
   if (seite === 'entdecken') { try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(filterZustand)); } catch (e) { /* */ } }
   const app = $('#app');
-  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining };
+  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility };
   const fn = views[seite] || vEntdecken;
-  app.innerHTML = fn(a ? decodeURIComponent(a) : undefined, b);
+  app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
   if (location.hash !== route.letzte) { route.letzte = location.hash; const zurueck = ['entdecken', 'training', 'produkte', 'vorrat'].includes(seite) ? scrollPos[location.hash] : 0; window.scrollTo(0, zurueck || 0); }   // neue Seite oben beginnen, Neuzeichnen derselben Seite behält die Position
   ungespeichert = false;
@@ -336,7 +355,7 @@ function vEntdecken() {
   const bereiche = BEREICHE.filter(([id]) => K.rezepte.some(r => r.meta.bereich === id || arr(r.meta.bereiche).includes(id)));
   const zeitSel = (k, werte, titel) => `<label class="feld"><span>${titel}</span><select data-f="${k}"><option value="">egal</option>${werte.map(n => `<option value="${n}" ${String(f[k]) === String(n) ? 'selected' : ''}>${n < 90 ? 'bis ' + n + ' Min.' : 'bis ' + n / 60 + ' Std.'}</option>`).join('')}</select></label>`;
   const keineFilter = !aktiveFilter(f).length;
-  return `${weitermachenHtml()}<div class="seitenkopf"><h1>Kochbuch</h1></div>${setup}
+  return `<div class="seitenkopf"><h1>Kochbuch</h1></div>${setup}
   <div class="kb-suche"><label class="such-feld"><span class="sr-only">Rezepte suchen</span>${ico('suche', 'klein')}<input id="kb-suche" type="search" enterkeyhint="search" autocomplete="off" value="${esc(f.suche)}" placeholder="Gericht, Zutat oder Küche – z. B. Hähnchen, Ramen"></label>
     <button class="kb-filterknopf" data-a="filter-panel" aria-expanded="${filterOffen}">${ico('filter', 'klein')} Filter${zusatz ? ` <span class="zaehl">${zusatz}</span>` : ''}</button></div>
   <div class="chips-wrap schnell" role="group" aria-label="Schnellfilter">${SCHNELLFILTER.map(id => chip('richtung', id, EIGENSCHAFT[id][1], f.richtung.includes(id), EIGENSCHAFT_ERKLAERUNG[id] ? ` title="${esc(EIGENSCHAFT_ERKLAERUNG[id])}"` : '')).join('')}</div>

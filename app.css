@@ -268,13 +268,20 @@ body.kochen.koch-dunkel { --papier: #171412; --flaeche: #211d1a; --flaeche2: #2a
 .nav a { min-width: 0; }
 
 /* ===== UI-Überarbeitung 2026-11-11: Bereiche, Navigation, Karten ===== */
-/* Bereichsakzente: Kochen warm (Terrakotta), Ernährung ruhig (Petrol), Training konzentriert (Indigo) – alle ≥ 4,5:1 auf dem Hintergrund */
-body[data-bereich="ernaehrung"] { --akzent: #2f6862; --akzent-hell: #e1eeec; --akzent-text: #ffffff; }
+/* Drei Hauptbereiche, je ein Akzent bei gleicher Typografie und gleichen Komponenten:
+   Food = Terrakotta (Standard), Training = Indigo, Mobility = Petrol – alle ≥ 4,5:1 auf dem Hintergrund.
+   Salbei bleibt ausschließlich „erledigt/passt“, Bernstein „Hinweis“, Rot „Achtung“ – Akzente tragen keine Bewertung. */
 body[data-bereich="training"] { --akzent: #3b4f7a; --akzent-hell: #e4e8f3; --akzent-text: #ffffff; }
+body[data-bereich="mobility"] { --akzent: #2f6862; --akzent-hell: #e1eeec; --akzent-text: #ffffff; }
 @media (prefers-color-scheme: dark) {
-  body[data-bereich="ernaehrung"] { --akzent: #7fbcb4; --akzent-hell: #1d2e2c; --akzent-text: #0f1a19; }
   body[data-bereich="training"] { --akzent: #a3b4e0; --akzent-hell: #1f2535; --akzent-text: #12161f; }
+  body[data-bereich="mobility"] { --akzent: #7fbcb4; --akzent-hell: #1d2e2c; --akzent-text: #0f1a19; }
 }
+/* Unterreiter je Hauptbereich: große Tippflächen, umbrechend statt seitlich scrollend */
+.unterreiter { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; margin: 0 0 14px; background: var(--flaeche2); border-radius: 14px; }
+.unterreiter a { flex: 1 1 auto; text-align: center; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 10px; border-radius: 11px; text-decoration: none; color: var(--leise); font-weight: 600; font-size: .92rem; }
+.unterreiter a[aria-current="page"] { background: var(--flaeche); color: var(--akzent); box-shadow: var(--schatten); }
+.nav a.aktiv, .nav a[aria-current="page"] { color: var(--akzent); }
 /* Weitermachen-Leiste */
 .weitermachen { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px; margin-bottom: 4px; scrollbar-width: none; }
 .weiter-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 14px; border-radius: 999px; background: var(--akzent-hell); color: var(--tinte); text-decoration: none; font-size: .86rem; font-weight: 600; border: 1px solid color-mix(in srgb, var(--akzent) 35%, transparent); }

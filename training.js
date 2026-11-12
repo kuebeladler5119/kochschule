@@ -74,6 +74,8 @@ function vTraining(teil, id) {
   if (teil === 'gewicht') return trGewichtHtml();
   if (teil === 'plan') return trPlanHtml(id);
   if (teil === 'einrichtung') return trEinrichtungHtml();
+  if (teil === 'plaene') return trPlaeneHtml();
+  if (teil === 'verlauf') return trVerlaufHtml();
   if (teil === 'cardio') return trCardioHtml();
   const akt = t.aktiv && t.einheiten.find(e => e.id === t.aktiv);
   const fertig = t.einheiten.filter(e => e.ende).sort((a, b) => b.start.localeCompare(a.start)).slice(0, 8);
@@ -201,18 +203,29 @@ function splitOptionen(n) {
   return (o[Math.min(6, Math.max(2, n || 3))] || o[3]);
 }
 // Verfügbar, wenn die Übung nur Körpergewicht braucht oder eines ihrer Geräte vorhanden ist (Klimmzug braucht die Stange)
-function uebVerfuegbar(u, ger) { const g = arr(u.geraet).filter(x => x !== 'bank' && x !== 'rack'); const echt = g.filter(x => x !== 'koerpergewicht'); return !echt.length || echt.some(x => ger.includes(x)); }
+// Die Geräteliste einer Übung sind Alternativen; „koerpergewicht“ genügt allein, außer die Übung braucht eine Klimmzugstange
+// Spezialgeräte (Stange, Rack, Maschine/Barren, Kabel) neben „koerpergewicht“ sind Voraussetzung, keine Alternative
+function uebVerfuegbar(u, ger) {
+  const roh = arr(u.geraet); const spezial = roh.filter(x => ['klimmzugstange', 'rack', 'maschine', 'kabel'].includes(x));
+  if (spezial.length) return spezial.some(x => x === 'rack' ? ger.includes('langhantel') : ger.includes(x));   // Spezialgeräte sind untereinander Alternativen
+  const frei = roh.filter(x => x !== 'bank'); return !frei.length || frei.includes('koerpergewicht') || frei.some(x => ger.includes(x));
+}
 function slotUebung(slot, ger, nein, schon, versatz) {
   const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'] }[slot];
-  const kand = (K.uebungen || []).filter(u => uebVerfuegbar(u, ger) && !nein.includes(u.id) && !schon.includes(u.id) && (iso ? u.bewegungsmuster === 'isolation' && arr(u.muskeln_haupt).some(m => iso.includes(m)) : u.bewegungsmuster === slot));
-  return kand.length ? kand[versatz % kand.length] : null;
+  const muster = slot === 'kniebeuge' ? ['kniebeuge', 'ausfallschritt'] : [slot];
+  const passt = u => uebVerfuegbar(u, ger) && !nein.includes(u.id) && (iso ? u.bewegungsmuster === 'isolation' && arr(u.muskeln_haupt).some(m => iso.includes(m)) : muster.includes(u.bewegungsmuster));
+  // Mit vorhandenen Geräten belastbare Varianten zuerst (Körpergewicht nur, wenn sonst nichts passt oder nur Körpergewicht gewählt ist)
+  const nurKg = ger.every(g => g === 'koerpergewicht'); const rang = u => nurKg ? 0 : (arr(u.geraet).some(g => g !== 'koerpergewicht' && g !== 'bank' && ger.includes(g === 'rack' ? 'langhantel' : g)) ? 0 : 1);
+  const alle = (K.uebungen || []).filter(passt).sort((a, b) => rang(a) - rang(b)); const kand = alle.filter(u => !schon.includes(u.id));
+  if (!kand.length) return alle.length ? 'doppelt' : null;
+  const beste = kand.filter(u => rang(u) === rang(kand[0])); return beste[versatz % beste.length];
 }
 function planVorschlag(cfg, splitKey, n) {
   const sp = SPLITS[splitKey]; const ger = cfg.geraete && cfg.geraete.length ? cfg.geraete : ['langhantel', 'kurzhantel', 'kabel', 'maschine', 'klimmzugstange', 'koerpergewicht'];
   const nein = arr(cfg.unerwuenscht); const prio = arr(cfg.schwerpunkte); const basis = cfg.erfahrung === 'einsteiger' ? 2 : 3;
   const tage = []; for (let i = 0; i < n; i++) tage.push(sp.tage[i % sp.tage.length]);
-  const zaehl = {}; const einheiten = tage.map((tn, ti) => { const schon = [];
-    const ue = sp.slots[tn].map((slot, si) => { const u = slotUebung(slot, ger, nein, schon, Math.floor(ti / sp.tage.length) + si); if (!u) return null; schon.push(u.id);
+  const zaehl = {}; const luecken = new Set(); const einheiten = tage.map((tn, ti) => { const schon = [];
+    const ue = sp.slots[tn].map((slot, si) => { const u = slotUebung(slot, ger, nein, schon, Math.floor(ti / sp.tage.length) + si); if (u === 'doppelt') return null; if (!u) { luecken.add(slot); return null; } schon.push(u.id);
       const gr = uebGruppen(u); const iso = u.bewegungsmuster === 'isolation' || u.bewegungsmuster === 'rumpf'; const bonus = gr.some(g => prio.includes(g)) && basis < 4 ? 1 : 0;
       const von = String(u.wdh_bereich_vorschlag || '8–12').match(/(\d+)\D+(\d+)/); return { uebung: u.id, aufwaerm: si === 0 ? 2 : 0, saetze: basis + bonus, _bonus: bonus, _iso: iso, wdh_von: u.id === 'ueb-plank' ? null : (von ? Number(von[1]) : 8), wdh_bis: u.id === 'ueb-plank' ? null : (von ? Number(von[2]) : 12), pause_s: iso ? 90 : 150, ziel_rir: '1–3' }; }).filter(Boolean);
     let sek = ue.reduce((s, x) => s + (x.saetze + x.aufwaerm) * 45 + x.saetze * x.pause_s + x.aufwaerm * 60, 0) + 300;
@@ -224,14 +237,25 @@ function planVorschlag(cfg, splitKey, n) {
     const bonusSaetze = ue.reduce((s, x) => s + (x._bonus || 0), 0); ue.forEach(x => { delete x._bonus; delete x._iso; });
     ue.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { zaehl[g] = (zaehl[g] || 0) + x.saetze; }));
     return { name: tn, uebungen: ue, minuten: Math.round(sek / 60), gekuerzt, bonusSaetze, bonusWeg }; });
-  return { key: splitKey, name: sp.name + (n > sp.tage.length ? ` (${n}×/Woche)` : ''), plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, fehlend: einheiten.some(e => e.uebungen.length < sp.slots[e.name].length) };
+  // Ehrlich bewerten: Einheiten mit weniger als 3 Übungen sind kein vollständiger Plan
+  const unbrauchbar = einheiten.some(e => e.uebungen.length < 3);
+  return { key: splitKey, name: sp.name + (n > sp.tage.length ? ` (${n}×/Woche)` : ''), plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, fehlend: luecken.size > 0, luecken: [...luecken], unbrauchbar };
 }
+const PLATZ_NAME = { kniebeuge: 'Kniebeuge/Ausfallschritt', hueftbeuge: 'Hüftstreckung (Gesäß/Beinbeuger)', horizontal_druecken: 'Drücken horizontal (Brust)', vertikal_druecken: 'Drücken über Kopf (Schulter)', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben (Latissimus)', rumpf: 'Rumpf', 'iso:arme': 'Arme (Isolation)', 'iso:bizeps': 'Bizeps', 'iso:trizeps': 'Trizeps', 'iso:schultern': 'Schultern (Isolation)' };
+const SLOT_GERAET = { vertikal_ziehen: 'Klimmzugstange oder Kabelzug/Latzug', horizontal_ziehen: 'Kurzhanteln, Kabelzug oder ein stabiler Tisch für umgekehrtes Rudern', vertikal_druecken: 'Kurzhanteln oder Langhantel', 'iso:arme': 'Kurzhanteln, Kabel oder Band', 'iso:bizeps': 'Kurzhanteln, Kabel oder Band', 'iso:trizeps': 'Kabel, Kurzhanteln oder Dips am Stuhl', 'iso:schultern': 'Kurzhanteln, Kabel oder Band', hueftbeuge: 'Kurzhanteln/Langhantel oder eine Bank für Hip Thrusts' };
 let trVorschlagWahl = null;
+function vorschlagsOptionen(c) {
+  const n = arr(c.tage).length; if (!n) return [];
+  const opts = splitOptionen(n).map(([k, m]) => planVorschlag(c, k, m));
+  // Ist keine Aufteilung sinnvoll erfüllbar, ehrlich eine Alternative mit weniger Tagen anbieten
+  if (opts.every(o => o.unbrauchbar) && n > 2) { const m = Math.min(3, n - 1); const alt = planVorschlag(c, 'gk', m); alt.name = `Alternative: Ganzkörper an ${m} Tagen`; alt.plus = 'Mit der vorhandenen Ausstattung lassen sich weniger, dafür vollständigere Einheiten bilden; die übrigen Tage können aktive Erholung oder Mobility sein.'; alt.minus = 'Weniger Trainingstage als gewünscht.'; opts.push(alt); }
+  return opts;
+}
 function trEinrichtungHtml() {
   const t = trDaten(); const c = t.einrichtung || {};
   const chk = (name, wert, an, text) => `<label class="wahl-chip"><input type="checkbox" name="${name}" value="${wert}" ${an ? 'checked' : ''}> ${text}</label>`;
   const tage = arr(c.tage); const n = tage.length || Number(c.tage_anzahl) || 0;
-  const opts = n ? splitOptionen(n).map(([k, m]) => planVorschlag(c, k, m)) : [];
+  const opts = vorschlagsOptionen(c);
   return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Trainingseinrichtung</h1>
   <p class="leise klein">Alles ist freiwillig und jederzeit änderbar. Es bleibt nur auf diesem Gerät. Eigene Pläne und Training ohne Vorschläge bleiben möglich – ein Vorschlag ersetzt nie deinen Plan.</p>
   <form id="tr-einr" class="karte">
@@ -247,13 +271,153 @@ function trEinrichtungHtml() {
     <fieldset><legend>Cardio</legend><div class="zeile"><label class="feld"><span>Interesse</span><select name="cardio">${[['', '–'], ['nein', 'nein'], ['ja', 'ja']].map(([v, t2]) => `<option value="${v}" ${(c.cardio || '') === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label><label class="feld"><span>Art</span><input name="cardio_art" value="${esc(c.cardio_art || '')}" placeholder="z. B. Rad, Laufen"></label><label class="feld"><span>Min./Woche</span><input name="cardio_min" type="number" min="0" step="10" value="${esc(c.cardio_min || '')}" style="width:6em"></label></div></fieldset>
     <label class="feld"><span>Einschränkungen oder Beschwerden (nur als Notiz)</span><input name="einschraenkungen" value="${esc(c.einschraenkungen || '')}"></label>
     <button class="haupt" type="submit">Speichern und Vorschläge zeigen</button></form>
+  ${t.plaene.filter(p => p.art === 'historisch').map(p => `<section class="karte"><h3 style="margin-top:0">Dein gespeicherter Plan: ${esc(p.name)}</h3>
+    <p class="klein">${p.einheiten.length} Einheiten${p.einheiten.some(pe => pe.tag) ? ' an ' + esc(p.einheiten.map(pe => (WOCHENTAGE.find(w => w[0] === pe.tag) || [])[1]).filter(Boolean).join(', ')) : ''}. Referenzgewichte sind historische Angaben, keine aktuell bestätigten Leistungen.</p>
+    <div class="knopfreihe">${p.aktiv ? '<span class="chip gut">aktiv</span>' : `<button class="haupt klein" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Diesen Plan verwenden</button>`}<a class="knopf klein" href="#/training/plan/${esc(p.id)}">Ansehen und anpassen</a><button class="klein" data-a="tr-plan-kopie" data-v="${esc(p.id)}">Als eigene Variante kopieren</button></div></section>`).join('')}
+  ${(() => { const idx = WOCHENTAGE.map(w => w[0]).map((k, i) => tage.includes(k) ? i : -1).filter(i => i >= 0); let lauf = 1, max = idx.length ? 1 : 0; for (let i = 1; i < idx.length; i++) { lauf = idx[i] === idx[i - 1] + 1 ? lauf + 1 : 1; max = Math.max(max, lauf); }
+    return max >= 4 ? `<p class="hinweis klein"><b>${max} Tage am Stück:</b> möglich – die Vorschläge wechseln die Muskelgruppen von Tag zu Tag (z. B. Ober-/Unterkörper), damit derselbe Muskel nicht an zwei Tagen hintereinander schwer belastet wird. Nachteil: kaum ganze Ruhetage in diesem Block; bei ungewöhnlicher Ermüdung oder Beschwerden darf ein Tag ausfallen oder leichter sein – die nächste Einheit bleibt dann einfach die nächste.</p>` : ''; })()}
   ${n ? `<h2>Vorschläge für ${n} Tage</h2><p class="leise klein">Bei gleichem Wochenvolumen sind die Aufteilungen für Muskelaufbau etwa gleichwertig – entscheidend sind Tage, Zeit und was du durchhältst. Übungen nur aus der geprüften Bibliothek (${(K.uebungen || []).length} Übungen); eigene Übungen kannst du danach ergänzen.</p>
     ${opts.map((o, oi) => `<section class="karte"><h3 style="margin-top:0">${esc(o.name)}</h3><p class="klein">+ ${esc(o.plus)}<br>− ${esc(o.minus)}</p>
       ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul>${e.uebungen.map(x => `<li>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${x.wdh_von ? x.wdh_von + '–' + x.wdh_bis : 'Zeit'} · Pause ${x.pause_s} s</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
-      <p class="leise klein">Arbeitssätze pro Woche (nur Hauptmuskeln): ${MUSKEL_GRUPPEN.filter(([k]) => o.wochensaetze[k]).map(([k, n2]) => `${n2} ${o.wochensaetze[k]}`).join(' · ') || '–'}${o.fehlend ? ' · Für einige Plätze fehlt mit deinen Geräten eine passende Übung.' : ''}</p>
+      <p class="leise klein">Arbeitssätze pro Woche (nur Hauptmuskeln): ${MUSKEL_GRUPPEN.filter(([k]) => o.wochensaetze[k]).map(([k, n2]) => `${n2} ${o.wochensaetze[k]}`).join(' · ') || '–'}</p>
+      ${o.fehlend ? `<div class="hinweis warn klein"><b>${o.unbrauchbar ? 'So nicht sinnvoll erfüllbar:' : 'Lücken:'}</b> Mit deiner Ausstattung gibt es in der Bibliothek keine passende Übung für ${esc(o.luecken.map(s => PLATZ_NAME[s] || s).join(', '))}.${o.luecken.some(s => SLOT_GERAET[s]) ? ` Optional möglich mit: ${esc(o.luecken.filter(s => SLOT_GERAET[s]).map(s => SLOT_GERAET[s]).join('; '))} – kein Kauf nötig, nur als Hinweis.` : ''}${o.unbrauchbar ? ' Einzelne Einheiten hätten weniger als 3 Übungen; besser weniger Tage mit Ganzkörper wählen oder Ausstattung ergänzen.' : ''}</div>` : ''}
+      ${arr(c.geraete).length && arr(c.geraete).every(g => g === 'koerpergewicht') && c.erfahrung !== 'einsteiger' ? '<p class="leise klein">Grenze reinen Körpergewichtstrainings: Für Fortgeschrittene steigt der Reiz vor allem über schwerere Varianten (einbeinig, langsamere Bewegung, größerer Bewegungsumfang) – nicht nur über immer mehr Wiederholungen. Für manche Muskeln (z. B. Rücken ohne Stange) fehlen dann gute Optionen.</p>' : ''}
       ${arr(c.schwerpunkte).length ? `<p class="leise klein">Schwerpunkt: ${o.einheiten.reduce((s, e) => s + e.bonusSaetze, 0)} Zusatzsätze pro Woche (je ca. 2–4 Min.)${o.einheiten.some(e => e.bonusWeg) ? `; ${o.einheiten.reduce((s, e) => s + e.bonusWeg, 0)} weitere passten nicht in die Zeitvorgabe` : ''}. Andere Gruppen behalten ihre Grundsätze.</p>` : ''}
       <button class="klein" data-a="tr-vorschlag-anlegen" data-v="${oi}">Als neuen Plan anlegen (inaktiv)</button></section>`).join('')}
     ${c.cardio === 'ja' ? `<p class="hinweis klein"><b>Cardio:</b> getrennt protokolliert. Als Ableitung aus Studien: Radfahren stört Kraftzuwächse weniger als Laufen; an Krafttagen am besten nach dem Krafttraining oder mit einigen Stunden Abstand. Trainingskalorien werden nicht automatisch zum Ernährungsbudget addiert – Schätzungen von Uhren und Formeln weichen oft über 20 % ab.</p>` : ''}` : '<p class="leise">Trainingstage wählen, dann erscheinen Vorschläge.</p>'}`;
+}
+
+/* ---------- Pläne und Verlauf (Unterreiter im Training) ---------- */
+function trPlaeneHtml() {
+  const t = trDaten(); const rn = rid => (t.routinen.find(r => r.id === rid) || { name: '?' }).name;
+  return `<h1>Pläne</h1>
+  ${t.plaene.length ? `<ul class="eintraege">${t.plaene.map(p => `<li><span><b><a href="#/training/plan/${esc(p.id)}">${esc(p.name)}</a></b>${p.aktiv ? ' <span class="chip gut">aktiv</span>' : ''}<br><span class="leise klein">${esc(PLAN_ART[p.art] || '')} · ${p.einheiten.length} Einheiten: ${esc(p.einheiten.map(pe => rn(pe.routine)).join(', '))}</span></span><span><a class="knopf klein" href="#/training/plan/${esc(p.id)}">Öffnen</a></span></li>`).join('')}</ul>` : '<p class="leise">Noch kein Plan.</p>'}
+  <div class="knopfreihe"><button class="haupt" data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button><a class="knopf" href="#/training/einrichtung">Vorschläge nach deinen Angaben</a></div>
+  <h2>Einzelne Routinen</h2>
+  ${t.routinen.length ? `<ul class="eintraege">${t.routinen.map(r => `<li><span><a href="#/training/routine/${esc(r.id)}">${esc(r.name)}</a><br><span class="leise klein">${r.uebungen.length} Übungen</span></span></li>`).join('')}</ul>` : '<p class="leise">Keine.</p>'}`;
+}
+function trVerlaufHtml() {
+  const t = trDaten(); const fertig = t.einheiten.filter(e => e.ende).sort((a, b) => b.start.localeCompare(a.start));
+  const jeUebung = {}; fertig.forEach(e => e.uebungen.forEach(u => { const k = u.uebung + '|' + (u.variante || ''); const s = u.saetze.filter(x => x.art === 'arbeit' && x.erledigt); if (!s.length) return; (jeUebung[k] = jeUebung[k] || { uebung: u.uebung, variante: u.variante || '', n: 0, letzte: e.start.slice(0, 10), best: null }).n++; const b = [...s].sort((x, y) => (Number(y.kg) || 0) - (Number(x.kg) || 0))[0]; if (!jeUebung[k].best) jeUebung[k].best = b; }));
+  const liste = Object.values(jeUebung).sort((a, b) => b.letzte.localeCompare(a.letzte));
+  return `<h1>Verlauf</h1>
+  <h2>Je Übung</h2>${liste.length ? `<ul class="eintraege">${liste.map(x => `<li><span><b><a href="#/training/uebung/${esc(x.uebung)}">${esc(ueb(x.uebung).name)}</a></b>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}<br><span class="leise klein">${x.n} Einheiten · zuletzt ${esc(datumDE(x.letzte))} · ${esc(satzText(x.best))}</span></span></li>`).join('')}</ul>` : '<p class="leise">Noch keine abgeschlossenen Einheiten.</p>'}
+  <h2>Einheiten</h2>${fertig.length ? `<ul class="eintraege">${fertig.slice(0, 30).map(e => { const n = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => x.art === 'arbeit' && x.erledigt).length, 0); return `<li><span><b>${esc(e.name)}</b><br><span class="leise klein">${esc(datumDE(e.start.slice(0, 10)))} · ${n} Arbeitssätze · ${Math.round((new Date(e.ende) - new Date(e.start)) / 60000)} Min.</span></span></li>`; }).join('')}</ul>` : ''}
+  <p class="leise klein">Objektiv protokollierte Leistung (Gewicht × Wiederholungen) je Gerät/Variante. Körpergewicht steht getrennt unter Übersicht.</p>`;
+}
+
+/* ---------- Mobility und Stretching (Inhalte aus 65 Mobility; persönliche Daten nur lokal) ---------- */
+function mobDaten() { if (!D.mobility) D.mobility = { eigene: [], verlauf: [], favoriten: [], einrichtung: {} }; return D.mobility; }
+const MOB = () => (K.mobility || { uebungen: [], routinen: [], quellen: {} });
+const mobUeb = id => MOB().uebungen.find(u => u.id === id) || { id, name: 'Unbekannte Übung' };
+const MOB_ZIEL = { beweglichkeit: 'Bewegungsumfang', aktive_kontrolle: 'aktive Kontrolle', vorbereitung: 'Vorbereitung/Aufwärmen', allgemein: 'allgemeine Bewegungsroutine' };
+const MOB_KONTEXT = { vor_training: 'vor dem Training', nach_training: 'nach dem Training', eigenstaendig: 'eigenständig', buero: 'Büro/Pause' };
+const MOB_ART = { dynamisch: 'dynamisch', aktiv: 'aktive Mobility', statisch: 'statisches Dehnen' };
+const MOB_BEREICH = { huefte: 'Hüfte', gesaess: 'Gesäß', oberschenkel_vorne: 'Oberschenkel vorne', oberschenkel_hinten: 'Oberschenkel hinten', adduktoren: 'Adduktoren', waden: 'Waden', sprunggelenk: 'Sprunggelenk', lendenwirbelsaeule: 'unterer Rücken', brustwirbelsaeule: 'Brustwirbelsäule', schulter: 'Schulter', brust: 'Brust', nacken: 'Nacken', handgelenk: 'Handgelenk' };
+let mobFilter = { ziel: '', kontext: '' };
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v; if (!a.startsWith('mob-')) return;
+  const m = mobDaten();
+  switch (a) {
+    case 'mob-filter': mobFilter[b.dataset.k] = v; route(); break;
+    case 'mob-start': aendere(null, d => { mobDaten(); d.mobility.lauf = { id: v, i: 0, start: new Date().toISOString() }; }, { neuZeichnen: false }); location.hash = '#/mobility/lauf'; break;
+    case 'mob-schritt': aendere(null, d => { d.mobility.lauf.i = Math.max(0, d.mobility.lauf.i + Number(v)); }); window.scrollTo(0, 0); break;
+    case 'mob-fertig': case 'mob-abbruch': { const l = m.lauf; const r = l && mobRoutine(l.id); const voll = a === 'mob-fertig';
+      aendere(voll ? 'Routine abgeschlossen' : 'Routine abgebrochen', d => { if (r && (voll || l.i > 0)) d.mobility.verlauf = [...arr(d.mobility.verlauf), { datum: heute(), id: r.id, name: r.name, vollstaendig: voll }]; d.mobility.lauf = null; }, { neuZeichnen: false }); location.hash = '#/mobility'; break; }
+    case 'mob-fav': aendere(null, d => { const f = new Set(arr(d.mobility.favoriten)); f.has(v) ? f.delete(v) : f.add(v); d.mobility.favoriten = [...f]; }); break;
+    case 'mob-eigen-weg': aendere('Eigene Routine gelöscht – Rückgängig möglich', d => { d.mobility.eigene = arr(d.mobility.eigene).filter(r => r.id !== v); }, { neuZeichnen: false }); location.hash = '#/mobility'; break;
+    case 'mob-eigen-speichern': { const c = m.einrichtung || {}; const vs = mobVorschlag(c); if (!vs.uebungen.length) return; const id = uid('mrou');
+      aendere('Als eigene Routine gespeichert', d => { d.mobility.eigene = [...arr(d.mobility.eigene), { id, name: 'Meine Routine (' + (MOB_ZIEL[c.ziel] || 'allgemein') + ')', ziel: c.ziel || 'allgemein', kontext: c.kontext || 'eigenstaendig', dauer_min: vs.minuten, bereiche: arr(c.bereiche), uebungen: vs.uebungen.map(u => u.id + '|' + (u.dauer_vorschlag || '')) }]; }, { neuZeichnen: false }); location.hash = '#/mobility/routine/' + id; break; }
+  }
+});
+document.addEventListener('submit', ev => { const f = ev.target; if (f.id !== 'mob-einr') return; ev.preventDefault(); const w = n => [...f.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
+  aendere('Gespeichert', d => { mobDaten(); d.mobility.einrichtung = { ziel: f.ziel.value, minuten: Number(f.minuten.value) || 10, kontext: f.kontext.value, bereiche: w('bereiche'), hilfsmittel: w('hilfsmittel'), unerwuenscht: [...f.unerwuenscht.selectedOptions].map(o => o.value), beschwerden: f.beschwerden.value.trim() }; }); });
+function alleMobRoutinen() { return [...MOB().routinen.map(r => Object.assign({ quelle: 'bibliothek' }, r)), ...arr(mobDaten().eigene).map(r => Object.assign({ quelle: 'eigen' }, r))]; }
+function mobRoutine(id) { return alleMobRoutinen().find(r => r.id === id); }
+function vMobility(teil, id) {
+  const m = mobDaten();
+  if (!MOB().uebungen.length) return `<h1>Mobility</h1><p class="leer">Die geprüfte Mobility-Bibliothek wird gerade aufgebaut.</p>`;
+  if (teil === 'routine') return mobRoutineHtml(id);
+  if (teil === 'uebung') return mobUebungHtml(id);
+  if (teil === 'lauf') return mobLaufHtml();
+  if (teil === 'plan') return mobPlanHtml();
+  if (teil === 'verlauf') return mobVerlaufHtml();
+  const l = alleMobRoutinen().filter(r => (!mobFilter.ziel || r.ziel === mobFilter.ziel) && (!mobFilter.kontext || r.kontext === mobFilter.kontext));
+  const fav = arr(m.favoriten);
+  const chip = (k, v, n) => `<button class="filterchip" data-a="mob-filter" data-k="${k}" data-v="${v}" aria-pressed="${mobFilter[k] === v}">${n}</button>`;
+  return `<h1>Mobility</h1><p class="leise klein">Dynamisches Aufwärmen, aktive Mobility und statisches Dehnen – kurze Routinen aus geprüften Übungen. Kein Ersatz für Behandlung; keine Garantie für Verletzungsschutz oder Regeneration.</p>
+  <div class="chips-wrap">${chip('ziel', '', 'alle Ziele')}${Object.entries(MOB_ZIEL).map(([k, n]) => chip('ziel', k, n)).join('')}</div>
+  <div class="chips-wrap" style="margin-top:6px">${chip('kontext', '', 'jederzeit')}${Object.entries(MOB_KONTEXT).map(([k, n]) => chip('kontext', k, n)).join('')}</div>
+  <ul class="eintraege" style="margin-top:10px">${l.sort((a, b) => (fav.includes(b.id) ? 1 : 0) - (fav.includes(a.id) ? 1 : 0)).map(r => `<li><span><b><a href="#/mobility/routine/${esc(r.id)}">${esc(r.name)}</a></b>${fav.includes(r.id) ? ' ★' : ''}${r.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}<br><span class="leise klein">${esc(r.dauer_min)} Min. · ${esc(MOB_ZIEL[r.ziel] || '')} · ${esc(MOB_KONTEXT[r.kontext] || '')} · ${esc(arr(r.bereiche).map(b => MOB_BEREICH[b] || b).join(', '))}</span></span><span><button class="haupt klein" data-a="mob-start" data-v="${esc(r.id)}">Starten</button></span></li>`).join('') || '<li class="leise">Keine Routine für diese Auswahl.</li>'}</ul>
+  <p class="klein"><a href="#/mobility/plan">Eigene Routine nach deinen Angaben zusammenstellen</a></p>`;
+}
+function mobRoutineHtml(id) {
+  const r = mobRoutine(id); if (!r) return '<p class="leer">Routine nicht gefunden.</p>'; const fav = arr(mobDaten().favoriten).includes(r.id);
+  return `<p class="klein"><a class="knopf still klein" href="#/mobility">${ico('zurueck', 'klein')} Mobility</a></p><h1>${esc(r.name)}</h1>
+  <p class="leise klein">${esc(r.dauer_min)} Min. · ${esc(MOB_ZIEL[r.ziel] || '')} · ${esc(MOB_KONTEXT[r.kontext] || '')}</p>
+  <div class="knopfreihe"><button class="haupt" data-a="mob-start" data-v="${esc(r.id)}">Routine starten</button><button data-a="mob-fav" data-v="${esc(r.id)}">${fav ? '★ Favorit' : '☆ Als Favorit merken'}</button>${r.quelle === 'eigen' ? `<button class="still" data-a="mob-eigen-weg" data-v="${esc(r.id)}">✕ Löschen</button>` : ''}</div>
+  <ol class="tr-liste">${arr(r.uebungen).map(e => { const [uid2, dauer] = String(e).split('|'); const u = mobUeb(uid2.trim()); return `<li class="karte"><b><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a></b> <span class="chip">${esc(MOB_ART[u.art] || u.art || '')}</span><br><span class="klein">${esc((dauer || u.dauer_vorschlag || '').trim())}</span>${u.intensitaet_hinweis ? `<br><span class="leise klein">${esc(u.intensitaet_hinweis)}</span>` : ''}</li>`; }).join('')}</ol>
+  ${r.md ? `<details class="abschnitt-zu"><summary>Wofür, Hinweise und Grenzen</summary>${md(String(r.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
+  <p class="hinweis klein">Deutliches Ziehen ist in Ordnung, Schmerz nicht. Bei Schmerz, Taubheit oder Kribbeln abbrechen. Bei akuten oder ungeklärten Beschwerden ärztlich oder physiotherapeutisch abklären lassen – eine allgemeine Routine ersetzt das nicht.</p>`;
+}
+function mobUebungHtml(id) {
+  const u = mobUeb(id); const q = MOB().quellen || {};
+  return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><h1>${esc(u.name)}</h1>
+  <p class="leise klein">${esc(MOB_ART[u.art] || '')} · ${esc(arr(u.bereiche).map(b => MOB_BEREICH[b] || b).join(', '))} · ${esc(u.dauer_vorschlag || '')} · Hilfsmittel: ${esc(arr(u.hilfsmittel).join(', ') || 'keins')}</p>
+  ${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''}
+  ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}${u.demo_link_geprueft ? '; geprüft ' + esc(u.demo_link_geprueft) : ''})</span></p>` : ''}
+  ${arr(u.quellen).length ? `<p class="belege">Quellen: ${arr(u.quellen).map(x => { const k = String(x).replace(/^\^/, ''); const e = q[k]; return e && e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(String(e.titel).slice(0, 70))}</a>` : esc(e ? e.titel : k); }).join(' · ')}</p>` : ''}`;
+}
+/* Geführter Ablauf: Übung für Übung, Zeitangaben aus der Routine; Timer nur als Hilfe */
+function mobLaufHtml() {
+  const mobLauf = mobDaten().lauf; const r = mobLauf && mobRoutine(mobLauf.id);
+  if (!r) return '<p class="leer">Keine Routine aktiv. <a href="#/mobility">Zu den Routinen</a></p>';
+  const l = arr(r.uebungen); const i = Math.min(mobLauf.i, l.length - 1); const [uid2, dauer] = String(l[i]).split('|'); const u = mobUeb(uid2.trim());
+  const sek = (String(dauer || u.dauer_vorschlag).match(/(\d+)\s*(?:–\s*\d+\s*)?s\b/) || [])[1];
+  return `<p class="leise klein">${esc(r.name)} · Übung ${i + 1} von ${l.length}</p><div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / l.length)}%"></i></div>
+  <h1>${esc(u.name)}</h1><p class="klein"><b>${esc((dauer || u.dauer_vorschlag || '').trim())}</b> · ${esc(MOB_ART[u.art] || '')}</p>
+  ${sek ? `<div class="knopfreihe"><button data-a="timer" data-min="${Number(sek) / 60}" data-name="${esc(u.name)}">⏱ ${sek} s</button></div>` : ''}
+  ${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''}
+  <div style="height:80px"></div>
+  <div class="kochnav"><button data-a="mob-schritt" data-v="-1" ${i === 0 ? 'disabled' : ''}>← Zurück</button>${i === l.length - 1 ? '<button class="haupt" data-a="mob-fertig">Fertig ✓</button>' : '<button class="haupt" data-a="mob-schritt" data-v="1">Weiter →</button>'}</div>
+  <p><button class="still klein" data-a="mob-abbruch">✕ Routine abbrechen</button></p>`;
+}
+function mobVerlaufHtml() {
+  const v = [...arr(mobDaten().verlauf)].sort((a, b) => b.datum.localeCompare(a.datum));
+  return `<h1>Verlauf</h1>${v.length ? `<ul class="eintraege">${v.slice(0, 40).map(x => `<li><span>${esc(datumDE(x.datum))} · <b>${esc(x.name)}</b>${x.vollstaendig ? '' : ' <span class="leise klein">(teilweise)</span>'}</span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Routine abgeschlossen.</p>'}
+  <p class="leise klein">Nur ein Protokoll – daraus wird keine Beweglichkeits-„Messung“ abgeleitet.</p>`;
+}
+/* Persönliche Routine: aus geprüften Übungen nach Ziel, Bereichen, Zeit, Hilfsmitteln; unerwünschte Übungen ausgeschlossen */
+function mobSekunden(u, dauer) { const t = String(dauer || u.dauer_vorschlag || ''); const sets = Number((t.match(/(\d+)\s*×/) || [])[1]) || 1; const seiten = /seite/i.test(t) ? 2 : 1; const s = Number((t.match(/(\d+)\s*(?:–\s*(\d+)\s*)?s\b/) || [])[1]); const w = Number((t.match(/(\d+)\s*(?:–\s*\d+\s*)?Wdh/) || [])[1]); return (s ? s : w ? w * 4 : 45) * sets * seiten + 15; }
+function mobVorschlag(c) {
+  const artNach = { vorbereitung: ['dynamisch', 'aktiv'], beweglichkeit: ['statisch', 'aktiv'], aktive_kontrolle: ['aktiv'], allgemein: ['dynamisch', 'aktiv', 'statisch'] }[c.ziel || 'allgemein'];
+  const hm = arr(c.hilfsmittel).length ? arr(c.hilfsmittel) : ['keins']; const nein = arr(c.unerwuenscht); const ber = arr(c.bereiche);
+  const kand = MOB().uebungen.filter(u => artNach.includes(u.art) && !nein.includes(u.id) && arr(u.hilfsmittel).every(h => h === 'keins' || hm.includes(h)) && (!ber.length || arr(u.bereiche).some(b => ber.includes(b))));
+  const ziel = (Number(c.minuten) || 10) * 60; const gew = []; let sek = 0; const genutzt = new Set();
+  // Bereiche reihum abdecken, dann auffüllen
+  const reihen = ber.length ? ber : [...new Set(kand.flatMap(u => arr(u.bereiche)))];
+  for (let runde = 0; runde < 3 && sek < ziel; runde++) for (const b of reihen) { const u = kand.find(x => !genutzt.has(x.id) && arr(x.bereiche).includes(b)); if (!u) continue; const s = mobSekunden(u); if (sek + s > ziel * 1.1) continue; genutzt.add(u.id); gew.push(u); sek += s; if (sek >= ziel) break; }
+  if (c.ziel === 'vorbereitung') gew.sort((a, b) => (a.art === 'dynamisch' ? 0 : 1) - (b.art === 'dynamisch' ? 0 : 1));
+  return { uebungen: gew, minuten: Math.round(sek / 60), fehlend: ber.filter(b => !gew.some(u => arr(u.bereiche).includes(b))) };
+}
+function mobPlanHtml() {
+  const c = mobDaten().einrichtung || {}; const v = c.ziel ? mobVorschlag(c) : null;
+  const chk = (n, w, an, t) => `<label class="wahl-chip"><input type="checkbox" name="${n}" value="${w}" ${an ? 'checked' : ''}> ${t}</label>`;
+  return `<h1>Mein Plan</h1><p class="leise klein">Kurze Angaben, daraus wird eine Routine aus geprüften Übungen zusammengestellt. Alles optional und nur auf diesem Gerät.</p>
+  <form id="mob-einr" class="karte">
+    <div class="zeile"><label class="feld"><span>Ziel</span><select name="ziel">${[['', '–'], ...Object.entries(MOB_ZIEL)].map(([k, n]) => `<option value="${k}" ${c.ziel === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="feld"><span>Minuten</span><input name="minuten" type="number" min="3" max="45" step="1" value="${esc(c.minuten || 10)}" inputmode="numeric" style="width:5em"></label>
+      <label class="feld"><span>Wann</span><select name="kontext">${Object.entries(MOB_KONTEXT).map(([k, n]) => `<option value="${k}" ${c.kontext === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+    <fieldset><legend>Körperbereiche</legend><div class="chips-wrap">${Object.entries(MOB_BEREICH).map(([k, n]) => chk('bereiche', k, arr(c.bereiche).includes(k), n)).join('')}</div></fieldset>
+    <fieldset><legend>Hilfsmittel</legend><div class="chips-wrap">${[['matte', 'Matte'], ['band', 'Band'], ['wand', 'Wand'], ['stuhl', 'Stuhl'], ['stange', 'Stange']].map(([k, n]) => chk('hilfsmittel', k, arr(c.hilfsmittel).includes(k), n)).join('')}</div></fieldset>
+    <label class="feld"><span>Unerwünschte Übungen</span><select name="unerwuenscht" multiple size="4">${MOB().uebungen.map(u => `<option value="${esc(u.id)}" ${arr(c.unerwuenscht).includes(u.id) ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+    <label class="feld"><span>Einschränkungen oder Beschwerden (nur Notiz)</span><input name="beschwerden" value="${esc(c.beschwerden || '')}"></label>
+    <button class="haupt" type="submit">Speichern und Vorschlag zeigen</button></form>
+  ${c.beschwerden ? '<p class="hinweis warn klein">Du hast Beschwerden notiert: Die Routine ist allgemein und berücksichtigt sie nicht medizinisch. Bei akuten oder ungeklärten Beschwerden zuerst abklären lassen; Übungen, die schmerzen, weglassen.</p>' : ''}
+  ${v ? `<section class="karte"><h2 style="margin-top:0">Vorschlag · ca. ${v.minuten} Min.</h2>${v.uebungen.length ? `<ol>${v.uebungen.map(u => `<li><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a> <span class="leise klein">· ${esc(MOB_ART[u.art])} · ${esc(u.dauer_vorschlag || '')}</span></li>`).join('')}</ol>` : '<p>Mit diesen Angaben passt keine Übung – Bereiche oder Hilfsmittel erweitern.</p>'}
+    ${v.fehlend.length ? `<p class="leise klein">Für ${esc(v.fehlend.map(b => MOB_BEREICH[b] || b).join(', '))} passte keine Übung zu Ziel/Hilfsmitteln.</p>` : ''}
+    ${v.uebungen.length && v.minuten < (Number(c.minuten) || 10) * 0.7 ? `<p class="leise klein">Kürzer als gewünscht: Für diese Auswahl gibt es nicht mehr passende Übungen – weitere Bereiche oder Hilfsmittel wählen, oder Übungen in Ruhe zweimal durchgehen.</p>` : ''}
+    ${v.uebungen.length ? '<button class="klein haupt" data-a="mob-eigen-speichern">Als meine Routine speichern</button>' : ''}</section>` : ''}`;
 }
 
 /* ---------- Cardio: getrennt protokolliert, keine Kalorien ins Ernährungsbudget ---------- */
@@ -301,14 +465,16 @@ function trZeitVorschauHtml(e) {
 function trainingsplanImport(obj) {
   if (!obj.plan || !Array.isArray(obj.routinen)) throw new Error('Trainingsplan-Datei unvollständig.');
   const schon = (trDaten().plaene || []).some(p => p.import_id && p.import_id === obj.import_id);
-  if (schon) return { text: `„${obj.plan.name}“ wurde bereits importiert – es wird nichts doppelt angelegt.`, anwenden: () => {} };
+  if (schon) return { text: `„${obj.plan.name}“ wurde bereits importiert – es wird nichts doppelt angelegt.${arr(obj.unerwuenschte_uebungen).length ? ' Nur die Liste unerwünschter Übungen für Vorschläge wird ergänzt.' : ''}`, anwenden: d => { if (!arr(obj.unerwuenschte_uebungen).length) return; const t = d.training; t.einrichtung = Object.assign({}, t.einrichtung); t.einrichtung.unerwuenscht = [...new Set([...arr(t.einrichtung.unerwuenscht), ...arr(obj.unerwuenschte_uebungen)])]; } };
   const neueUeb = arr(obj.uebungen).filter(u => !alleUebungen().some(x => x.id === u.id));
   return { text: `Trainingsplan „${obj.plan.name}“: ${obj.routinen.length} Einheiten, ${obj.routinen.reduce((s, r) => s + r.uebungen.length, 0)} Übungseinträge, ${neueUeb.length} neue eigene Übungen. Vorhandene Routinen, Pläne und Trainings bleiben unverändert. Referenzgewichte werden als Referenz gespeichert, nicht als Leistung.`,
     anwenden: d => { const t = d.training || (d.training = { uebungen: [], routinen: [], einheiten: [], aktiv: null, koerpergewicht: [] }); t.plaene = t.plaene || []; t.einstellungen = t.einstellungen || { auto_pause: true, ton: true };
       neueUeb.forEach(u => t.uebungen.push(JSON.parse(JSON.stringify(u))));
       const ids = {}; obj.routinen.forEach(r => { const id = uid('rou'); ids[r.key] = id; t.routinen.push({ id, name: r.name, historisch: obj.plan.art === 'historisch', uebungen: JSON.parse(JSON.stringify(r.uebungen)) }); });
       t.plaene.push({ id: uid('plan'), import_id: obj.import_id, name: obj.plan.name, art: obj.plan.art || 'eigen', hinweis: obj.plan.hinweis || '', aktiv: !t.plaene.some(p => p.aktiv), erstellt: heute(), einheiten: arr(obj.einheiten).filter(pe => ids[pe.routine]).map(pe => ({ routine: ids[pe.routine], tag: pe.tag || '' })) });
-      if (obj.einstellungen && obj.einstellungen.aufwaermen_text) t.einstellungen.aufwaermen_text = obj.einstellungen.aufwaermen_text; } };
+      if (obj.einstellungen && obj.einstellungen.aufwaermen_text) t.einstellungen.aufwaermen_text = obj.einstellungen.aufwaermen_text;
+      // Persönliche Abneigungen (z. B. Überkopf-Trizeps) für Vorschläge übernehmen, ohne vorhandene Angaben zu löschen
+      if (arr(obj.unerwuenschte_uebungen).length) { t.einrichtung = Object.assign({}, t.einrichtung); t.einrichtung.unerwuenscht = [...new Set([...arr(t.einrichtung.unerwuenscht), ...arr(obj.unerwuenschte_uebungen)])]; } } };
 }
 
 /* ---------- Plan bearbeiten ---------- */
@@ -464,7 +630,7 @@ document.addEventListener('click', ev => {
       const einst = trDaten().einstellungen;
       if (fertig && s.art === 'arbeit' && u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
       break; }
-    case 'tr-vorschlag-anlegen': { const c = trDaten().einrichtung || {}; const n = arr(c.tage).length; const opt = splitOptionen(n)[Number(v)]; if (!opt) return; const vs = planVorschlag(c, opt[0], opt[1]); const tage = WOCHENTAGE.map(w => w[0]).filter(k => arr(c.tage).includes(k));
+    case 'tr-vorschlag-anlegen': { const c = trDaten().einrichtung || {}; const vs = vorschlagsOptionen(c)[Number(v)]; if (!vs) return; const tage = WOCHENTAGE.map(w => w[0]).filter(k => arr(c.tage).includes(k));
       if (!confirm(`Plan „${vs.name}“ mit ${vs.einheiten.length} Einheiten als neuen, inaktiven Plan anlegen? Bestehende Pläne und Routinen bleiben unverändert.`)) return; let pid;
       aendere('Vorschlag als neuer Plan angelegt – aktivieren kannst du ihn im Plan', d => { trDaten(); const ids = vs.einheiten.map(e => { const id = uid('rou'); d.training.routinen.push({ id, name: e.name + ' (Vorschlag)', uebungen: JSON.parse(JSON.stringify(e.uebungen)) }); return id; }); pid = uid('plan'); d.training.plaene.push({ id: pid, name: vs.name + ' – Vorschlag', art: 'eigen', hinweis: 'aus Planvorschlag erstellt ' + heute(), aktiv: !d.training.plaene.some(p => p.aktiv), erstellt: heute(), einheiten: ids.map((r, i) => ({ routine: r, tag: tage[i] || '' })) }); }, { neuZeichnen: false });
       location.hash = '#/training/plan/' + pid; break; }

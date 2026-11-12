@@ -4,7 +4,7 @@
    - Die App startet immer aus dem Offline-Speicher dieser Version (schnell, offline, alle Dateien passen zusammen).
    - Eine neue Version wird im Hintergrund vollständig geladen und wartet dann. Aktiv wird sie erst,
      wenn die Seite „aktivieren“ schickt (Knopf „Jetzt aktualisieren“) oder wenn die App ganz geschlossen war. */
-const VERSION = '202611120747';
+const VERSION = '202611120828';
 const CACHE = 'kochschule-' + VERSION;
 const DATEIEN = ['./', 'index.html', 'app.css', 'ernaehrung.js', 'rezepte.js', 'tracking.js', 'training.js', 'app.js', 'data/katalog.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 // Rezeptfotos (vom Build eingetragen, nur mit Lizenznachweis). Sie werden NICHT alle vorab gespeichert, sondern beim Ansehen
