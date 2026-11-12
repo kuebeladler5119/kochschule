@@ -556,3 +556,5 @@ ol.ablauf ul{list-style:none;padding:0}
 .ablauf-punkt input{width:22px;height:22px;flex:0 0 22px;margin-top:2px}
 .ablauf-punkt.erledigt span{opacity:.6;text-decoration:line-through}
 .import-wahl ol{padding-left:1.2em}.import-wahl li{margin:6px 0}.import-wahl .haupt{margin:4px 0}.pl-zusammenfassung{background:var(--flaeche2);padding:8px 10px;border-radius:10px}
+/* Logo: Fischtomate */.marke{display:inline-flex;align-items:center;gap:6px}.marke-logo{width:36px;height:30px;flex:0 0 auto;display:block}
+.marke-text{font-weight:inherit;color:inherit}.marke-text span{color:var(--akzent)}
