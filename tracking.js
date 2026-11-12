@@ -209,7 +209,7 @@ function vProdukte(id) {
   ${mz.length ? `<ul class="eintraege">${mz.map(m => `<li><span><b>${esc(m.name)}</b><br><span class="leise klein">${esc(m.eintraege.map(e => kurztitel(e.titel)).join(', '))} · ${zahlDE(m.eintraege.reduce((s, e) => s + (e.naehr && e.naehr.kcal || 0), 0))} kcal</span></span><span><button class="still klein" data-a="tb-mz-weg" data-v="${esc(m.id)}">löschen</button></span></li>`).join('')}</ul>` : '<p class="leise klein">Im Tagebuch bei einer Mahlzeit „als eigene Mahlzeit“ wählen – dann buchst du sie künftig mit einer Berührung.</p>'}`;
 }
 function produktFormular(p) {
-  const v = p || { naehr: {}, allergene: [], bezug: '100g', pruefstatus: 'ungeprueft', quelle_art: 'etikett', quelle_datum: heute() };
+  const v = p || Object.assign({ naehr: {}, allergene: [], bezug: '100g', pruefstatus: 'ungeprueft', quelle_art: 'etikett', quelle_datum: heute() }, produktVorbelegung || {});
   const n = (k, lab) => `<label class="feld"><span>${lab}</span><input type="number" name="n_${k}" min="0" step="any" inputmode="decimal" value="${esc(v.naehr[k] ?? '')}" style="width:6.5em"></label>`;
   const t = (k, lab, extra = '') => `<label class="feld" style="flex:1 1 160px"><span>${lab}</span><input name="${k}" value="${esc(v[k] ?? '')}" ${extra}></label>`;
   return `<p class="klein"><a class="knopf still klein" href="#/produkte">${ico('zurueck', 'klein')} Produkte</a></p>
@@ -243,12 +243,20 @@ function produktFormular(p) {
       <label class="feld"><span>Quelle</span><select name="quelle_art">${PRODUKT_QUELLEN.map(([k, n2]) => `<option value="${k}" ${v.quelle_art === k ? 'selected' : ''}>${n2}</option>`).join('')}</select></label>
       <label class="feld"><span>Datum</span><input type="date" name="quelle_datum" value="${esc(v.quelle_datum || heute())}"></label>
       <label class="feld"><span>Prüfstatus</span><select name="pruefstatus"><option value="ungeprueft" ${v.pruefstatus !== 'bestaetigt' ? 'selected' : ''}>ungeprüft</option><option value="bestaetigt" ${v.pruefstatus === 'bestaetigt' ? 'selected' : ''}>mit Etikett verglichen</option></select></label></div></fieldset>
+    <fieldset><legend>Etikettfoto (optional)</legend>
+      <label class="feld"><span>Foto vom Etikett als Beleg</span><input type="file" id="etikett-foto" accept="image/*" capture="environment"></label>
+      <div id="etikett-vorschau">${v.etikett_foto ? `<img src="${esc(v.etikett_foto)}" alt="Etikettfoto" class="etikett-bild">` : ''}</div>
+      <p class="leise klein">Nur ein Beleg auf diesem Gerät: Das Foto wird verkleinert gespeichert, nicht ausgelesen und nirgends hochgeladen. Die Werte oben trägst du selbst ein. ${v.etikett_foto ? '<button type="button" class="klein still" data-a="etikett-weg">Foto entfernen</button>' : ''}</p></fieldset>
     <div class="knopfreihe"><button class="haupt" type="submit">Speichern</button>${p ? `<button class="still" type="button" data-a="produkt-weg" data-v="${esc(p.id)}">Produkt entfernen</button>` : ''}</div>
     <p class="leise klein">Ein Barcode identifiziert nur das Produkt – Nährwerte trägst du vom Etikett ein. Ändern sich Rezeptur oder Etikett, speichere einfach neu: die alte Version bleibt erhalten.</p>
   </form>`;
 }
+let etikettFoto;   // undefined = unverändert, null = entfernen, Text = neues Foto (verkleinert)
 vProdukte.danach = () => {
-  const f = $('#produkt-form'); if (!f) return;
+  const f = $('#produkt-form'); if (!f) return; produktVorbelegung = null; etikettFoto = undefined;
+  const fi = $('#etikett-foto'); if (fi) fi.addEventListener('change', () => { const datei = fi.files && fi.files[0]; if (!datei) return; const url = URL.createObjectURL(datei); const img = new Image();
+    img.onload = () => { const s = Math.min(1, 700 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); etikettFoto = c.toDataURL('image/jpeg', 0.6); URL.revokeObjectURL(url); const vs = $('#etikett-vorschau'); if (vs) vs.innerHTML = `<img src="${etikettFoto}" alt="Etikettfoto" class="etikett-bild">`; };
+    img.onerror = () => toast('Foto konnte nicht gelesen werden'); img.src = url; });
   const gi = () => { const g = f.gtin.value.trim(); const el = $('#gtin-info'); if (!el) return; if (!g) { el.textContent = ''; return; }
     const dup = (D.lebensmittel || []).find(p => p.gtin === g && p.id !== f.dataset.id);
     el.textContent = (gtinPruefziffer(g) ? 'Prüfziffer stimmt.' : 'Prüfziffer stimmt nicht – bitte Nummer prüfen.') + (dup ? ` Achtung: Diese GTIN ist schon bei „${dup.name}“ gespeichert.` : ''); };
@@ -262,6 +270,7 @@ vProdukte.danach = () => {
       zutat: (K.zutaten.find(z => z.name.toLowerCase() === f.zutat_name.value.trim().toLowerCase()) || {}).id || null, preis: zahl('preis'), preis_datum: f.preis_datum.value || null };
     if (f.zutat_name.value.trim() && !neu.zutat) { toast('Zutat nicht gefunden – bitte einen Namen aus der Liste wählen oder das Feld leeren'); return; }
     if (neu.preis != null && !neu.preis_datum) neu.preis_datum = heute();
+    if (etikettFoto !== undefined) neu.etikett_foto = etikettFoto;
     if (!neu.name) { toast('Bitte einen Namen eingeben'); return; }
     const id = f.dataset.id;
     aendere('Produkt gespeichert', d => { d.lebensmittel = d.lebensmittel || [];
@@ -305,6 +314,158 @@ function offUebernehmen() {
   toast('Übernommen – bitte mit dem Etikett vergleichen und dann ggf. „mit Etikett verglichen“ wählen');
 }
 
+/* ---------- Online-Produktsuche über Open Food Facts (ODbL) ----------
+   Gesendet wird nur der Suchbegriff bzw. die Barcode-Nummer – nie Profil oder Tagebuch.
+   Textsuche laut OFF max. 10/Minute und „nicht beim Tippen“: daher erst nach einer Tipp-Pause, gedrosselt, mit Zwischenspeicher und Abbruch alter Anfragen.
+   Ausgewählte Produkte werden privat in „Eigene Produkte“ gespeichert (mit Quelle) und nie zurückgesendet oder veröffentlicht. */
+const OFF_FELDER = 'code,product_name,product_name_de,generic_name_de,brands,quantity,product_quantity,product_quantity_unit,serving_quantity,serving_size,nutrition_data_per,nutrition_data_prepared_per,nutriments,last_modified_t,allergens_tags,ingredients_text_de';
+let offOnline = { q: '', status: 'leer', treffer: [], fehler: '', seq: 0, ctrl: null, timer: null, cache: false };
+const offAufrufe = { suche: [], code: [] };
+const offCacheName = () => 'kochschule.off.v1.' + PROFIL;   // erst zur Laufzeit (PROFIL kommt aus app.js)
+function offCache(key, wert) { const OFF_CACHE = offCacheName(); try { const c = JSON.parse(localStorage.getItem(OFF_CACHE) || '{}'); if (wert === undefined) { const e = c[key]; return e && Date.now() - e.t < 864e5 ? e.d : null; }
+  c[key] = { t: Date.now(), d: wert }; Object.keys(c).sort((a, b) => c[b].t - c[a].t).slice(40).forEach(k => delete c[k]); localStorage.setItem(OFF_CACHE, JSON.stringify(c)); } catch (e) { return null; } }
+const istBarcode = q => /^\d{8}$|^\d{12,14}$/.test(q);
+// OFF-Datensatz → einheitliches Produkt; Auffälligkeiten werden benannt, nie stillschweigend „repariert“
+function offNormalisieren(p) {
+  const n = p.nutriments || {}; const hinweise = []; const z = k => { const v = n[k + '_100g']; return v === '' || v == null || isNaN(Number(v)) ? null : Math.round(Number(v) * 100) / 100; };
+  let kcal = z('energy-kcal'); if (kcal == null) { const kj = z('energy-kj') != null ? z('energy-kj') : z('energy'); if (kj != null) { kcal = Math.round(kj / 4.184); hinweise.push('kcal aus kJ umgerechnet'); } }
+  let salz = z('salt'); if (salz == null && z('sodium') != null) { salz = Math.round(z('sodium') * 2.5 * 100) / 100; hinweise.push('Salz aus Natrium berechnet (× 2,5)'); }
+  const naehr = { kcal, fett: z('fat'), gesfs: z('saturated-fat'), kh: z('carbohydrates'), zucker: z('sugars'), ballaststoffe: z('fiber'), protein: z('proteins'), salz };
+  const fehlt = [['kcal', 'Energie'], ['protein', 'Eiweiß'], ['kh', 'Kohlenhydrate'], ['fett', 'Fett']].filter(([k]) => naehr[k] == null).map(x => x[1]); if (fehlt.length) hinweise.push('fehlt: ' + fehlt.join(', '));
+  if (p.nutrition_data_per === 'serving') hinweise.push('Etikettangabe je Portion – Werte je 100 von OFF umgerechnet');
+  if (n['energy-kcal_prepared_100g'] != null || n['energy_prepared_100g'] != null) hinweise.push('auch „zubereitet“-Werte vorhanden – verwendet werden die Werte wie verkauft (z. B. Pulver)');
+  if (kcal != null && naehr.protein != null && naehr.kh != null && naehr.fett != null) { const r = naehr.protein * 4 + naehr.kh * 4 + naehr.fett * 9; if (Math.abs(r - kcal) > Math.max(40, kcal * 0.3)) hinweise.push('Energie passt nicht zu Eiweiß/Kohlenhydraten/Fett – Etikett prüfen'); }
+  const menge = String(p.quantity || '').trim(); const ml = /\d\s*(ml|cl|l)\b/i.test(menge) || p.product_quantity_unit === 'ml';
+  return { code: String(p.code || ''), name: (p.product_name_de || p.product_name || p.generic_name_de || '').trim(), marke: String(p.brands || '').split(',')[0].trim(), menge, packung: Number(p.product_quantity) || null, packung_einheit: ml ? 'ml' : 'g',
+    portion: Number(p.serving_quantity) || null, portion_text: p.serving_size || '', bezug: ml ? '100ml' : '100g', naehr, stand: p.last_modified_t ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10) : null, hinweise,
+    allergene: arr(p.allergens_tags).map(t => OFF_ALLERGENE[t]).filter(Boolean), zutaten: p.ingredients_text_de || '' };
+}
+function offOnlineSuche(q, sofort) {
+  clearTimeout(offOnline.timer); const qn = String(q || '').trim(); const seq = ++offOnline.seq;
+  if (offOnline.ctrl) { try { offOnline.ctrl.abort(); } catch (e) { /* */ } offOnline.ctrl = null; }   // veraltete Anfrage abbrechen
+  offOnline.q = qn; offOnline.treffer = []; offOnline.fehler = '';
+  if (qn.length < 3 && !istBarcode(qn)) { offOnline.status = 'leer'; offOnlineZeichnen(); return; }
+  const code = istBarcode(qn); const key = (code ? 'c:' : 'q:') + suchNorm(qn); const c = offCache(key);
+  if (c) { offOnline.status = 'ok'; offOnline.treffer = c; offOnline.cache = true; offOnlineZeichnen(); return; }
+  if (!navigator.onLine) { offOnline.status = 'offline'; offOnlineZeichnen(); return; }
+  offOnline.status = 'wartet'; offOnlineZeichnen();
+  offOnline.timer = setTimeout(() => offOnlineAbfrage(qn, key, code, seq), sofort ? 0 : code ? 300 : 1300);
+}
+async function offOnlineAbfrage(qn, key, code, seq) {
+  const liste = offAufrufe[code ? 'code' : 'suche']; const jetzt = Date.now(); while (liste.length && jetzt - liste[0] > 60000) liste.shift();
+  if (liste.length >= (code ? 12 : 7)) { offOnline.status = 'limit'; offOnline.warte = Math.ceil((60000 - (jetzt - liste[0])) / 1000); offOnlineZeichnen(); return; }
+  liste.push(jetzt); offOnline.status = 'laedt'; offOnlineZeichnen();
+  const urls = code ? [`https://world.openfoodfacts.org/api/v2/product/${qn}.json?fields=${OFF_FELDER}`]
+    : [`https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`, `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`];
+  let fehler = '';
+  for (let i = 0; i < urls.length; i++) {
+    if (i) { await new Promise(r => setTimeout(r, 2500)); if (seq !== offOnline.seq) return; }
+    const ctrl = new AbortController(); offOnline.ctrl = ctrl; const to = setTimeout(() => ctrl.abort(), 12000);
+    try { const r = await fetch(urls[i], { signal: ctrl.signal }); clearTimeout(to); if (seq !== offOnline.seq) return;   // alte Antwort darf nichts überschreiben
+      if (code && r.status === 404) { offOnline.status = 'ok'; offOnline.treffer = []; offCache(key, []); offOnlineZeichnen(); return; }
+      if (!r.ok) throw new Error(r.status === 503 ? 'Open Food Facts ist gerade überlastet (503)' : r.status === 429 ? 'zu viele Anfragen (429)' : 'HTTP ' + r.status);
+      const j = await r.json(); if (seq !== offOnline.seq) return;
+      const roh = code ? (j.status === 1 && j.product ? [Object.assign({ code: qn }, j.product)] : []) : arr(j.products);
+      const gesehen = new Set(); const treffer = roh.map(offNormalisieren).filter(p => p.name && p.code && !gesehen.has(p.code) && gesehen.add(p.code));   // Dubletten nur über den Barcode
+      offOnline.ctrl = null; offOnline.status = 'ok'; offOnline.treffer = treffer; offOnline.cache = false; offCache(key, treffer); offOnlineZeichnen(); return;
+    } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return; fehler = e.name === 'AbortError' ? 'keine Antwort nach 12 s' : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'Verbindung fehlgeschlagen (Netz oder Überlastung bei Open Food Facts)' : e.message; }
+  }
+  offOnline.ctrl = null; offOnline.status = 'fehler'; offOnline.fehler = fehler; offOnlineZeichnen();
+}
+function offOnlineHtml() {
+  const o = offOnline; if (o.status === 'leer') return '';
+  const kopf = `<h4 class="tg-titel">Online: Open Food Facts${o.cache ? ' <span class="leise">(zwischengespeichert)</span>' : ''}</h4>`;
+  const fuss = `<p class="leise klein">Produktdaten aus <a href="https://de.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>), von Freiwilligen erfasst – kein garantiert aktuelles Etikett. Gesendet wird nur dein Suchbegriff.</p>`;
+  if (o.status === 'wartet') return kopf + `<p class="leise klein">Online-Suche startet nach einer kurzen Tipp-Pause … <button class="klein still" data-a="off-jetzt">jetzt suchen</button></p>`;
+  if (o.status === 'laedt') return kopf + '<p class="leise klein">Suche bei Open Food Facts …</p>';
+  if (o.status === 'offline') return kopf + '<p class="hinweis klein">Offline – die Online-Suche braucht Internet. Bereits verwendete Produkte findest du oben unter „Eigene Produkte“.</p>';
+  if (o.status === 'limit') return kopf + `<p class="hinweis klein">Zu viele Online-Suchen in kurzer Zeit (Open Food Facts erlaubt nur wenige pro Minute). Bitte in etwa ${o.warte} s erneut versuchen. <button class="klein" data-a="off-jetzt">erneut</button></p>`;
+  if (o.status === 'fehler') return kopf + `<p class="hinweis warn klein">Online-Suche nicht möglich: ${esc(o.fehler)}. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>${istBarcode(o.q) ? '' : '<p class="leise klein">Die Barcode-Suche funktioniert meist auch dann – Nummer eingeben oder scannen.</p>'}`;
+  const lokaleCodes = new Set([...(D.lebensmittel || []).map(l => l.gtin), ...(K.produkte || []).map(p => p.gtin)].filter(Boolean));
+  const l = o.treffer.filter(p => !lokaleCodes.has(p.code)); const doppelt = o.treffer.length - l.length;
+  if (!o.treffer.length) return kopf + `<p class="klein">Kein Treffer bei Open Food Facts.</p><p class="klein"><button class="klein" data-a="produkt-neu-vorbelegt">${istBarcode(o.q) ? `Produkt mit Barcode ${esc(o.q)} anlegen` : `Produkt „${esc(o.q)}“ selbst anlegen`}</button> <span class="leise">Werte vom Etikett, optional mit Foto als Beleg.</span></p>` + fuss;
+  return kopf + `${doppelt ? `<p class="leise klein">${doppelt} Treffer hast du schon (siehe oben, gleicher Barcode).</p>` : ''}<ul class="eintraege treffer">${l.map(p => { const einh = p.bezug === '100ml' ? 'ml' : 'g'; const start = p.portion || (p.packung && p.packung <= 250 ? p.packung : 100);
+      return `<li><span class="tz-name"><b>${esc(p.marke ? p.marke + ' ' : '')}${esc(p.name)}</b>${p.menge ? ` · ${esc(p.menge)}` : ''}<br><span class="leise klein">Online-Daten · ${p.naehr.kcal != null ? zahlDE(p.naehr.kcal) + ' kcal' : 'kcal ?'} · ${p.naehr.protein != null ? zahlDE(p.naehr.protein, 1) + ' g Eiweiß' : 'Eiweiß ?'} je 100 ${einh} · Barcode ${esc(p.code)}${p.stand ? ' · Stand ' + esc(datumDE(p.stand)) : ''}</span>${p.hinweise.length ? `<br><span class="chip warn">prüfen</span> <span class="leise klein">${esc(p.hinweise.join(' · '))}</span>` : ''}
+        ${mengenWahlHtml('off-' + p.code, 'off', { packung: p.packung, packung_einheit: p.packung_einheit, bezug: p.bezug, portionen: p.portion ? [{ name: 'Portion laut Angabe' + (p.portion_text && !/^\s*[\d.,]+\s*(g|ml)\s*$/i.test(p.portion_text) ? ' – ' + p.portion_text : ''), menge: p.portion }] : [] })}</span>
+        <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge</span><input type="number" min="1" value="${esc(start)}" data-gramm="off-${esc(p.code)}" inputmode="decimal"></label><span class="einh">${einh}</span><button class="haupt klein" data-a="off-eintragen" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled title="Energie unbekannt"' : ''}>${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="off-liste" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled' : ''}>+ Liste</button><button class="klein still" data-a="off-merken" data-v="${esc(p.code)}" title="Als Standardprodukt merken">☆</button></span></li>`; }).join('')}</ul>
+    <p class="klein">Nicht dabei? <button class="klein still" data-a="produkt-neu-vorbelegt">Produkt selbst anlegen</button> oder genauer suchen (Marke, Sorte, Barcode).</p>` + fuss;
+}
+function offOnlineZeichnen() { const el = document.getElementById('tb-online'); if (el) el.innerHTML = offOnlineHtml(); }
+// Externes Produkt privat speichern (gleicher Barcode → vorhandenes Produkt; vom Nutzer bestätigte Werte werden nie überschrieben)
+function offProduktUebernehmen(d, p) {
+  d.lebensmittel = d.lebensmittel || []; const da = d.lebensmittel.find(l => l.gtin && l.gtin === p.code); const neu = { name: p.name, marke: p.marke || null, gtin: p.code, packung: p.packung, packung_einheit: p.packung_einheit, portion: p.portion, bezug: p.bezug, bezug_zustand: 'verzehrfertig', naehr: p.naehr, zutaten: p.zutaten || null, allergene: p.allergene, quelle_art: 'openfoodfacts', quelle: 'Open Food Facts (Community-Daten)', quelle_datum: p.stand || heute(), pruefstatus: 'ungeprueft', datenhinweise: p.hinweise };
+  if (da) { if (da.quelle_art === 'openfoodfacts' && da.pruefstatus !== 'bestaetigt' && (p.stand || '') > (da.quelle_datum || '')) { const k = JSON.parse(JSON.stringify(da)); delete k.versionen; da.versionen = [...(da.versionen || []), Object.assign(k, { ersetzt_am: heute() })]; Object.assign(da, neu, { version: (da.version || 1) + 1, geaendert: heute() }); } return da; }
+  const l = Object.assign({ id: uid('lm'), version: 1, erfasst: heute() }, neu); d.lebensmittel.push(l); return l;
+}
+let produktVorbelegung = null;
+
+/* ---------- Barcode-Scanner: Kamera erst auf Knopfdruck; Erkennung lokal (BarcodeDetector, sonst eigene EAN-/UPC-Erkennung) ---------- */
+const EAN_L = ['3211', '2221', '2122', '1411', '1132', '1231', '1114', '1312', '1213', '3112'].map(s => s.split('').map(Number));
+const EAN_PARITAET = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 'LGGGLL', 'LGLGLG', 'LGLGGL', 'LGGLGL'];
+function eanZiffer(w, mitG) { const s = w[0] + w[1] + w[2] + w[3]; if (!s) return null; const n = w.map(x => x * 7 / s); let best = null, bd = 9;
+  EAN_L.forEach((p, d) => { const dl = p.reduce((a, x, i) => a + Math.abs(x - n[i]), 0); if (dl < bd) { bd = dl; best = { d, g: false }; } if (mitG) { const gp = [...p].reverse(); const dg = gp.reduce((a, x, i) => a + Math.abs(x - n[i]), 0); if (dg < bd) { bd = dg; best = { d, g: true }; } } });
+  return bd < 1.6 ? best : null; }
+function eanPruefen(code) { return gtinPruefziffer(code) ? code : null; }
+// Läufe (abwechselnd hell/dunkel) einer Bildzeile → EAN-13/UPC-A oder EAN-8
+// Begrenzungszeichen (Start/Mitte/Ende) müssen aus Läufen von etwa einer Modulbreite bestehen
+const eanGuard = (runs, a, n, m) => { for (let k = a; k < a + n; k++) { if (!(runs[k] > m * 0.4 && runs[k] < m * 2.1)) return false; } return true; };
+function eanAusLaeufen(runs, art) {
+  const ziffern = art === 13 ? 6 : 4; const laenge = 3 + ziffern * 4 + 5 + ziffern * 4 + 3;   // Läufe ohne Ruhezonen
+  for (let i = 1; i + laenge < runs.length; i += 2) {   // runs[i] = dunkel (Startzeichen 1-1-1), davor helle Ruhezone
+    const m = (runs[i] + runs[i + 1] + runs[i + 2]) / 3; if (!m || !eanGuard(runs, i, 3, m) || runs[i - 1] < m * 3) continue;
+    let j = i + 3, par = '', ziff = [], ok = true;
+    for (let k = 0; k < ziffern && ok; k++, j += 4) { const z = eanZiffer(runs.slice(j, j + 4), art === 13); if (!z) ok = false; else { ziff.push(z.d); par += z.g ? 'G' : 'L'; } }
+    if (!ok || !eanGuard(runs, j, 5, m)) continue; j += 5;
+    for (let k = 0; k < ziffern && ok; k++, j += 4) { const z = eanZiffer(runs.slice(j, j + 4), false); if (!z) ok = false; else ziff.push(z.d); }
+    if (!ok || !eanGuard(runs, j, 3, m)) continue; j += 3;
+    if (j < runs.length && runs[j] < m * 3) continue;   // helle Ruhezone hinter dem Endzeichen
+    if (art === 13) { const erst = EAN_PARITAET.indexOf(par); if (erst < 0) continue; const c = eanPruefen(erst + ziff.join('')); if (c) return c; }
+    else if (!par.includes('G')) { const c = eanPruefen(ziff.join('')); if (c) return c; }
+  }
+  return null;
+}
+function eanAusBild(img) {   // img: ImageData; mehrere Zeilen um die Mitte, beide Leserichtungen
+  const { width: w, height: h, data } = img; const zeilen = [0.5, 0.42, 0.58, 0.35, 0.65, 0.28, 0.72];
+  const laeufe = []; for (const f of zeilen) { const y = Math.round(h * f); const roh = new Float32Array(w); for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; roh[x] = data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114; }
+    // senkrecht über 3 Zeilen mitteln (weniger Rauschen)
+    const lum = new Float32Array(w); for (let x = 0; x < w; x++) { let s = roh[x], n = 1; for (const dy of [-2, 2]) { const yy = y + dy; if (yy >= 0 && yy < h) { const o = (yy * w + x) * 4; s += data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114; n++; } } lum[x] = s / n; }
+    for (const [teiler, versatz] of [[40, 4], [20, 0]]) { const r = Math.max(4, Math.round(w / teiler)); const bits = new Uint8Array(w); let summe = 0;
+      for (let x = 0; x < w; x++) { const a = Math.max(0, x - r), b = Math.min(w - 1, x + r); if (x === 0) { summe = 0; for (let k = a; k <= b; k++) summe += lum[k]; } else { if (x + r < w) summe += lum[x + r]; if (x - r - 1 >= 0) summe -= lum[x - r - 1]; } bits[x] = lum[x] < summe / (b - a + 1) - versatz ? 1 : 0; }
+      const runs = []; let farbe = 0, len = 0; for (let x = 0; x < w; x++) { if (bits[x] === farbe) len++; else { runs.push(len); farbe = bits[x]; len = 1; } } runs.push(len); if (farbe === 1) runs.push(0);
+      laeufe.push(runs, runs.slice().reverse()); } }   // beginnt und endet hell → auch umgekehrt gültig
+  for (const art of [13, 8]) for (const runs of laeufe) { const c = eanAusLaeufen(runs, art); if (c) return c; }   // EAN-13 vor EAN-8
+  return null;
+}
+let scanZustand = null;
+async function scannerOeffnen() {
+  let dlg = document.getElementById('scanner'); if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'scanner'; dlg.className = 'anl'; document.body.appendChild(dlg); dlg.addEventListener('close', scannerStoppen); }
+  dlg.innerHTML = `<div class="anl-kopf"><div><h2 style="margin:0">Barcode scannen</h2><p class="anl-variante">Kamera auf den Strichcode halten – waagrecht, gut beleuchtet, etwa 10–15 cm Abstand.</p></div><button type="button" class="anl-zu" data-a="scan-zu" aria-label="Scanner schließen">✕</button></div>
+    <div class="anl-inhalt"><div class="scan-bild"><video id="scan-video" playsinline muted></video><div class="scan-linie"></div></div><p id="scan-status" class="klein" role="status" aria-live="polite">Kamera wird gestartet …</p>
+    <label class="feld"><span>oder Barcode-Nummer eingeben</span><input id="scan-manuell" inputmode="numeric" placeholder="z. B. 4056489216162" autocomplete="off"></label><button class="klein" data-a="scan-manuell">Suchen</button>
+    <p class="leise klein">Das Bild wird nur auf diesem Gerät ausgewertet und nirgends hingeschickt. Gesucht wird danach nur die erkannte Nummer.</p></div>`;
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+  const st = document.getElementById('scan-status'); scanZustand = { stream: null, timer: null, letzter: '', treffer: 0, fertig: false };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { st.textContent = 'Dieser Browser erlaubt keinen Kamerazugriff – bitte die Nummer eingeben.'; return; }
+  try { scanZustand.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); }
+  catch (e) { st.textContent = e.name === 'NotAllowedError' ? 'Kamera nicht erlaubt. Du kannst den Zugriff in den Einstellungen erlauben – oder die Nummer unten eingeben.' : 'Kamera nicht verfügbar – bitte die Nummer eingeben.'; return; }
+  if (!scanZustand) { scannerStoppen(); return; }
+  const v = document.getElementById('scan-video'); v.srcObject = scanZustand.stream; try { await v.play(); } catch (e) { /* */ }
+  st.textContent = 'Suche Barcode …'; const cv = document.createElement('canvas'); const ctx = cv.getContext('2d', { willReadFrequently: true });
+  let detektor = null; try { if ('BarcodeDetector' in window) { const f = await BarcodeDetector.getSupportedFormats(); if (f.includes('ean_13')) detektor = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] }); } } catch (e) { detektor = null; }
+  const runde = async () => { if (!scanZustand || scanZustand.fertig) return; let code = null;
+    try { if (v.videoWidth) { if (detektor) { const r = await detektor.detect(v); code = r && r[0] ? r[0].rawValue : null; } else { const w = Math.min(960, v.videoWidth); const h = Math.round(v.videoHeight * w / v.videoWidth); cv.width = w; cv.height = h; ctx.drawImage(v, 0, 0, w, h); code = eanAusBild(ctx.getImageData(0, 0, w, h)); } } } catch (e) { code = null; }
+    if (code && gtinPruefziffer(code)) { if (code === scanZustand.letzter) scanZustand.treffer++; else { scanZustand.letzter = code; scanZustand.treffer = 1; }
+      if (scanZustand.treffer >= 2) { scanZustand.fertig = true; scanErgebnis(code); return; } }   // zweimal gleich gelesen → sicher, nur einmal ausgelöst
+    scanZustand.timer = setTimeout(runde, 120); };
+  runde();
+}
+function scannerStoppen() { if (!scanZustand) return; clearTimeout(scanZustand.timer); if (scanZustand.stream) scanZustand.stream.getTracks().forEach(t => t.stop()); scanZustand = null; }
+function scanErgebnis(code) {
+  scannerStoppen(); const dlg = document.getElementById('scanner'); if (dlg && dlg.open) dlg.close(); if (navigator.vibrate) navigator.vibrate(60);
+  if (!location.hash.startsWith('#/tagebuch')) location.hash = '#/tagebuch';
+  setTimeout(() => { tbSuche = code; const s = document.getElementById('tb-suche'); if (s) { s.value = code; s.scrollIntoView({ block: 'start' }); } const t = document.getElementById('tb-treffer'); if (t) t.innerHTML = tbTreffer(); offOnlineSuche(code, true); toast('Barcode erkannt: ' + code); }, 150);
+}
+
 /* ---------- Ereignisse ---------- */
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
@@ -317,7 +478,7 @@ document.addEventListener('click', ev => {
     case 'tb-edit-ab': tbEdit = null; route(); break;
     case 'tb-tag': tbKopieVon = null; break;
     case 'tb-fokus': { const s = $('#tb-suche'); if (s) { s.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(() => s.focus(), 250); } break; }
-    case 'tb-suche-setzen': { tbSuche = v; const s = $('#tb-suche'); if (s) s.value = v; const t = $('#tb-treffer'); if (t) t.innerHTML = tbTreffer(); break; }
+    case 'tb-suche-setzen': { tbSuche = v; const s = $('#tb-suche'); if (s) s.value = v; const t = $('#tb-treffer'); if (t) t.innerHTML = tbTreffer(); offOnlineSuche(v); break; }
     case 'tb-kopie-vorschau': tbKopieVon = { slot: v || '' }; route(); { const p = $('#tb-kopie-form'); if (p) p.scrollIntoView({ block: 'center' }); } break;
     case 'tb-kopie-ab': tbKopieVon = null; route(); break;
     case 'tb-korb-add': { const t = b.dataset.t; const eingabe = Number(String(($(`[data-gramm="${v}"]`) || {}).value || '').replace(',', '.')); let k = null;
@@ -326,6 +487,18 @@ document.addEventListener('click', ev => {
       else if (t === 'marke') { const p = PRODUKT(v); if (p) k = { name: markeName(p), menge: eingabe > 0 ? eingabe : 100, einheit: p.bezug === '100ml' ? 'ml' : 'g' }; }
       else { const l = (D.lebensmittel || []).find(x => x.id === v); if (l) k = { name: l.name, menge: eingabe > 0 ? eingabe : (l.portion || 100), einheit: l.bezug === '100ml' ? 'ml' : 'g' }; }
       if (!k) return; tbKorb.push(Object.assign({ typ: t, id: v }, k)); korbNeuZeichnen(); toast(`${k.name} auf der Sammelliste`); break; }
+    case 'off-jetzt': offOnlineSuche(tbSuche, true); break;
+    case 'off-eintragen': case 'off-liste': case 'off-merken': { const p = offOnline.treffer.find(x => x.code === v); if (!p) return; const inp = $(`[data-gramm="off-${v}"]`); const menge = Number(String((inp || {}).value || '').replace(',', '.')) || p.portion || 100; let l;
+      if (a === 'off-eintragen') { if (!(menge > 0)) { toast('Bitte eine Menge eingeben'); return; } aendere(`${p.name} eingetragen – Produkt mit Quelle gespeichert`, d => { l = offProduktUebernehmen(d, p); d.tagebuch.push(eigenerEintrag(l, menge)); }); break; }
+      aendere(null, d => { l = offProduktUebernehmen(d, p); }, { neuZeichnen: false });
+      if (a === 'off-liste') { tbKorb.push({ typ: 'eigen', id: l.id, name: l.name + (l.marke ? ' (' + l.marke + ')' : ''), menge, einheit: l.bezug === '100ml' ? 'ml' : 'g' }); korbNeuZeichnen(); toast(`${l.name} auf der Sammelliste`); }
+      else aendere(`${l.name} als Standardprodukt gemerkt – wird nie automatisch gebucht`, d => { d.standardprodukte = (d.standardprodukte || []).filter(s => !(s.typ === 'eigen' && s.id === l.id)); d.standardprodukte.push({ typ: 'eigen', id: l.id, menge, einheit: l.bezug === '100ml' ? 'ml' : 'g' }); }, { neuZeichnen: false });
+      { const tr = $('#tb-treffer'); if (tr) tr.innerHTML = tbTreffer(); const sl = $('#tb-standard'); if (sl) sl.innerHTML = standardListeHtml(); offOnlineZeichnen(); } break; }
+    case 'produkt-neu-vorbelegt': { const q = offOnline.q || tbSuche; produktVorbelegung = istBarcode(q) ? { gtin: q } : { name: q }; location.hash = '#/produkte/neu'; break; }
+    case 'etikett-weg': etikettFoto = null; { const vs = $('#etikett-vorschau'); if (vs) vs.innerHTML = '<p class="leise klein">Foto wird beim Speichern entfernt.</p>'; } break;
+    case 'scan-start': scannerOeffnen(); break;
+    case 'scan-zu': { const dl = document.getElementById('scanner'); if (dl && dl.open) dl.close(); scannerStoppen(); break; }
+    case 'scan-manuell': { const c = String(($('#scan-manuell') || {}).value || '').replace(/\D/g, ''); if (!gtinPruefziffer(c)) { toast('Bitte eine gültige Barcode-Nummer (8 oder 13 Ziffern) eingeben'); return; } scanErgebnis(c); break; }
     case 'tb-art': tbArt = v || 'alle'; { const t = $('#tb-treffer'); if (t) t.innerHTML = tbTreffer(); } break;
     case 'tb-menge-setzen': { const inp = $(`[data-gramm="${v}"]`); if (inp) { inp.value = b.dataset.m; inp.focus(); } break; }
     case 'tb-standard-merken': { const t = b.dataset.t; const inp = $(`[data-gramm="${v}"]`); const menge = Number(String((inp || {}).value || '').replace(',', '.')) || 100; const ein = ($(`[data-einheit="${v}"]`) || {}).value; const dat = korbEintragDaten(t, v); if (!dat) return;

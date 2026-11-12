@@ -360,11 +360,12 @@ function vTagebuch2(datum) {
     <details class="klein"><summary class="leise">Grundlage und Vollständigkeit</summary><p class="leise klein" style="margin:4px 0">Laut protokollierten Einträgen (${s.eintraege}). ${ziele ? `Ziele: ${esc(ziele.herkunft)}.` : '<a href="#/ziele">Ziele festlegen</a> (optional).'} Fehlende Einträge heißen nicht, dass nichts gegessen wurde.</p></details>
     <label style="margin-top:6px"><input type="checkbox" data-a="tb-vollstaendig" ${info.vollstaendig ? 'checked' : ''}> Tag vollständig protokolliert</label></div>
   <h2 id="tb-hinzufuegen">Essen hinzufügen</h2>
-  <div class="zeile"><label class="such-feld" style="flex:1 1 220px"><span class="sr-only">Suchen: Rezept, Lebensmittel, eigenes Produkt</span>${ico('suche', 'klein')}<input id="tb-suche" type="search" enterkeyhint="search" value="${esc(tbSuche)}" placeholder="Lebensmittel, Rezept oder Produkt" autocomplete="off"></label></div>
+  <div class="zeile"><label class="such-feld" style="flex:1 1 220px"><span class="sr-only">Suchen: Lebensmittel, Marke, Barcode, Rezept</span>${ico('suche', 'klein')}<input id="tb-suche" type="search" enterkeyhint="search" value="${esc(tbSuche)}" placeholder="Lebensmittel, Marke, Barcode oder Rezept" autocomplete="off"></label><button class="klein scan-knopf" data-a="scan-start" aria-label="Barcode mit der Kamera scannen">📷 Scannen</button></div>
   ${slotWahlHtml()}
   <div id="tb-standard">${standardListeHtml()}</div>
   <div id="tb-korb">${korbHtml()}</div>
   <div id="tb-treffer">${tbTreffer()}</div>
+  <div id="tb-online">${offOnlineHtml()}</div>
   ${rest.length ? `<h4>Restportionen</h4><div class="schnellwahl">${rest.map(p => `<button class="klein" data-a="rest-essen" data-v="${esc(p.id)}" data-p="1">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))} · 1 Portion</button>${p.portionen >= 0.5 ? `<button class="klein still" data-a="rest-essen" data-v="${esc(p.id)}" data-p="0.5" aria-label="halbe Portion ${esc(kurztitel(p.titel))}">½</button>` : ''}`).join('')}</div>` : ''}
   ${haeufig.length ? `<h4>Häufig gegessen</h4><div class="schnellwahl">${haeufig.map(({ e }) => `<button class="klein" data-a="tb-kopie" data-v="${esc(e.id)}">${esc(kurztitel(e.titel))} · ${e.einheit === 'Portion' ? zahlDE(e.portionen, 1) + ' P.' : zahlDE(e.gramm) + ' ' + esc(e.einheit || 'g')}</button>`).join('')}</div>` : ''}
   ${schnellwahlHtml()}
@@ -490,7 +491,8 @@ function tbFormulare() {
    <p class="leise klein">Bleibt nur in deinem Profil auf diesem Gerät – nichts davon gelangt in den öffentlichen Katalog. Spätere Änderungen verändern bereits gebuchte Einträge nicht.</p><button class="haupt klein" type="submit">Speichern</button></form>`;
 }
 vTagebuch2.danach = () => {
-  const s = $('#tb-suche'); if (s) s.addEventListener('input', () => { tbSuche = s.value; $('#tb-treffer').innerHTML = tbTreffer(); });
+  const s = $('#tb-suche'); if (s) s.addEventListener('input', () => { tbSuche = s.value; $('#tb-treffer').innerHTML = tbTreffer(); offOnlineSuche(s.value); });
+  if (tbSuche && offOnline.q !== tbSuche.trim()) offOnlineSuche(tbSuche);
   const fr = $('#tb-frei'); if (fr) fr.addEventListener('submit', ev => { ev.preventDefault(); const n = k => fr[k].value === '' ? null : Number(fr[k].value);
     aendere('Eingetragen', d => d.tagebuch.push({ id: uid('mz'), datum: tbDatum, zeit: new Date().toTimeString().slice(0, 5), quelle: 'frei', mahlzeit: neuerEintragSlot(), titel: fr.titel.value, portionen: 1, einheit: 'Portion', naehr: { kcal: n('kcal'), protein: n('protein'), kh: n('kh'), fett: n('fett'), ballaststoffe: null }, mikro: null, status: 'unvollstaendig' })); });
   const lm = $('#tb-lm-neu'); if (lm) lm.addEventListener('submit', ev => { ev.preventDefault(); const n = k => lm[k].value === '' ? null : Number(lm[k].value);
