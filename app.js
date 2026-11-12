@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.20.4';
-const APP_BUILD = '202611122056';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.20.5';
+const APP_BUILD = '202611122114';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -318,6 +318,47 @@ function farbeAnwenden(f) {
   const dunkel = f === 'dunkel' || (f !== 'hell' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
   document.querySelectorAll('meta[name="theme-color"]').forEach(m => { if (f === 'system') { m.content = /dark/.test(m.media) ? '#171412' : '#fbf8f3'; } else m.content = dunkel ? '#171412' : '#fbf8f3'; });
 }
+/* Start-Animation: Fischtomate schwimmt groß durchs Bild und an ihren Platz neben „Fitomat“.
+   Einmal je App-Start (Sitzung), überspringbar per Tippen, aus bei „Bewegung reduzieren“ oder per Schalter. */
+const INTRO_AUS = 'kochschule.intro-aus.v1';
+function introAn() { try { return localStorage.getItem(INTRO_AUS) !== '1'; } catch (e) { return true; } }
+const FISCH_SVG = `<svg class="intro-fisch" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
+  <g class="schwanz"><path d="M84,56 C93,46 101,36 115,29 C112,42 107,50 100,56 C107,62 112,70 115,83 C101,76 93,66 84,56 Z" fill="#3E9B4F"/><path d="M88,56 C96,50 103,43 110,38 C107,46 104,51 99,56 C104,61 107,66 110,74 C103,69 96,62 88,56 Z" fill="#57B565"/></g>
+  <ellipse cx="52" cy="57" rx="38" ry="32" fill="#E3402B"/><path d="M18,66 C26,86 70,95 88,68 C80,82 40,90 18,66 Z" fill="#B92E1E" opacity="0.55"/>
+  <path d="M38,31 C30,46 30,68 39,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.8"/><path d="M66,30 C74,45 74,68 65,84" fill="none" stroke="#C3321F" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
+  <ellipse cx="44" cy="38" rx="10" ry="5" transform="rotate(-24 44 38)" fill="#fff" opacity="0.38"/>
+  <path d="M52,30 C46,26 38,24 31,26 C38,21 45,21 50,24 C48,18 43,13 38,11 C46,12 51,17 53,23 C56,17 62,13 69,13 C63,17 58,21 56,25 C62,22 70,22 76,26 C69,26 60,27 55,31 Z" fill="#3E9B4F"/>
+  <path d="M52,24 C51,18 53,12 58,8" fill="none" stroke="#2F7D3C" stroke-width="3.2" stroke-linecap="round"/>
+  <path class="flosse" d="M50,68 C55,61 64,61 68,69 C61,73 54,73 50,68 Z" fill="#3E9B4F"/>
+  <circle cx="28" cy="49" r="7.5" fill="#fff"/><circle cx="26.5" cy="49.5" r="3.8" fill="#1f1a17"/><circle cx="25.3" cy="48" r="1.3" fill="#fff"/>
+  <path d="M15,62 Q19,66 24,62" fill="none" stroke="#5a1a10" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+function logoIntro() {
+  if (!introAn() || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+  try { if (sessionStorage.getItem('fitomat-intro')) return; sessionStorage.setItem('fitomat-intro', '1'); } catch (e) { /* */ }
+  const ziel = document.querySelector('.marke-logo'); if (!ziel || !ziel.animate) return;
+  const ov = document.createElement('div'); ov.className = 'intro'; ov.setAttribute('aria-hidden', 'true'); ov.innerHTML = `<div class="intro-bg"></div>${FISCH_SVG}`; document.body.appendChild(ov);
+  const f = ov.querySelector('.intro-fisch'); const W = innerWidth, H = innerHeight; const fw = Math.min(W * 0.62, 300), fh = fw * 100 / 120;
+  f.style.width = fw + 'px'; f.style.height = fh + 'px'; ziel.style.visibility = 'hidden';
+  const r = ziel.getBoundingClientRect(); const s = r.width / fw; const cx = (W - fw) / 2, cy = (H - fh) / 2 - H * 0.06;
+  const dauer = 2800;
+  const bahn = f.animate([
+    { transform: `translate(${-fw - 30}px, ${cy + 50}px) rotate(7deg)`, offset: 0 },
+    { transform: `translate(${cx - W * 0.14}px, ${cy - 18}px) rotate(-6deg)`, offset: 0.28 },
+    { transform: `translate(${cx + W * 0.04}px, ${cy + 14}px) rotate(5deg)`, offset: 0.45 },
+    { transform: `translate(${cx}px, ${cy - 4}px) rotate(-3deg) scale(1.06)`, offset: 0.6 },
+    { transform: `translate(${cx}px, ${cy + 4}px) rotate(2deg) scale(1.06)`, offset: 0.72 },
+    { transform: `translate(${r.left}px, ${r.top}px) rotate(0deg) scale(${s})`, offset: 1 }
+  ], { duration: dauer, easing: 'cubic-bezier(.45,.05,.35,1)', fill: 'forwards' });
+  ov.querySelector('.intro-bg').animate([{ opacity: 1 }, { opacity: 1, offset: 0.74 }, { opacity: 0 }], { duration: dauer, fill: 'forwards' });
+  // ein paar Bläschen vor dem Maul
+  [380, 700, 1050].forEach((t, i) => setTimeout(() => { if (!ov.isConnected) return; const m = f.getBoundingClientRect(); const b = document.createElement('span'); b.className = 'blase'; const g = 8 + i * 4; Object.assign(b.style, { width: g + 'px', height: g + 'px', left: (m.left + m.width * 0.08) + 'px', top: (m.top + m.height * 0.55) + 'px' }); ov.appendChild(b);
+    b.animate([{ transform: 'translate(0,0)', opacity: 0.8 }, { transform: `translate(${-14 - i * 6}px, ${-70 - i * 20}px)`, opacity: 0 }], { duration: 1100, easing: 'ease-out', fill: 'forwards' }); }, t));
+  const ende = () => { ziel.style.visibility = ''; ov.remove(); };
+  bahn.onfinish = ende; ov.addEventListener('click', () => { bahn.finish(); ende(); }, { once: true });
+  setTimeout(() => { if (ov.isConnected) ende(); }, dauer + 1500);   // Sicherheitsnetz
+}
+document.addEventListener('change', ev => { const b = ev.target; if (!b.dataset || b.dataset.a !== 'intro-schalter') return;
+  try { if (b.checked) localStorage.removeItem(INTRO_AUS); else localStorage.setItem(INTRO_AUS, '1'); } catch (e) { /* */ } toast(b.checked ? 'Start-Animation an' : 'Start-Animation aus'); });
 function farbeSetzen(f) { try { if (f === 'system') localStorage.removeItem(FARBE_SPEICHER); else localStorage.setItem(FARBE_SPEICHER, f); } catch (e) { /* privates Fenster: gilt bis zum Schließen */ } farbeAnwenden(f); }
 farbeAnwenden(farbeWahl());
 function route() {
@@ -800,7 +841,8 @@ function vMehr() {
   const fw = farbeWahl();
   return `<div class="seitenkopf"><h1>Profil</h1><span class="chip">${esc(profilName(PROFIL))}</span></div>
   <div class="karte farbwahl"><b>Darstellung</b><div class="segment" role="group" aria-label="Darstellung der App">${[['system', 'Wie Gerät'], ['hell', 'Hell'], ['dunkel', 'Dunkel']].map(([k, n]) => `<button data-a="farbe" data-v="${k}" aria-pressed="${fw === k}">${n}</button>`).join('')}</div>
-    <p class="leise klein">Gilt für dieses Gerät. „Wie Gerät“ folgt der Hell-/Dunkel-Einstellung von iPhone oder Computer. Den Kochmodus kannst du dort zusätzlich getrennt einstellen.</p></div>
+    <p class="leise klein">Gilt für dieses Gerät. „Wie Gerät“ folgt der Hell-/Dunkel-Einstellung von iPhone oder Computer. Den Kochmodus kannst du dort zusätzlich getrennt einstellen.</p>
+    <label style="margin-top:6px"><input type="checkbox" data-a="intro-schalter" ${introAn() ? 'checked' : ''}> Start-Animation der Fischtomate</label> <button class="klein still" data-a="intro-zeigen">jetzt ansehen</button></div>
   <ul class="eintraege">
     ${eintrag('#/ziele', 'Ziele', z ? `${z.herkunft}: ${z.kcal ? zahlDE(z.kcal) + ' kcal' : ''}${z.protein ? ' · ' + zahlDE(z.protein) + ' g Protein' : ''}` : 'keine Ziele – optional')}
     ${eintrag('#/einrichtung/0', 'Persönliche Angaben', `${p.ziel ? ZIELE[p.ziel][0] : 'nicht eingerichtet'} · Ernährungsweise: ${esc((WEISEN.find(w => w[0] === (D.einstellungen.ernaehrungsweise || 'alles')) || [])[1] || 'Alles')}${(D.einstellungen.allergien || []).length ? ' · Allergien: ' + D.einstellungen.allergien.length : ''}`)}
@@ -915,6 +957,7 @@ document.addEventListener('click', ev => {
     case 'undo': rueckgaengig(); break;
     case 'kochfarbe': aendere(null, d => { d.einstellungen.kochmodus_farbe = v; }); break;
     case 'farbe': farbeSetzen(v); route(); break;
+    case 'intro-zeigen': try { sessionStorage.removeItem('fitomat-intro'); localStorage.removeItem(INTRO_AUS); } catch (e) { /* */ } logoIntro(); break;
     case 'update-jetzt': updateAnwenden(); break;
     case 'update-suchen': updateSuchen(true); break;
     case 'bereich': f.bereich = v; route(); break;
@@ -1053,3 +1096,4 @@ if (migriert) { speichern(); setTimeout(() => toast(`Datenformat aktualisiert �
 if (ladeProblem) setTimeout(() => toast(ladeProblem), 500);
 window.KS = { D: () => D, exportDaten, importiere, einkaufsPosten, bewerte, R, Z };
 route();
+requestAnimationFrame(() => setTimeout(logoIntro, 60));
