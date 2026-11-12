@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.20.3';
-const APP_BUILD = '202611122039';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.20.4';
+const APP_BUILD = '202611122056';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -310,6 +310,16 @@ function kopfLeiste(seite, a) {
   const nAusw = D.auswahl.length;
   return `${seite === 'kochen' ? '' : weitermachenHtml()}<nav class="unterreiter" aria-label="${haupt === 'food' ? 'Food' : haupt === 'training' ? 'Training' : 'Mobility'}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
 }
+/* Darstellung Hell/Dunkel/Wie Gerät – je Gerät (reine Anzeige-Vorliebe, keine persönlichen Daten); früh gesetzt im Kopf von index.html */
+const FARBE_SPEICHER = 'kochschule.farbe.v1';
+function farbeWahl() { try { const f = localStorage.getItem(FARBE_SPEICHER); return f === 'hell' || f === 'dunkel' ? f : 'system'; } catch (e) { return 'system'; } }
+function farbeAnwenden(f) {
+  const r = document.documentElement; if (f === 'hell' || f === 'dunkel') r.dataset.farbe = f; else delete r.dataset.farbe;
+  const dunkel = f === 'dunkel' || (f !== 'hell' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { if (f === 'system') { m.content = /dark/.test(m.media) ? '#171412' : '#fbf8f3'; } else m.content = dunkel ? '#171412' : '#fbf8f3'; });
+}
+function farbeSetzen(f) { try { if (f === 'system') localStorage.removeItem(FARBE_SPEICHER); else localStorage.setItem(FARBE_SPEICHER, f); } catch (e) { /* privates Fenster: gilt bis zum Schließen */ } farbeAnwenden(f); }
+farbeAnwenden(farbeWahl());
 function route() {
   rezepteAktualisieren();   // angepasste Mengen (nur für diesen Kochvorgang) wirken überall über R
   const h = location.hash.replace(/^#\/?/, '') || 'entdecken';
@@ -787,7 +797,10 @@ vTagebuch.danach = () => { const f = $('#tb-form'); if (!f) return; f.addEventLi
 function vMehr() {
   const p = D.einstellungen.person || {}; const z = aktuelleZiele();
   const eintrag = (href, titel, text) => `<li><a href="${href}" style="display:flex;justify-content:space-between;gap:12px;text-decoration:none;color:inherit;padding:4px 0"><span><b>${titel}</b><br><span class="leise klein">${text}</span></span>${ico('weiter')}</a></li>`;
+  const fw = farbeWahl();
   return `<div class="seitenkopf"><h1>Profil</h1><span class="chip">${esc(profilName(PROFIL))}</span></div>
+  <div class="karte farbwahl"><b>Darstellung</b><div class="segment" role="group" aria-label="Darstellung der App">${[['system', 'Wie Gerät'], ['hell', 'Hell'], ['dunkel', 'Dunkel']].map(([k, n]) => `<button data-a="farbe" data-v="${k}" aria-pressed="${fw === k}">${n}</button>`).join('')}</div>
+    <p class="leise klein">Gilt für dieses Gerät. „Wie Gerät“ folgt der Hell-/Dunkel-Einstellung von iPhone oder Computer. Den Kochmodus kannst du dort zusätzlich getrennt einstellen.</p></div>
   <ul class="eintraege">
     ${eintrag('#/ziele', 'Ziele', z ? `${z.herkunft}: ${z.kcal ? zahlDE(z.kcal) + ' kcal' : ''}${z.protein ? ' · ' + zahlDE(z.protein) + ' g Protein' : ''}` : 'keine Ziele – optional')}
     ${eintrag('#/einrichtung/0', 'Persönliche Angaben', `${p.ziel ? ZIELE[p.ziel][0] : 'nicht eingerichtet'} · Ernährungsweise: ${esc((WEISEN.find(w => w[0] === (D.einstellungen.ernaehrungsweise || 'alles')) || [])[1] || 'Alles')}${(D.einstellungen.allergien || []).length ? ' · Allergien: ' + D.einstellungen.allergien.length : ''}`)}
@@ -901,6 +914,7 @@ document.addEventListener('click', ev => {
   switch (a) {
     case 'undo': rueckgaengig(); break;
     case 'kochfarbe': aendere(null, d => { d.einstellungen.kochmodus_farbe = v; }); break;
+    case 'farbe': farbeSetzen(v); route(); break;
     case 'update-jetzt': updateAnwenden(); break;
     case 'update-suchen': updateSuchen(true); break;
     case 'bereich': f.bereich = v; route(); break;

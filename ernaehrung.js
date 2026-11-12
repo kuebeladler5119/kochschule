@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611122039 */
+/* Fitomat-Build 202611122056 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */

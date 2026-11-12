@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611122039 */
+/* Fitomat-Build 202611122056 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
