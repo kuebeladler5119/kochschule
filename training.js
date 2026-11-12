@@ -1,3 +1,4 @@
+/* Fitomat-Build 202611121536 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -1020,7 +1021,7 @@ function trZusammenfassungHtml(id) {
       ${u.beschwerde ? `<p class="hinweis warn klein">Beschwerden notiert${u.beschwerde_text ? ': ' + esc(u.beschwerde_text) : ''}. Beim nächsten Mal keine Steigerung.</p>` : ''}
       ${vs ? `<p class="klein" style="margin:.2em 0"><b>Nächstes Mal:</b> ${esc(vs.titel)}<br><span class="leise">${esc(vs.begruendung)}</span></p>` : ''}</li>`; }).join('');
   return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Zusammenfassung</h1>
-  <p class="leise klein">${esc(e.name)} · ${esc(datumDE(e.start.slice(0, 10)))}${dauer != null ? ` · ${dauer} Min.` : ''} · ${e.uebungen.reduce((s, u) => s + u.saetze.filter(x => x.art === 'arbeit' && x.erledigt).length, 0)} bestätigte Arbeitssätze</p>
+  <p class="leise klein">${esc(e.name)} · ${esc(datumDE(e.start.slice(0, 10)))}${dauer != null ? ` · ${dauer} Min.` : ''} · ${(n => n + (n === 1 ? ' bestätigter Arbeitssatz' : ' bestätigte Arbeitssätze'))(e.uebungen.reduce((s, u) => s + u.saetze.filter(x => x.art === 'arbeit' && x.erledigt).length, 0))}</p>
   <p class="leise klein">Bestleistungen nur im Vergleich mit derselben Übung und Variante und nur, wenn kein früherer Satz mit mindestens gleichem Gewicht und gleich vielen Wiederholungen existiert. Vorschläge beruhen ausschließlich auf deinen bestätigten Sätzen.</p>
   <ol class="tr-liste">${zeilen}</ol>
   <label class="feld"><span>Notiz zur Einheit</span><input value="${esc(e.notiz || '')}" data-tr-z-notiz="${esc(e.id)}" placeholder="z. B. Schlaf, Energie"></label>

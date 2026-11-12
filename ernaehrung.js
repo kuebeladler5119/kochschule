@@ -1,3 +1,4 @@
+/* Fitomat-Build 202611121536 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -67,7 +68,7 @@ const rund = (x, s) => Math.round(x / s) * s;
 function zielBerechnung(p = D.einstellungen.person || {}) {
   const grund = [];
   if (!p.ziel || p.ziel === 'keins') grund.push('kein Ernährungsziel gewählt');
-  if (!(p.alter >= 19)) grund.push('Die automatische Formel gilt nur für Erwachsene ab 19 Jahren.');
+  if (!p.alter) grund.push('Alter fehlt (die DGE-Formel braucht es).'); else if (!(p.alter >= 19)) grund.push('Die automatische Formel gilt nur für Erwachsene ab 19 Jahren.');
   if (p.geschlecht !== 'w' && p.geschlecht !== 'm') grund.push('Die DGE-Formel unterscheidet Frauen und Männer – ohne diese Angabe bitte Ziele manuell eintragen.');
   if (!(p.gewicht > 30 && p.gewicht < 300)) grund.push('Körpergewicht fehlt.');
   if (p.besonders) grund.push('Bei Schwangerschaft, Stillzeit oder Erkrankungen rechnet die App nicht automatisch – bitte manuell und ggf. mit Fachberatung.');
@@ -81,6 +82,7 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
   let trKcal = 0, palT = 0, trText = 'kein regelmäßiges Training';
   if (tr.art === 'kraft' && tr.n > 0) { trKcal = (3.5 - 1) * p.gewicht * (tr.min / 60) * tr.n / 7; trText = `Krafttraining ${zahlDE(tr.n, 1)} × ${tr.min} Min./Woche: (3,5 − 1) MET × ${p.gewicht} kg × ${zahlDE(tr.min / 60, 2)} h × ${zahlDE(tr.n, 1)} ÷ 7 ≈ +${Math.round(trKcal)} kcal/Tag (Compendium 2024, Code 02054; Ruheanteil abgezogen)`; }
   else if (tr.art === 'ausdauer' && tr.n > 0) { palT = tr.n >= 4 ? 0.3 : 0.15; trKcal = ree * palT; trText = `Ausdauer/anstrengender Sport ${zahlDE(tr.n, 1)}×/Woche: +${palT.toLocaleString('de-DE')} PAL ≈ +${Math.round(trKcal)} kcal/Tag (DGE-Zuschlag${tr.n < 4 ? ', anteilig – eigene Festlegung' : ''})`; }
+  else if (tr.art === 'unklar') { const alsKraft = (3.5 - 1) * p.gewicht * (tr.min / 60) * tr.n / 7; const alsAusd = ree * (tr.n >= 4 ? 0.3 : 0.15); trText = `Trainingsart unbekannt (ältere Angabe ohne Art) – deshalb NICHT angerechnet. Als Krafttraining wären es etwa +${Math.round(alsKraft)} kcal/Tag, als Ausdauer etwa +${Math.round(alsAusd)} kcal/Tag. Bitte unter „Angaben ändern“ Art, Einheiten und Minuten eintragen`; }
   const alltagKcal = ree * palA; const gesamt = alltagKcal + trKcal; const pal = Math.round(gesamt / ree * 100) / 100;
   const zf = ZIELE[p.ziel][1]; const abbauKcal = p.ziel === 'abbau' && p.defizit_kcal ? Number(p.defizit_kcal) : null; const abbauStufe = p.ziel === 'abbau' && !abbauKcal ? (p.defizit || 0.10) : null;
   const kcal = p.ziel === 'abbau' ? rund(abbauKcal ? gesamt - abbauKcal : gesamt * (1 - abbauStufe), 50) : rund(gesamt * (1 + zf), 50);
@@ -101,7 +103,7 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
     `Ruheenergieverbrauch (DGE-Formel, ${p.geschlecht === 'm' ? 'Männer' : 'Frauen'}): (0,047 × ${p.gewicht} kg${p.geschlecht === 'm' ? ' + 1,009' : ''} − 0,01452 × ${p.alter} J. + 3,21) × 239 ≈ ${Math.round(ree)} kcal`,
     `Alltag ohne Sport: PAL ${palA.toLocaleString('de-DE')} (${PAL_ALLTAG[p.alltag][1]}) → ${Math.round(ree)} × ${palA.toLocaleString('de-DE')} ≈ ${Math.round(alltagKcal)} kcal`,
     `Training: ${trText}.${tr.alt ? ' Hinweis: aus älteren Angaben übernommen (Einheiten/Minuten geschätzt) – bitte unter „Angaben ändern“ prüfen.' : ''} Training wird nur einmal angerechnet.`,
-    `Geschätzter Erhaltungsbedarf ≈ ${Math.round(alltagKcal)} + ${Math.round(trKcal)} ≈ ${Math.round(gesamt)} kcal (entspricht PAL ${pal.toLocaleString('de-DE')})`,
+    `Geschätzter Erhaltungsbedarf ≈ ${Math.round(alltagKcal)} + ${Math.round(trKcal)} ≈ ${Math.round(gesamt)} kcal (entspricht PAL ${pal.toLocaleString('de-DE')}). Schon ±0,1 PAL verschieben das um etwa ±${Math.round(ree * 0.1)} kcal – realistisch ist eher eine Spanne von ${rund(gesamt - ree * 0.15, 50).toLocaleString('de-DE')} bis ${rund(gesamt + ree * 0.15, 50).toLocaleString('de-DE')} kcal.`,
     p.ziel === 'halten' ? 'Ziel „Gewicht halten“: keine Anpassung.' : p.ziel === 'aufbau' ? 'Ziel „Muskelaufbau“: +10 % (unteres Ende der Spanne 10–20 % aus einer Übersichtsarbeit zur Aufbauphase).' : abbauKcal ? `Ziel „Fettabbau“: −${abbauKcal} kcal (selbst gewähltes kleines Defizit).` : `Ziel „Fettabbau“: −${Math.round(abbauStufe * 100)} % (vorsichtiger Startwert, eigener Vorschlag).`,
     `Energieziel ≈ ${kcal.toLocaleString('de-DE')} kcal (auf 50 gerundet – genauer lässt es sich nicht schätzen). Das ist ein berechneter Startwert; der tatsächliche Bedarf zeigt sich erst am Gewichtsverlauf.`,
     `Protein: ${gkg.toLocaleString('de-DE')} g/kg × ${Math.round(bezug)} kg (${bezugText}) ≈ ${protein} g – ${protQuelle}.`,
@@ -110,13 +112,14 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
     'Ballaststoffe: mindestens 30 g (DGE-Richtwert für Erwachsene).',
     ...(bmiWert && bmiWert >= 30 ? ['Grenze: Bei deutlichem Übergewicht (BMI ≥ 30) schätzen Formeln für den Energiebedarf erfahrungsgemäß ungenauer; der Verlauf des Körpergewichts über einige Wochen ist der bessere Maßstab. Ärztliche oder ernährungsfachliche Begleitung ist sinnvoll (Hinweis, ungeprüft).'] : [])
   ];
-  return { ok: true, ree, pal, gesamt, alltagKcal, trKcal, kcal, protein, fett, kh, ballaststoffe: 30, khAnteil, schritte };
+  return { ok: true, ree, pal, gesamt, alltagKcal, trKcal, kcal, protein, fett, kh, ballaststoffe: 30, khAnteil, schritte, tr };
 }
 /* Trainingsangaben; ältere Profile (nur Stufe „wenig/regelmäßig“) werden mit Annahmen übersetzt und als solche gekennzeichnet */
 function trainingAngaben(p) {
   if (p.training_art) return { art: p.training_art, n: Number(p.training_einheiten) || 0, min: Number(p.training_minuten) || 60, alt: false };
   const t = p.training || 'keins'; if (t === 'keins') return { art: 'keins', n: 0, min: 0, alt: false }; if (t === 'viel') return { art: 'leistung', n: 6, min: 60, alt: true };
-  return { art: p.kraft ? 'kraft' : 'ausdauer', n: t === 'wenig' ? 2 : 4.5, min: 60, alt: true };
+  // Ohne Kraft-Häkchen ist die Art unbekannt – früher wurde dann „Ausdauer“ (+0,15/+0,3 PAL) angenommen, was den Bedarf deutlich erhöhen kann
+  return { art: p.kraft ? 'kraft' : 'unklar', n: t === 'wenig' ? 2 : 4.5, min: 60, alt: true };
 }
 /* Wirksame Ziele: berechnet, manuell oder keine */
 function aktuelleZiele() {
@@ -227,17 +230,19 @@ function vZiele() {
     <label><input type="radio" name="modus" value="auto" ${z.modus === 'auto' ? 'checked' : ''}><span>Berechnen<small>aus den Angaben im Profil (DGE)</small></span></label>
     <label><input type="radio" name="modus" value="manuell" ${z.modus === 'manuell' ? 'checked' : ''}><span>Selbst festlegen<small>z. B. aus deinem Fitnessplan</small></span></label>
     <label><input type="radio" name="modus" value="keine" ${(!z.modus || z.modus === 'keine') ? 'checked' : ''}><span>Keine Ziele<small>nur protokollieren</small></span></label></div>
-  <h2>Berechnung</h2>
+  <p class="klein"><b>Gerade wirksam:</b> ${wirk ? `${wirk.herkunft === 'manuell' ? 'selbst festgelegtes Ziel' : 'berechnete Schätzung'} – ${wirk.kcal != null && wirk.kcal !== '' ? zahlDE(wirk.kcal) + ' kcal' : 'ohne kcal-Ziel'}` : 'keine Ziele'}. Unten getrennt: berechnete Schätzung, selbst festgelegtes Ziel und Schätzung aus deinem Verlauf – keiner überschreibt einen anderen automatisch.</p>
+  <h2>1. Berechnete Schätzung</h2>
+  ${eingabenHtml(p, b)}
   ${b.ok ? `<div class="flaeche"><div class="naehr"><div><b>${b.kcal.toLocaleString('de-DE')}</b><span>kcal</span></div><div><b>${b.protein}</b><span>g Protein</span></div><div><b>${b.kh}</b><span>g Kohlenh.</span></div><div><b>${b.fett}</b><span>g Fett</span></div></div>
     <ol class="klein" style="margin-top:12px">${b.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
     <p class="leise klein">Grenzen: Formeln schätzen Durchschnitte – der tatsächliche Verbrauch kann deutlich abweichen. Entscheidend ist langfristig der Verlauf deines Körpergewichts (DGE). Einzelne Wiegetage ändern hier nichts.</p></div>`
     : `<div class="hinweis">Keine automatische Berechnung: ${b.grund.map(esc).join(' ')}</div>`}
   ${p.ziel === 'abbau' ? `<label class="feld"><span>Defizit beim Fettabbau</span><select name="defizit">${[['k200', '−200 kcal (klein)'], ['k250', '−250 kcal (klein)'], ['k300', '−300 kcal (klein)'], ['0.1', '−10 %'], ['0.15', '−15 %'], ['0.2', '−20 %']].map(([v, t]) => `<option value="${v}" ${(p.defizit_kcal ? 'k' + p.defizit_kcal : String(p.defizit || 0.1)) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>Ein kleines Defizit verlangsamt den Fettabbau, ist aber leichter durchzuhalten (eigene Einordnung).</small></label>` : ''}
-  ${verlaufSchaetzungHtml(b)}
-  <h2>Eigene Ziele</h2><p class="leise klein">Gelten, wenn „Selbst festlegen“ gewählt ist. Leere Felder = kein Ziel für diesen Wert.</p>
+  <h2>2. Selbst festgelegtes Ziel</h2><p class="leise klein">Gelten, wenn „Selbst festlegen“ gewählt ist. Leere Felder = kein Ziel für diesen Wert.</p>
   <div class="zeile">${[['kcal', 'kcal'], ['protein', 'Protein g'], ['kh', 'Kohlenhydrate g'], ['fett', 'Fett g'], ['ballaststoffe', 'Ballaststoffe g']].map(([k, n]) => `<label class="feld"><span>${n}</span><input type="number" name="m_${k}" min="0" value="${esc(m[k] ?? '')}" inputmode="decimal" style="width:7.5em"></label>`).join('')}</div>
   <label class="feld"><span>Herkunft (z. B. Trainingsplan, Datum)</span><input name="m_quelle" value="${esc(z.quelle || '')}"></label>
   <div class="knopfreihe"><button type="submit" class="haupt">Speichern</button></div></form>
+  ${verlaufSchaetzungHtml(b)}
   <p class="leise klein">Gerade wirksam: ${wirk ? `${wirk.herkunft} – ${[['kcal', ''], ['protein', 'Protein '], ['kh', 'Kohlenhydrate '], ['fett', 'Fett '], ['ballaststoffe', 'Ballaststoffe ≥ ']].filter(([k]) => wirk[k] != null && wirk[k] !== '').map(([k, n]) => `${n}${zahlDE(wirk[k])}${k === 'kcal' ? ' kcal' : ' g'}`).join(' · ')}` : 'keine Ziele'}. Methode und Quellen: DGE (Energie, Protein, Fett, Ballaststoffe), ISSN 2017 (Protein bei Training), Iraki 2019 (Aufbau).</p>`;
 }
 vZiele.danach = () => { const f = $('#ziel-form'); if (!f) return; f.addEventListener('submit', ev => { ev.preventDefault(); const fd = new FormData(f);
@@ -246,6 +251,20 @@ vZiele.danach = () => { const f = $('#ziel-form'); if (!f) return; f.addEventLis
     e.ziele_verlauf = [...arr(e.ziele_verlauf), { zeit: new Date().toISOString(), ziele: JSON.parse(JSON.stringify(e.ziele || {})), defizit: (e.person || {}).defizit ?? null, defizit_kcal: (e.person || {}).defizit_kcal ?? null }].slice(-10);
     e.ziele = { modus: fd.get('modus') || 'keine', manuell: { kcal: n('m_kcal'), protein: n('m_protein'), kh: n('m_kh'), fett: n('m_fett'), ballaststoffe: n('m_ballaststoffe') }, quelle: fd.get('m_quelle') || '', geaendert_am: heute() };
     const df = fd.get('defizit'); if (df) { const pp = Object.assign({}, e.person); if (df.startsWith('k')) { pp.defizit_kcal = Number(df.slice(1)); } else { pp.defizit = Number(df); delete pp.defizit_kcal; } e.person = pp; } }, { mitUndo: true }); }); };
+/* Gespeicherte Eingaben der Berechnung sichtbar machen – fehlende werden als fehlend gezeigt, nie ergänzt */
+function eingabenHtml(p, b) {
+  const tr = trainingAngaben(p); const f = v => v == null || v === '' ? '<span class="chip warn">fehlt</span>' : esc(String(v));
+  const trText = tr.art === 'keins' ? 'kein regelmäßiges Training' : tr.art === 'unklar' ? `<span class="chip warn">Art unbekannt</span> ältere Angabe „${esc(TRAINING[p.training] ? TRAINING[p.training][1] : p.training)}“` : `${{ kraft: 'Krafttraining', ausdauer: 'Ausdauer/anstrengender Sport', leistung: 'Leistungssport' }[tr.art] || esc(tr.art)}, ${zahlDE(tr.n, 1)} × ${tr.min} Min. pro Woche${tr.alt ? ' <span class="chip warn">aus älterer Angabe geschätzt</span>' : ''}`;
+  return `<details class="flaeche klein" ${b.ok && !tr.alt ? '' : 'open'}><summary><b>Deine gespeicherten Angaben</b> <span class="leise">– Grundlage der Rechnung</span></summary>
+    <table class="verlauf-tabelle"><tbody>
+      <tr><th>Alter</th><td>${f(p.alter)}${p.alter ? ' Jahre' : ''}</td></tr><tr><th>Formel für</th><td>${p.geschlecht === 'm' ? 'Männer' : p.geschlecht === 'w' ? 'Frauen' : f(null)}</td></tr>
+      <tr><th>Gewicht</th><td>${f(p.gewicht)}${p.gewicht ? ' kg' : ''}</td></tr><tr><th>Größe</th><td>${f(p.groesse)}${p.groesse ? ' cm' : ''} <span class="leise">(nur für den Protein-Bezug)</span></td></tr>
+      <tr><th>Alltag ohne Sport</th><td>${p.alltag ? `PAL ${PAL_ALLTAG[p.alltag][0].toLocaleString('de-DE')} – ${esc(PAL_ALLTAG[p.alltag][1])}` : f(null)}</td></tr>
+      <tr><th>Training</th><td>${trText}</td></tr><tr><th>Krafttraining (Protein)</th><td>${p.kraft ? 'ja' : 'nein'}</td></tr>
+      <tr><th>Ziel</th><td>${p.ziel ? esc(ZIELE[p.ziel] ? ZIELE[p.ziel][0] : p.ziel) : f(null)}${p.ziel === 'abbau' ? ` (${p.defizit_kcal ? '−' + p.defizit_kcal + ' kcal' : '−' + Math.round((p.defizit || 0.1) * 100) + ' %'})` : ''}</td></tr>
+    </tbody></table>
+    <p class="leise klein">Bürojob mit wenigen Schritten = „überwiegend sitzend“ (PAL 1,4). Sport gehört nur in „Training“, nicht zusätzlich in den Alltag – sonst wird er doppelt gezählt. <a href="#/einrichtung/1">Angaben ändern</a></p></details>`;
+}
 /* Schätzung aus dem eigenen Verlauf: nur mit ausreichend vollständigen Tagen und Gewichtsmessungen; wird nie automatisch übernommen */
 function verlaufSchaetzung() {
   const kg = arr((D.training || {}).koerpergewicht).slice().sort((a, b) => a.datum.localeCompare(b.datum)); if (kg.length < 2) return { ok: false, grund: 'mindestens zwei Gewichtsmessungen im Abstand von 14 Tagen nötig (Training › Körpergewicht)' };
@@ -258,7 +277,7 @@ function verlaufSchaetzung() {
 const tageZwischenE = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 function verlaufSchaetzungHtml(b) {
   const v = verlaufSchaetzung();
-  return `<h2>Schätzung aus deinem Verlauf</h2>${v.ok ? `<div class="flaeche"><p>Erhaltungsbedarf laut Verlauf ≈ <b>${v.kcal.toLocaleString('de-DE')} kcal</b>${b.ok ? ` (Formel: ${Math.round(b.gesamt).toLocaleString('de-DE')} kcal)` : ''}</p><p class="leise klein">Grundlage: ${v.n} vollständig protokollierte Tage, Ø ${Math.round(v.schnitt)} kcal; Gewicht ${v.diff >= 0 ? '+' : ''}${zahlDE(v.diff, 1)} kg in ${v.tage} Tagen; 1 kg ≈ 7.700 kcal (grobe Näherung). Wasserschwankungen und Protokollfehler verzerren das – die App übernimmt diesen Wert nicht automatisch; bei Bedarf unter „Selbst festlegen“ eintragen.</p></div>` : `<p class="leise klein">Noch keine Schätzung: ${esc(v.grund)}.</p>`}`;
+  return `<h2>3. Schätzung aus deinem Verlauf</h2>${v.ok ? `<div class="flaeche"><p>Erhaltungsbedarf laut Verlauf ≈ <b>${v.kcal.toLocaleString('de-DE')} kcal</b>${b.ok ? ` (Formel: ${Math.round(b.gesamt).toLocaleString('de-DE')} kcal)` : ''}</p><p class="leise klein">Grundlage: ${v.n} vollständig protokollierte Tage, Ø ${Math.round(v.schnitt)} kcal; Gewicht ${v.diff >= 0 ? '+' : ''}${zahlDE(v.diff, 1)} kg in ${v.tage} Tagen; 1 kg ≈ 7.700 kcal (grobe Näherung). Wasserschwankungen und Protokollfehler verzerren das – die App übernimmt diesen Wert nicht automatisch; bei Bedarf unter „Selbst festlegen“ eintragen.</p></div>` : `<p class="leise klein">Noch keine Schätzung: ${esc(v.grund)}.</p>`}`;
 }
 
 function vProfile() {
@@ -321,7 +340,7 @@ const MARKEN_OBERBEGRIFFE = { proteinmilch: p => p.kategorie === 'getraenk' && i
 const markeName = p => `${p.marke ? p.marke + ' ' : ''}${p.name}${p.variante ? ' – ' + p.variante : ''}`;
 const PRODUKT = id => (K.produkte || []).find(p => p.id === id);
 function markenEintrag(p, menge) {
-  const e = eigenerEintrag({ id: p.id, name: markeName(p), naehr: p.naehr || {}, bezug: p.bezug, quelle: { hersteller: 'Herstellerangabe', haendler: 'Händlerangabe', verpackung: 'Verpackungsangabe' }[p.quelle_art] || 'Produktangabe', quelle_datum: p.abgerufen, pruefstatus: p.pruefstatus }, menge);
+  const e = eigenerEintrag({ id: p.id, name: markeName(p), naehr: p.naehr || {}, bezug: p.bezug, quelle: { hersteller: 'Herstellerangabe', haendler: 'Händlerangabe', verpackung: 'Verpackungsangabe' }[p.quelle_art] || 'Produktangabe', quelle_datum: p.abgerufen, pruefstatus: 'katalog-' + (p.zuordnung || 'wahrscheinlich') }, menge);
   e.quelle = 'marke'; e.produkt = p.id; delete e.lebensmittel; return e;
 }
 // Mengen-Schnellwahl: nur belegte Mengen (Packung, Abtropfgewicht, Herstellerportionen)
@@ -333,6 +352,21 @@ function mengenWahlHtml(id, typ, p) {
   if (Number(p.abtropf) > 0) opt.push([`abgetropft (${zahlDE(p.abtropf)} g)`, p.abtropf]);
   arr(p.portionen).forEach(x => opt.push([`${x.name} (${zahlDE(x.menge)} ${einh})`, x.menge]));
   return opt.length ? `<span class="mengen-wahl">${opt.map(([n, m]) => `<button type="button" class="klein still" data-a="tb-menge-setzen" data-v="${esc(id)}" data-m="${m}">${esc(n)}</button>`).join('')}</span>` : '';
+}
+/* Wie sicher passen die Werte zu genau dieser Variante (Geschmack, Fettstufe, Packung)? */
+const ZUORDNUNG = { belegt: ['Variante belegt', 'gut'], wahrscheinlich: ['Variante nicht bestätigt', 'warn'], naeherung: ['Näherung', 'warn'] };
+function markeDetailsHtml(p) {
+  const n = p.naehr || {}; const einh = p.bezug === '100ml' ? 'ml' : 'g';
+  const zeile = (lab, v, e) => `${lab} ${v == null ? '<span class="leise">?</span>' : zahlDE(v, 1) + ' ' + e}`;
+  return `<p class="klein">Je 100 ${einh}: ${[zeile('Fett', n.fett, 'g'), zeile('davon gesättigt', n.gesfs, 'g'), zeile('Kohlenhydrate', n.kh, 'g'), zeile('davon Zucker', n.zucker, 'g'), zeile('Ballaststoffe', n.ballaststoffe, 'g'), zeile('Salz', n.salz, 'g')].join(' · ')}. Fehlende Angaben = unbekannt, nicht 0.</p>
+    ${p.zuordnung_hinweis ? `<p class="klein"><b>Zuordnung:</b> ${esc(p.zuordnung_hinweis)}</p>` : ''}
+    ${p.zubereitung ? `<p class="klein">${esc(p.zubereitung)}</p>` : ''}
+    ${p.gtin ? `<p class="klein">Barcode ${esc(p.gtin)}</p>` : ''}
+    ${p.zutaten ? `<p class="klein"><b>Zutaten:</b> ${esc(p.zutaten)}</p>` : ''}
+    <p class="klein"><b>Allergene:</b> ${arr(p.allergene).length ? esc(arr(p.allergene).map(a => (typeof ALLERGEN_NAME !== 'undefined' && ALLERGEN_NAME[a]) || a).join(', ')) : 'keine Angabe – Packung beachten'}</p>
+    <p class="klein"><b>Quelle:</b> ${p.quelle ? `<a href="${esc(p.quelle)}" target="_blank" rel="noopener">${esc(p.quelle.replace(/^https?:\/\/(www\.)?/, '').split(/[/?]/)[0])}</a>` : 'nicht angegeben'}${p.abgerufen ? `, abgerufen ${esc(datumDE(p.abgerufen))}` : ''}. ${esc(p.pruefstatus || '')}</p>
+    ${arr(p.aenderungen).length ? `<p class="klein"><b>Korrekturen:</b> ${arr(p.aenderungen).map(esc).join('<br>')}</p>` : ''}
+    <p class="leise klein">Markenprodukte sind Momentaufnahmen. Rezepturen ändern sich – im Zweifel gilt das Etikett. Bereits gebuchte Mahlzeiten behalten ihre damaligen Werte.</p>`;
 }
 function eigenerEintrag(l, gramm) {
   const naehr = {}; ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz'].forEach(k => { naehr[k] = l.naehr[k] == null ? null : l.naehr[k] / 100; });
@@ -442,8 +476,10 @@ function tbTreffer() {
     // Verwandte allgemeine Einträge nur als Hinweis anbieten – keine automatische Gleichsetzung; Tippfehler nur als Rückfrage
     const verw = (TB_VERWANDT[qn] || []).map(n => K.zutaten.find(z => z.name === n && Object.keys(z.bls || {}).length)).filter(Boolean);
     const tipp = verw.length ? [] : tippVorschlaege(qn);
-    return `<div class="hinweis klein"><b>Kein Lebensmittel „${esc(tbSuche.trim())}“ gefunden.</b>${tipp.length ? `<br>Meintest du: ${tipp.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
-      <br>Genauer: <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a> – dort auch Barcode-Abfrage bei Open Food Facts. Oder unten einen freien Eintrag machen.</div>`
+    // Nur über den lokalen Bestand sprechen – ob es das Produkt online gibt, zeigt der Online-Bereich darunter
+    const online = qn.length >= 3 || istBarcode(qn);
+    return `<div class="hinweis klein"><b>In der App-Datenbank und deinen Produkten nichts zu „${esc(tbSuche.trim())}“.</b>${online ? ' Die Online-Suche läuft darunter.' : ''}${tipp.length ? `<br>Meintest du: ${tipp.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
+      ${online ? '' : '<br>Für die Online-Suche mindestens 3 Zeichen oder einen Barcode eingeben. Oder <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a>.'}</div>`
       + (rz.length ? `<h4 class="tg-titel">Rezepte mit „${esc(tbSuche.trim())}“</h4><ul class="eintraege treffer">${rz.map(r => `<li><span class="tz-name"><b>${esc(r.titel)}</b><br><span class="leise klein">Rezept</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">${ico('plus', 'klein')} 1 Portion</button></span></li>`).join('')}</ul>` : '');
   }
   const gruppe = (titel, inhalt) => inhalt ? `<h4 class="tg-titel">${titel}</h4><ul class="eintraege treffer">${inhalt}</ul>` : '';
@@ -456,7 +492,11 @@ function tbTreffer() {
   const rzZeile = r => `<li><span class="tz-name"><b>${esc(r.titel)}</b><br><span class="leise klein">Rezept · ${r.naehrwerte.pro_portion.kcal != null ? zahlDE(r.naehrwerte.pro_portion.kcal) + ' kcal/Portion' : 'kcal unbekannt'}</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">${ico('plus', 'klein')} 1 Portion</button><button class="klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="0.5">½ Portion</button><button class="klein" data-a="tb-korb-add" data-t="rezept" data-v="${esc(r.id)}" data-p="1">+ Liste</button></span></li>`;
   const mzZeile = m => `<li><span class="tz-name"><b>${esc(m.name)}</b><br><span class="leise klein">eigene Mahlzeit · ${m.eintraege.length} Teile</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-mz-buchen" data-v="${esc(m.id)}">${ico('plus', 'klein')} Eintragen</button></span></li>`;
   const mkZeile = p => { const einh = p.bezug === '100ml' ? 'ml' : 'g'; const start = (standardFuer('marke', p.id) || {}).menge || (arr(p.portionen)[0] || {}).menge || (Number(p.packung) && p.packung <= 250 ? p.packung : 100);
-    return `<li><span class="tz-name"><b>${esc(p.marke ? p.marke + ' ' : '')}${esc(p.name)}</b>${p.variante ? ` · ${esc(p.variante)}` : ''}<br><span class="leise klein">Markenprodukt${p.linie ? ': ' + esc(p.linie) : ''}${arr(p.haendler).length ? ' · ' + esc(arr(p.haendler).map(h => ({ rewe: 'REWE', lidl: 'Lidl' }[h] || h)).join('/')) : ''} · ${p.naehr && p.naehr.kcal != null ? zahlDE(p.naehr.kcal) + ' kcal' : 'kcal ?'}${p.naehr && p.naehr.protein != null ? ' · ' + zahlDE(p.naehr.protein, 1) + ' g Protein' : ''} je 100 ${einh} · ${esc(p.pruefstatus || 'ungeprüft')}${p.abgerufen ? ', Stand ' + esc(datumDE(p.abgerufen)) : ''}</span>${p.zubereitung ? `<br><span class="leise klein">${esc(p.zubereitung)}</span>` : ''}${mengenWahlHtml(p.id, 'marke', p)}</span>
+    // Kompakt: Name, Marke/Variante, Packung, kcal + Eiweiß, knapper Prüfstatus – Quelle, Methodik, Zutaten und Unsicherheiten unter „Details“
+    const zu = ZUORDNUNG[p.zuordnung] || ZUORDNUNG.wahrscheinlich;
+    return `<li><span class="tz-name"><b>${esc(p.marke ? p.marke + ' ' : '')}${esc(p.name)}</b>${p.variante ? ` · ${esc(p.variante)}` : ''}<br><span class="leise klein">${p.naehr && p.naehr.kcal != null ? zahlDE(p.naehr.kcal) + ' kcal' : 'kcal ?'}${p.naehr && p.naehr.protein != null ? ' · ' + zahlDE(p.naehr.protein, 1) + ' g Eiweiß' : ''} je 100 ${einh}${Number(p.packung) ? ` · Packung ${zahlDE(p.packung)} ${esc(p.packung_einheit || einh)}` : ''}${p.zubereitung && /^Pulver/i.test(p.zubereitung) ? ' · Werte fürs Pulver' : ''}</span>
+      <br><span class="chip ${zu[1]}" title="${esc(p.zuordnung_hinweis || '')}">${zu[0]}</span> <span class="leise klein">${p.quelle_art === 'hersteller' ? 'Herstellerangabe' : p.quelle_art === 'verpackung' ? 'Verpackung' : 'Händlerangabe'}${p.abgerufen ? ', ' + esc(datumDE(p.abgerufen)) : ''}</span>${mengenWahlHtml(p.id, 'marke', p)}
+      <details class="klein tz-details"><summary>Details</summary>${markeDetailsHtml(p)}</details></span>
       <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge ${esc(p.name)}</span><input type="number" min="1" value="${esc(start)}" data-gramm="${esc(p.id)}" inputmode="decimal"></label><span class="einh">${einh}</span><button class="haupt klein" data-a="tb-marke" data-v="${esc(p.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="marke" data-v="${esc(p.id)}">+ Liste</button>${standardKnopf('marke', p.id)}</span></li>`; };
   const nurArt = a => tbArt === 'alle' || tbArt === a;
   const artChips = `<div class="chips-wrap tb-arten" role="group" aria-label="Trefferart">${[['alle', 'Alle'], ['lm', `Lebensmittel (${zt.length})`], ['marke', `Marken (${mk.length})`], ['rezept', `Rezepte (${rz.length})`], ['mz', `Mahlzeiten (${mz.length + eg.length})`]].map(([k, n]) => `<button class="filterchip" data-a="tb-art" data-v="${k}" aria-pressed="${tbArt === k}">${n}</button>`).join('')}</div>`;

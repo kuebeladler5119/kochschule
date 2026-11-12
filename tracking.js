@@ -1,3 +1,4 @@
+/* Fitomat-Build 202611121536 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -50,7 +51,7 @@ function eintragZeile(e) {
   return `<li><span><b>${titel}</b></span><span class="kcal">${e.naehr && e.naehr.kcal != null ? zahlDE(e.naehr.kcal) + ' kcal' : '? kcal'}</span>
     <span class="unter"><span>${esc(e.zeit || '')}</span>
       <span class="stepper"><button data-a="tb-menge" data-v="${esc(e.id)}" data-d="-1" aria-label="weniger">−</button><output>${mengeText(e)}</output><button data-a="tb-menge" data-v="${esc(e.id)}" data-d="1" aria-label="mehr">+</button></span>
-      ${e.naehr ? `<span>P ${zahlDE(e.naehr.protein, 1)} · KH ${zahlDE(e.naehr.kh, 1)} · F ${zahlDE(e.naehr.fett, 1)}</span>` : ''}${e.status === 'unvollstaendig' ? '<span class="chip warn">unvollständig</span>' : ''}${e.quelle === 'restportion' ? '<span class="chip">Restportion</span>' : ''}${e.produkt_pruefstatus === 'ungeprueft' ? '<span class="chip warn">Produktwerte ungeprüft</span>' : ''}
+      ${e.naehr ? `<span>P ${zahlDE(e.naehr.protein, 1)} · KH ${zahlDE(e.naehr.kh, 1)} · F ${zahlDE(e.naehr.fett, 1)}</span>` : ''}${e.status === 'unvollstaendig' ? '<span class="chip warn">unvollständig</span>' : ''}${e.quelle === 'restportion' ? '<span class="chip">Restportion</span>' : ''}${e.produkt_pruefstatus === 'ungeprueft' ? '<span class="chip warn">Produktwerte ungeprüft</span>' : /^katalog-(wahrscheinlich|naeherung)$/.test(e.produkt_pruefstatus || '') ? '<span class="chip warn">Variante nicht bestätigt</span>' : ''}
       <button class="still klein" data-a="tb-edit" data-v="${esc(e.id)}">bearbeiten</button><button class="still klein" data-a="tb-kopie" data-v="${esc(e.id)}">erneut</button><button class="still klein" data-a="tb-weg" data-v="${esc(e.id)}">löschen</button></span></li>`;
 }
 /* Schnellwahl: eigene Mahlzeiten und zuletzt gebuchte Einträge */
@@ -287,9 +288,12 @@ async function offSuchen() {
   const f = $('#produkt-form'); const el = $('#off-ergebnis'); const g = f.gtin.value.trim();
   if (!gtinPruefziffer(g)) { el.innerHTML = '<p class="hinweis warn klein">Bitte zuerst eine gültige GTIN eingeben.</p>'; return; }
   if (!navigator.onLine) { el.innerHTML = '<p class="hinweis klein">Offline – die Abfrage braucht eine Internetverbindung. Manuelle Eingabe geht immer.</p>'; return; }
-  el.innerHTML = '<p class="leise klein">Frage Open Food Facts …</p>';
+  el.innerHTML = '<p class="leise klein" role="status">Frage Open Food Facts … (höchstens 12 s)</p>';
+  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 12000);
   try {
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(g)}.json?fields=product_name,product_name_de,brands,quantity,product_quantity,nutriments,nutrition_data_per,allergens_tags,ingredients_text_de,ingredients_text,last_modified_t`, { cache: 'no-store' });
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(g)}.json?fields=product_name,product_name_de,brands,quantity,product_quantity,nutriments,nutrition_data_per,allergens_tags,ingredients_text_de,ingredients_text,last_modified_t`, { cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(to);
+    if (r.status !== 404 && !r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     if (!j || j.status !== 1 || !j.product) { offTreffer = null; el.innerHTML = '<p class="hinweis klein">Kein Eintrag zu dieser Nummer gefunden. Bitte die Werte vom Etikett eintragen.</p>'; return; }
     const p = j.product, n = p.nutriments || {};
@@ -303,7 +307,7 @@ async function offSuchen() {
       je 100 g/ml: ${PRODUKT_NAEHR.map(([k, lab]) => `${esc(lab.replace(/ (g|kcal)$/, ''))} ${t.naehr[k] == null ? '?' : zahlDE(t.naehr[k], 1)}`).join(' · ')}${t.je100 ? '' : '<br><b>Achtung:</b> Werte dort sind je Portion angegeben – nicht übernommen.'}
       ${t.allergene.length ? `<br>Allergene laut Eintrag: ${esc(t.allergene.map(a => ALLERGEN_NAME[a] || a).join(', '))}` : ''}
       <br><button type="button" class="klein" data-a="off-uebernehmen" ${t.je100 ? '' : 'disabled'}>In das Formular übernehmen (als ungeprüft)</button></div>`;
-  } catch (e) { el.innerHTML = '<p class="hinweis warn klein">Abfrage fehlgeschlagen. Bitte die Werte vom Etikett eintragen.</p>'; }
+  } catch (e) { clearTimeout(to); el.innerHTML = `<p class="hinweis warn klein">Abfrage fehlgeschlagen (${e.name === 'AbortError' ? 'keine Antwort nach 12 s' : esc(e.message || 'Verbindung')}). <button type="button" class="klein" data-a="off-suche">Erneut versuchen</button> Oder die Werte vom Etikett eintragen.</p>`; }
 }
 function offUebernehmen() {
   const f = $('#produkt-form'); const t = offTreffer; if (!f || !t) return;
@@ -318,7 +322,7 @@ function offUebernehmen() {
    Gesendet wird nur der Suchbegriff bzw. die Barcode-Nummer – nie Profil oder Tagebuch.
    Textsuche laut OFF max. 10/Minute und „nicht beim Tippen“: daher erst nach einer Tipp-Pause, gedrosselt, mit Zwischenspeicher und Abbruch alter Anfragen.
    Ausgewählte Produkte werden privat in „Eigene Produkte“ gespeichert (mit Quelle) und nie zurückgesendet oder veröffentlicht. */
-const OFF_FELDER = 'code,product_name,product_name_de,generic_name_de,brands,quantity,product_quantity,product_quantity_unit,serving_quantity,serving_size,nutrition_data_per,nutrition_data_prepared_per,nutriments,last_modified_t,allergens_tags,ingredients_text_de';
+const OFF_FELDER = 'code,product_name,product_name_de,generic_name_de,brands,quantity,product_quantity,product_quantity_unit,serving_quantity,serving_size,nutrition_data_per,nutrition_data_prepared_per,nutriments,last_modified_t,allergens_tags,ingredients_text_de,countries_tags';
 let offOnline = { q: '', status: 'leer', treffer: [], fehler: '', seq: 0, ctrl: null, timer: null, cache: false };
 const offAufrufe = { suche: [], code: [] };
 const offCacheName = () => 'kochschule.off.v1.' + PROFIL;   // erst zur Laufzeit (PROFIL kommt aus app.js)
@@ -338,6 +342,7 @@ function offNormalisieren(p) {
   const menge = String(p.quantity || '').trim(); const ml = /\d\s*(ml|cl|l)\b/i.test(menge) || p.product_quantity_unit === 'ml';
   return { code: String(p.code || ''), name: (p.product_name_de || p.product_name || p.generic_name_de || '').trim(), marke: String(p.brands || '').split(',')[0].trim(), menge, packung: Number(p.product_quantity) || null, packung_einheit: ml ? 'ml' : 'g',
     portion: Number(p.serving_quantity) || null, portion_text: p.serving_size || '', bezug: ml ? '100ml' : '100g', naehr, stand: p.last_modified_t ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10) : null, hinweise,
+    de: arr(p.countries_tags).includes('en:germany'),   // laut OFF in Deutschland verkauft (Community-Angabe)
     allergene: arr(p.allergens_tags).map(t => OFF_ALLERGENE[t]).filter(Boolean), zutaten: p.ingredients_text_de || '' };
 }
 function offOnlineSuche(q, sofort) {
@@ -357,18 +362,20 @@ async function offOnlineAbfrage(qn, key, code, seq) {
   liste.push(jetzt); offOnline.status = 'laedt'; offOnlineZeichnen();
   const urls = code ? [`https://world.openfoodfacts.org/api/v2/product/${qn}.json?fields=${OFF_FELDER}`]
     : [`https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`, `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`];
-  let fehler = '';
+  let fehler = ''; const start = Date.now();
   for (let i = 0; i < urls.length; i++) {
-    if (i) { await new Promise(r => setTimeout(r, 2500)); if (seq !== offOnline.seq) return; }
+    if (i) { if (Date.now() - start > 6000) break; await new Promise(r => setTimeout(r, 2500)); if (seq !== offOnline.seq) return; }   // zweiter Server nur nach schnellem Fehlschlag
     const ctrl = new AbortController(); offOnline.ctrl = ctrl; const to = setTimeout(() => ctrl.abort(), 12000);
     try { const r = await fetch(urls[i], { signal: ctrl.signal }); clearTimeout(to); if (seq !== offOnline.seq) return;   // alte Antwort darf nichts überschreiben
       if (code && r.status === 404) { offOnline.status = 'ok'; offOnline.treffer = []; offCache(key, []); offOnlineZeichnen(); return; }
       if (!r.ok) throw new Error(r.status === 503 ? 'Open Food Facts ist gerade überlastet (503)' : r.status === 429 ? 'zu viele Anfragen (429)' : 'HTTP ' + r.status);
       const j = await r.json(); if (seq !== offOnline.seq) return;
       const roh = code ? (j.status === 1 && j.product ? [Object.assign({ code: qn }, j.product)] : []) : arr(j.products);
-      const gesehen = new Set(); const treffer = roh.map(offNormalisieren).filter(p => p.name && p.code && !gesehen.has(p.code) && gesehen.add(p.code));   // Dubletten nur über den Barcode
+      const gesehen = new Set(); const treffer = roh.map(offNormalisieren).filter(p => p.name && p.code && !gesehen.has(p.code) && gesehen.add(p.code))   // Dubletten nur über den Barcode
+        .map((p, i) => [p, i]).sort((a, b) => (b[0].de - a[0].de) || a[1] - b[1]).map(x => x[0]);   // in Deutschland verkaufte zuerst, sonst Reihenfolge von OFF
       offOnline.ctrl = null; offOnline.status = 'ok'; offOnline.treffer = treffer; offOnline.cache = false; offCache(key, treffer); offOnlineZeichnen(); return;
-    } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return; fehler = e.name === 'AbortError' ? 'keine Antwort nach 12 s' : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'Verbindung fehlgeschlagen (Netz oder Überlastung bei Open Food Facts)' : e.message; }
+    } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return; fehler = e.name === 'AbortError' ? 'keine Antwort nach 12 s' : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'Verbindung fehlgeschlagen (Netz oder Überlastung bei Open Food Facts)' : e.message;
+      if (e.name === 'AbortError') break; }   // nach Zeitüberschreitung keinen zweiten Server probieren – Wartezeit bleibt begrenzt
   }
   offOnline.ctrl = null; offOnline.status = 'fehler'; offOnline.fehler = fehler; offOnlineZeichnen();
 }
@@ -376,17 +383,26 @@ function offOnlineHtml() {
   const o = offOnline; if (o.status === 'leer') return '';
   const kopf = `<h4 class="tg-titel">Online: Open Food Facts${o.cache ? ' <span class="leise">(zwischengespeichert)</span>' : ''}</h4>`;
   const fuss = `<p class="leise klein">Produktdaten aus <a href="https://de.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>), von Freiwilligen erfasst – kein garantiert aktuelles Etikett. Gesendet wird nur dein Suchbegriff.</p>`;
-  if (o.status === 'wartet') return kopf + `<p class="leise klein">Online-Suche startet nach einer kurzen Tipp-Pause … <button class="klein still" data-a="off-jetzt">jetzt suchen</button></p>`;
-  if (o.status === 'laedt') return kopf + '<p class="leise klein">Suche bei Open Food Facts …</p>';
-  if (o.status === 'offline') return kopf + '<p class="hinweis klein">Offline – die Online-Suche braucht Internet. Bereits verwendete Produkte findest du oben unter „Eigene Produkte“.</p>';
-  if (o.status === 'limit') return kopf + `<p class="hinweis klein">Zu viele Online-Suchen in kurzer Zeit (Open Food Facts erlaubt nur wenige pro Minute). Bitte in etwa ${o.warte} s erneut versuchen. <button class="klein" data-a="off-jetzt">erneut</button></p>`;
-  if (o.status === 'fehler') return kopf + `<p class="hinweis warn klein">Online-Suche nicht möglich: ${esc(o.fehler)}. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>${istBarcode(o.q) ? '' : '<p class="leise klein">Die Barcode-Suche funktioniert meist auch dann – Nummer eingeben oder scannen.</p>'}`;
+  // Zustände klar getrennt: wartet · lädt · Treffer · ohne Treffer · Fehler · offline · Grenze erreicht – nie „gibt es nicht“, solange gesucht wird
+  const anlegen = `<p class="klein"><button class="klein" data-a="produkt-neu-vorbelegt">${istBarcode(o.q) ? `Produkt mit Barcode ${esc(o.q)} anlegen` : `Produkt „${esc(o.q)}“ selbst anlegen`}</button> <span class="leise">Werte vom Etikett, optional mit Foto als Beleg.</span></p>`;
+  if (o.status === 'wartet') return kopf + `<p class="leise klein" role="status">Online-Suche startet nach einer kurzen Tipp-Pause … <button class="klein still" data-a="off-jetzt">jetzt suchen</button></p>`;
+  if (o.status === 'laedt') return kopf + `<p class="leise klein" role="status"><span class="lade-punkt" aria-hidden="true"></span> Suche läuft bei Open Food Facts … (höchstens etwa ${istBarcode(o.q) ? 12 : 20} s)</p>`;
+  if (o.status === 'offline') return kopf + `<p class="hinweis klein" role="status"><b>Offline</b> – die Online-Suche braucht Internet. Gespeicherte eigene Produkte und die App-Datenbank funktionieren weiter (oben). <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>` + anlegen;
+  if (o.status === 'limit') return kopf + `<p class="hinweis klein" role="status"><b>Abfragegrenze erreicht</b> – Open Food Facts erlaubt nur wenige Suchen pro Minute. In etwa ${o.warte} s geht es wieder. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>`;
+  if (o.status === 'fehler') return kopf + `<p class="hinweis warn klein" role="status"><b>Online-Suche fehlgeschlagen:</b> ${esc(o.fehler)}. Das heißt nicht, dass es das Produkt nicht gibt. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>${istBarcode(o.q) ? '' : '<p class="leise klein">Die Barcode-Suche ist meist zuverlässiger – Nummer eingeben oder scannen.</p>'}` + anlegen;
   const lokaleCodes = new Set([...(D.lebensmittel || []).map(l => l.gtin), ...(K.produkte || []).map(p => p.gtin)].filter(Boolean));
   const l = o.treffer.filter(p => !lokaleCodes.has(p.code)); const doppelt = o.treffer.length - l.length;
-  if (!o.treffer.length) return kopf + `<p class="klein">Kein Treffer bei Open Food Facts.</p><p class="klein"><button class="klein" data-a="produkt-neu-vorbelegt">${istBarcode(o.q) ? `Produkt mit Barcode ${esc(o.q)} anlegen` : `Produkt „${esc(o.q)}“ selbst anlegen`}</button> <span class="leise">Werte vom Etikett, optional mit Foto als Beleg.</span></p>` + fuss;
+  if (!o.treffer.length) return kopf + `<p class="klein" role="status"><b>Online kein Treffer</b> zu „${esc(o.q)}“.${istBarcode(o.q) ? ' Diese Nummer ist bei Open Food Facts nicht erfasst.' : ' Tipp: Marke und Sorte kombinieren (z. B. „Milbona Skyr“) oder den Barcode verwenden.'}</p>` + anlegen + fuss;
+  if (!l.length) return kopf + `<p class="leise klein" role="status">${doppelt} Online-Treffer – alle schon oben bei deinen Produkten bzw. den Markenprodukten (gleicher Barcode).</p>` + fuss;
   return kopf + `${doppelt ? `<p class="leise klein">${doppelt} Treffer hast du schon (siehe oben, gleicher Barcode).</p>` : ''}<ul class="eintraege treffer">${l.map(p => { const einh = p.bezug === '100ml' ? 'ml' : 'g'; const start = p.portion || (p.packung && p.packung <= 250 ? p.packung : 100);
-      return `<li><span class="tz-name"><b>${esc(p.marke ? p.marke + ' ' : '')}${esc(p.name)}</b>${p.menge ? ` · ${esc(p.menge)}` : ''}<br><span class="leise klein">Online-Daten · ${p.naehr.kcal != null ? zahlDE(p.naehr.kcal) + ' kcal' : 'kcal ?'} · ${p.naehr.protein != null ? zahlDE(p.naehr.protein, 1) + ' g Eiweiß' : 'Eiweiß ?'} je 100 ${einh} · Barcode ${esc(p.code)}${p.stand ? ' · Stand ' + esc(datumDE(p.stand)) : ''}</span>${p.hinweise.length ? `<br><span class="chip warn">prüfen</span> <span class="leise klein">${esc(p.hinweise.join(' · '))}</span>` : ''}
-        ${mengenWahlHtml('off-' + p.code, 'off', { packung: p.packung, packung_einheit: p.packung_einheit, bezug: p.bezug, portionen: p.portion ? [{ name: 'Portion laut Angabe' + (p.portion_text && !/^\s*[\d.,]+\s*(g|ml)\s*$/i.test(p.portion_text) ? ' – ' + p.portion_text : ''), menge: p.portion }] : [] })}</span>
+      const n = p.naehr; const kurzName = p.marke && !p.name.toLowerCase().startsWith(p.marke.toLowerCase()) ? p.marke + ' ' + p.name : p.name;
+      return `<li><span class="tz-name"><b>${esc(kurzName)}</b>${p.menge ? ` · ${esc(p.menge)}` : ''}<br><span class="leise klein">${n.kcal != null ? zahlDE(n.kcal) + ' kcal' : 'kcal ?'} · ${n.protein != null ? zahlDE(n.protein, 1) + ' g Eiweiß' : 'Eiweiß ?'} je 100 ${einh}</span>
+        <br><span class="chip">Online-Daten, ungeprüft</span>${p.hinweise.length ? ' <span class="chip warn">Etikett prüfen</span>' : ''}${p.de === false ? ' <span class="chip warn">nicht als in Deutschland verkauft erfasst</span>' : ''}
+        ${mengenWahlHtml('off-' + p.code, 'off', { packung: p.packung, packung_einheit: p.packung_einheit, bezug: p.bezug, portionen: p.portion ? [{ name: 'Portion laut Angabe', menge: p.portion }] : [] })}
+        <details class="klein tz-details"><summary>Details</summary><p class="klein">Je 100 ${einh}: Fett ${n.fett != null ? zahlDE(n.fett, 1) + ' g' : '?'} · Kohlenhydrate ${n.kh != null ? zahlDE(n.kh, 1) + ' g' : '?'} · Zucker ${n.zucker != null ? zahlDE(n.zucker, 1) + ' g' : '?'} · Ballaststoffe ${n.ballaststoffe != null ? zahlDE(n.ballaststoffe, 1) + ' g' : '?'} · Salz ${n.salz != null ? zahlDE(n.salz, 2) + ' g' : '?'}. Fehlende Angaben = unbekannt, nicht 0.</p>
+          ${p.hinweise.length ? `<p class="klein"><b>Auffälligkeiten:</b> ${esc(p.hinweise.join(' · '))}</p>` : ''}${p.portion_text ? `<p class="klein">Portionsangabe im Eintrag: ${esc(p.portion_text)}</p>` : ''}
+          <p class="klein">Barcode ${esc(p.code)}${p.stand ? ' · zuletzt geändert ' + esc(datumDE(p.stand)) : ''} · <a href="https://de.openfoodfacts.org/produkt/${esc(p.code)}" target="_blank" rel="noopener">Eintrag ansehen</a></p>
+          <p class="leise klein">Von Freiwilligen erfasst. Ob Sorte und Rezeptur zu deiner Packung passen, zeigt nur das Etikett.</p></details></span>
         <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge</span><input type="number" min="1" value="${esc(start)}" data-gramm="off-${esc(p.code)}" inputmode="decimal"></label><span class="einh">${einh}</span><button class="haupt klein" data-a="off-eintragen" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled title="Energie unbekannt"' : ''}>${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="off-liste" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled' : ''}>+ Liste</button><button class="klein still" data-a="off-merken" data-v="${esc(p.code)}" title="Als Standardprodukt merken">☆</button></span></li>`; }).join('')}</ul>
     <p class="klein">Nicht dabei? <button class="klein still" data-a="produkt-neu-vorbelegt">Produkt selbst anlegen</button> oder genauer suchen (Marke, Sorte, Barcode).</p>` + fuss;
 }

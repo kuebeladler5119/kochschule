@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.18.1';
-const APP_BUILD = '202611121449';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.19.0';
+const APP_BUILD = '202611121536';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -1003,6 +1003,8 @@ function updateAnwenden() {
   UP.wartend.postMessage({ typ: 'aktivieren' });
   setTimeout(() => { if (UP.wechsel) location.reload(); }, 4000);   // falls controllerchange ausbleibt
 }
+// Nur möglich ohne Offline-Speicher (erster Besuch) während eine Veröffentlichung noch hochgeladen wird
+if (K.version && K.version !== APP_BUILD) setTimeout(() => toast('App und Katalog stammen gerade aus verschiedenen Ständen (Update wird hochgeladen). Bitte in ein paar Minuten neu laden – deine Daten bleiben erhalten.'), 1500);
 if (SW_OK) {
   const hatteSteuerung = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(reg => {

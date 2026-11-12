@@ -4,7 +4,7 @@
    - Die App startet immer aus dem Offline-Speicher dieser Version (schnell, offline, alle Dateien passen zusammen).
    - Eine neue Version wird im Hintergrund vollständig geladen und wartet dann. Aktiv wird sie erst,
      wenn die Seite „aktivieren“ schickt (Knopf „Jetzt aktualisieren“) oder wenn die App ganz geschlossen war. */
-const VERSION = '202611121449';
+const VERSION = '202611121536';
 const CACHE = 'kochschule-' + VERSION;
 const DATEIEN = ['./', 'index.html', 'app.css', 'ernaehrung.js', 'rezepte.js', 'tracking.js', 'training.js', 'app.js', 'data/katalog.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 // Rezeptfotos (vom Build eingetragen, nur mit Lizenznachweis). Sie werden NICHT alle vorab gespeichert, sondern beim Ansehen
@@ -21,9 +21,12 @@ self.addEventListener('install', e => {
       if (!r.ok) throw new Error(d + ': HTTP ' + r.status);
       await c.put(d, r);
     }
-    // Nur übernehmen, wenn app.js wirklich zu dieser Version gehört (sonst beim nächsten Mal erneut versuchen)
-    const app = await (await c.match('app.js')).text();
-    if (!app.includes("APP_BUILD = '" + VERSION + "'")) { await caches.delete(CACHE); throw new Error('app.js gehört nicht zu Version ' + VERSION); }
+    // Nur übernehmen, wenn App, Module und Katalog wirklich zu dieser Version gehören – sonst bleibt die alte Version aktiv
+    // und es wird später erneut versucht (z. B. solange eine Veröffentlichung noch in mehreren Schritten hochgeladen wird)
+    const pruefe = async (d, kennung) => { const t = await (await c.match(d)).text(); if (!t.includes(kennung)) { await caches.delete(CACHE); throw new Error(d + ' gehört nicht zu Version ' + VERSION); } };
+    await pruefe('app.js', "APP_BUILD = '" + VERSION + "'");
+    for (const m of ['ernaehrung.js', 'rezepte.js', 'tracking.js', 'training.js']) await pruefe(m, '/* Fitomat-Build ' + VERSION + ' */');
+    await pruefe('data/katalog.js', '"version":"' + VERSION + '"');
   })());
 });
 
