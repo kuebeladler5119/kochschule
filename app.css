@@ -579,3 +579,34 @@ ol.ablauf ul{list-style:none;padding:0}
 @keyframes flossenschlag { from { transform: rotate(-10deg); } to { transform: rotate(14deg); } }
 .intro .blase { position: absolute; border-radius: 50%; border: 2px solid #8ab6df; background: rgba(138,182,223,.15); pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .intro { display: none; } }
+
+/* 2.21: Trainingstabelle schmal, große Reihen-Knöpfe, Planentwurf, Mobility-Timer */
+.tr-ok-text { white-space: nowrap; hyphens: none; word-break: keep-all; }
+.tr-saetze td:last-child { white-space: nowrap; }
+.tr-saetze td:last-child button { min-height: 40px; min-width: 3.6em; padding: 6px 8px; }
+.tr-uebung h2, .tr-liste b, .te-kopf b, .fz-titel { overflow-wrap: anywhere; hyphens: auto; min-width: 0; }
+.reihen-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.reihen-knoepfe button { min-height: 44px; padding: 8px 14px; font-size: .95rem; flex: 1 1 auto; }
+.entwurf .te-einheit { border: 1px solid var(--linie, #ddd); border-radius: 12px; padding: 10px; margin: 10px 0; min-width: 0; }
+.entwurf .te-einheit legend { font-weight: 600; padding: 0 6px; }
+.te-liste { padding-left: 1.2em; margin: 6px 0; }
+.te-ueb { margin: 10px 0; padding-bottom: 8px; border-bottom: 1px dashed var(--linie, #ddd); }
+.te-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.te-felder { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.te-felder input { width: 5em; min-height: 40px; }
+.te-aktion { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 6px; }
+.te-aktion .feld { flex: 1 1 200px; min-width: 0; }
+.te-aktion select { width: 100%; min-height: 44px; }
+.te-aktion button { min-height: 44px; }
+button.gross { min-height: 52px; font-size: 1.05rem; padding: 10px 16px; flex: 1 1 140px; }
+@media (max-width: 420px) { .tr-saetze td:last-child button { min-width: 3.2em; padding: 6px 4px; font-size: .9rem; } }
+/* Toast: nicht auf halbe Bildschirmbreite schrumpfen (left:50% begrenzt sonst die Breite) */
+.toast { width: max-content; max-width: calc(100vw - 32px); }
+.tr-saetze th { white-space: nowrap; }
+.tr-saetze td:first-child button { white-space: nowrap; padding-left: 4px; padding-right: 4px; }
+@media (max-width: 360px) {
+  .tr-saetze th:nth-child(2), .tr-saetze td.vorher { display: none; }   /* Vorwerte stehen als Platzhalter in den Feldern */
+  .tr-saetze th { font-size: .66rem; letter-spacing: 0; }
+  .tr-saetze input { width: 3.5em; padding: 6px 4px; }
+  .tr-saetze select { padding: 4px 2px; }
+}

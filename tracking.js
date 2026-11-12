@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611122149 */
+/* Fitomat-Build 202611122256 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -383,7 +383,7 @@ async function offOnlineAbfrage(qn, key, code, seq) {
   liste.push(jetzt); offOnline.status = 'laedt'; offOnlineZeichnen();
   const host = ['de', 'world'][offOnline.host % 2];   // beim manuellen Wiederholen abwechselnd anderer Server – nie automatisch
   const url = code ? `https://world.openfoodfacts.org/api/v2/product/${qn}.json?fields=${OFF_FELDER}` : `https://${host}.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`;
-  const ctrl = new AbortController(); offOnline.ctrl = ctrl; const to = setTimeout(() => ctrl.abort(), 12000);
+  const ctrl = new AbortController(); offOnline.ctrl = ctrl; const to = setTimeout(() => ctrl.abort(), code ? 12000 : 20000);
   try { const r = await fetch(url, { signal: ctrl.signal }); clearTimeout(to); if (seq !== offOnline.seq) return;   // alte Antwort darf nichts überschreiben
     if (code && r.status === 404) { offOnline.status = 'ok'; offOnline.treffer = []; offCache(key, []); offOnlineZeichnen(); return; }
     if (r.status === 429) { offOnlineFehler('grenze', '429', key); return; }
@@ -401,8 +401,8 @@ async function offOnlineAbfrage(qn, key, code, seq) {
 const OFF_FEHLER_TEXT = {
   offline: ['Kein Internet', 'Dieses Gerät ist gerade offline.'],
   netz: ['Keine Internetverbindung erkennbar', 'Auch die App-Adresse selbst ist gerade nicht erreichbar – Netz bzw. WLAN prüfen.'],
-  zeit: ['Keine Antwort nach 12 Sekunden', 'Open Food Facts hat zu langsam geantwortet – langsame Verbindung oder überlasteter Server.'],
-  abgelehnt: ['Open Food Facts lehnt die Namenssuche gerade ab', 'Die Barcode-Abfrage funktioniert, nur die Suche nach Namen nicht. Das passiert bei Überlastung oder wenn die Suchgrenze erreicht ist. Die Grenze gilt je Internetanschluss: Wer sich ein Netz teilt – gleiches WLAN, manche Mobilfunknetze, iCloud Privat-Relay –, teilt sie auch. Meist geht es nach 1–2 Minuten wieder.'],
+  zeit: ['Keine rechtzeitige Antwort', 'Open Food Facts hat nicht innerhalb der Wartezeit geantwortet (Barcode 12 s, Namenssuche 20 s) – langsame Verbindung oder langsamer Server.'],
+  abgelehnt: ['Die Namenssuche von Open Food Facts hat nicht geantwortet', 'Geprüft: Die Barcode-Abfrage bei Open Food Facts funktioniert gerade, nur die Suche nach Namen nicht. Den genauen Grund verrät der Browser nicht. Häufig ist es die Suchgrenze, die Open Food Facts je Internetanschluss setzt (gleiches WLAN, manche Mobilfunknetze oder iCloud Privat-Relay teilen sie), oder eine kurzzeitige Überlastung der Namenssuche. Meist geht es nach 1–2 Minuten wieder.'],
   grenze: ['Zu viele Anfragen', 'Open Food Facts meldet, dass gerade zu viele Anfragen von diesem Internetanschluss kommen (429). Meist geht es nach 1–2 Minuten wieder.'],
   server: ['Serverfehler bei Open Food Facts', 'Open Food Facts hat einen Fehler gemeldet. Das liegt nicht an deinem Gerät.'],
   blockiert: ['Open Food Facts ist von diesem Gerät aus nicht erreichbar', 'Das Internet funktioniert, aber Open Food Facts antwortet nicht. Mögliche Gründe: eine Störung oder Drosselung bei Open Food Facts, ein Inhalts- bzw. Werbeblocker oder ein Firmen-/Schul-WLAN, das die Seite sperrt.']
@@ -414,12 +414,13 @@ function offOnlineHtml() {
   // Zustände klar getrennt: wartet · lädt · Treffer · ohne Treffer · Fehler · offline · Grenze erreicht – nie „gibt es nicht“, solange gesucht wird
   const anlegen = `<p class="klein"><button class="klein" data-a="produkt-neu-vorbelegt">${istBarcode(o.q) ? `Produkt mit Barcode ${esc(o.q)} anlegen` : `Produkt „${esc(o.q)}“ selbst anlegen`}</button> <span class="leise">Werte vom Etikett, optional mit Foto als Beleg.</span></p>`;
   if (o.status === 'bereit') return kopf + `<p class="klein" role="status"><button class="klein" data-a="off-jetzt">${ico('suche', 'klein')} „${esc(o.q)}“ bei Open Food Facts suchen</button></p><p class="leise klein">Online-Namenssuche nur auf Knopfdruck – Open Food Facts erlaubt nur wenige Suchen pro Minute. Barcodes werden automatisch gesucht und sind genauer.</p>`;
-  if (o.status === 'laedt') return kopf + `<p class="leise klein" role="status"><span class="lade-punkt" aria-hidden="true"></span> Suche läuft bei Open Food Facts … (höchstens etwa 15 s)</p>`;
+  if (o.status === 'laedt') return kopf + `<p class="leise klein" role="status"><span class="lade-punkt" aria-hidden="true"></span> Suche läuft bei Open Food Facts … (höchstens etwa ${istBarcode(o.q) ? 15 : 25} s)</p>`;
   const altHtml = o.alt ? `<div class="hinweis klein"><b>Gespeicherter Stand vom ${esc(new Date(o.alt.t).toLocaleDateString('de-DE'))}</b> (${o.alt.d.length} Treffer zu „${esc(o.q)}“) – kann veraltet sein. <button class="klein" data-a="off-alt">Anzeigen</button></div>` : '';
-  const auswege = `<p class="leise klein">Die Suche in der App-Datenbank und deinen Produkten oben funktioniert weiter.${istBarcode(o.q) ? '' : ' Genauer und weniger gebremst: Barcode eingeben oder 📷 scannen.'}</p>` + altHtml + anlegen;
+  const webLink = istBarcode(o.q) ? '' : ` Oder auf der <a href="https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(o.q)}&search_simple=1&action=process" target="_blank" rel="noopener">Website von Open Food Facts suchen ↗</a> und den Barcode hier eingeben.`;
+  const auswege = `<p class="leise klein">Deine Treffer oben, eingetragene Mengen und die Sammelliste bleiben erhalten. Die Suche in der App-Datenbank und deinen Produkten funktioniert weiter.${istBarcode(o.q) ? '' : ' Genauer und weniger gebremst: Barcode eingeben oder 📷 scannen.'}${webLink}</p>` + altHtml + anlegen;
   if (o.status === 'limit' || o.status === 'pause') return kopf + `<p class="hinweis klein" role="status"><b>${o.status === 'limit' ? 'Kurz warten' : 'Kurze Pause nach der Ablehnung'}</b> – damit die Grenze von Open Food Facts nicht weiter überschritten wird, sucht die App erst in etwa ${o.warte} s wieder. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>` + auswege;
   if (o.status === 'fehler') { const [t, txt] = OFF_FEHLER_TEXT[o.art] || ['Online-Suche fehlgeschlagen', o.fehler]; const sperre = Math.max(0, Math.ceil((o.sperreBis[istBarcode(o.q) ? 'code' : 'suche'] - Date.now()) / 1000));
-    return kopf + `<div class="hinweis warn klein" role="status"><b>${esc(t)}.</b> ${esc(txt)}${o.art === 'server' && o.fehler ? ` (HTTP ${esc(o.fehler)})` : ''}<br>Das heißt nicht, dass es das Produkt nicht gibt. <button class="klein" data-a="off-jetzt">${sperre ? `Erneut versuchen (frühestens in ${sperre} s)` : 'Erneut versuchen'}</button></div>` + auswege; }
+    return kopf + `<div class="hinweis warn klein" role="status"><b>${esc(t)}.</b> ${esc(txt)}${o.art === 'server' && o.fehler ? ` (HTTP ${esc(o.fehler)})` : o.fehler && o.art !== 'grenze' ? ` <span class="leise">(Browser-Meldung: ${esc(String(o.fehler).slice(0, 60))})</span>` : ''}<br>Das heißt nicht, dass es das Produkt nicht gibt. <button class="klein" data-a="off-jetzt">${sperre ? `Erneut versuchen (frühestens in ${sperre} s)` : 'Erneut versuchen'}</button></div>` + auswege; }
   const lokaleCodes = new Set([...(D.lebensmittel || []).map(l => l.gtin), ...(K.produkte || []).map(p => p.gtin)].filter(Boolean));
   const l = o.treffer.filter(p => !lokaleCodes.has(p.code)); const doppelt = o.treffer.length - l.length;
   if (!o.treffer.length) return kopf + `<p class="klein" role="status"><b>Online kein Treffer</b> zu „${esc(o.q)}“.${istBarcode(o.q) ? ' Diese Nummer ist bei Open Food Facts nicht erfasst.' : ' Tipp: Marke und Sorte kombinieren (z. B. „Milbona Skyr“) oder den Barcode verwenden.'}</p>` + anlegen + fuss;

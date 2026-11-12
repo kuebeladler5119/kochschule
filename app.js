@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.20.6';
-const APP_BUILD = '202611122149';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.21.0';
+const APP_BUILD = '202611122256';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -989,7 +989,7 @@ document.addEventListener('click', ev => {
     case 'fertig': location.hash = '#/fertig/' + encodeURIComponent(v); break;
     case 'fortschritt-weg': aendere('Kochvorgang abgebrochen – nichts gebucht, keine Zutaten abgezogen', d => { delete d.fortschritt[v]; }); break;
     case 'kochen-abbrechen': aendere('Kochvorgang abgebrochen – nichts gebucht, keine Zutaten abgezogen', d => { delete d.fortschritt[v]; }, { neuZeichnen: false }); location.hash = '#/rezept/' + encodeURIComponent(v); break;
-    case 'timer': { const min = Number(b.dataset.min); timer.push({ id: uid('t'), name: b.dataset.name || 'Timer', ende: Date.now() + min * 60000 }); timerSpeichern(); zeichneTimer(); toast(`Timer ${min} Min. läuft (nur bei geöffneter App zuverlässig)`); break; }
+    case 'timer': { const min = Number(b.dataset.min); if (b.dataset.quelle) timer = timer.filter(t => t.quelle !== b.dataset.quelle); timer.push({ id: uid('t'), name: b.dataset.name || 'Timer', quelle: b.dataset.quelle || '', ende: Date.now() + min * 60000 }); timerSpeichern(); zeichneTimer(); toast(`Timer ${min} Min. läuft (nur bei geöffneter App zuverlässig)`); break; }
     case 'timer-weg': timer = timer.filter(t => t.id !== v); timerSpeichern(); zeichneTimer(); break;
     case 'timer-plus': { const t = timer.find(x => x.id === v); if (t) { const s = Number(b.dataset.s) || 30; if (t.pausiert != null) t.pausiert += s; else t.ende = Math.max(t.ende, Date.now()) + s * 1000; t.gemeldet = false; timerSpeichern(); zeichneTimer(); } break; }
     case 'timer-halt': { const t = timer.find(x => x.id === v); if (t) { if (t.pausiert != null) { t.ende = Date.now() + t.pausiert * 1000; t.pausiert = null; } else t.pausiert = Math.max(0, Math.round((t.ende - Date.now()) / 1000)); timerSpeichern(); zeichneTimer(); } break; }

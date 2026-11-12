@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611122149 */
+/* Fitomat-Build 202611122256 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -33,8 +33,10 @@ function letzteLeistung(uebungId, ausser, variante) {
   return { datum: e.start.slice(0, 10), saetze: u.saetze.filter(s => s.art === 'arbeit' && s.erledigt) };
 }
 const satzTeil = (w, kg) => `${w || '?'} × ${kgText(kg)}`;
+// Zeitübungen: Haltezeit in Sekunden (s.sek), Zusatzgewicht optional
+const sekTeil = s => `${s.sek} s${s.kg !== '' && s.kg != null && Number(s.kg) ? ' + ' + kgText(s.kg) : ''}`;
 // Einseitige Übungen: beide Seiten bilden EINEN Satz; s.kg/s.wdh enthalten die schwächere Seite (Grundlage für Vorschläge)
-const satzText = s => `${s.seiten ? `L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
+const satzText = s => s.sek != null && s.sek !== '' ? sekTeil(s) + (s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') : `${s.seiten ?`L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
 
 /* ---------- Muskelgruppen, Gewichtsangabe, Auswahl ---------- */
 const MUSKEL_GRUPPEN = [['brust', 'Brust', ['brust']], ['ruecken', 'Rücken', ['latissimus', 'oberer_ruecken', 'rueckenstrecker']], ['schultern', 'Schultern', ['vordere_schulter', 'seitliche_schulter', 'hintere_schulter']], ['arme', 'Arme', ['bizeps', 'trizeps']], ['beine', 'Beine', ['quadrizeps', 'beinbeuger', 'waden']], ['gesaess', 'Gesäß', ['gesaess']], ['rumpf', 'Rumpf', ['rumpf']]];
@@ -128,11 +130,13 @@ function trRoutineHtml(id) {
   ${r.beispiel ? '<p class="hinweis klein">Allgemeines Beispiel, kein persönlicher Trainingsplan. 3 Sätze à 8–12 Wiederholungen entsprechen der allgemeinen Empfehlung für Einsteiger (ACSM); Übungen, Sätze und Pausen bitte an Erfahrung, Geräte und Beschwerden anpassen.</p>' : ''}
   ${r.historisch ? '<p class="hinweis klein"><b>Historische Vorlage:</b> unverändert aus deinen früheren Angaben übernommen. Referenzgewichte sind alte Geräteangaben, keine aktuell geschafften Leistungen. Für Änderungen am besten den Plan als eigene Variante kopieren – die Vorlage bleibt dann erhalten.</p>' : ''}
   <ol class="tr-liste">${r.uebungen.map((x, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between"><b><a href="#/training/uebung/${esc(x.uebung)}">${esc(ueb(x.uebung).name)}</a>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}</b>
-      <span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}<button class="klein still" data-a="tr-r-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="klein still" data-a="tr-r-runter" data-v="${i}" ${i < r.uebungen.length - 1 ? '' : 'disabled'} aria-label="nach unten">↓</button><button class="klein still" data-a="tr-r-weg" data-v="${i}">entfernen</button></span></div>
-    <div class="zeile">${[['aufwaerm', 'Aufwärmsätze', 0, 5, 1], ['saetze', 'Arbeitssätze', 1, 10, 1], ['wdh_von', 'Wdh. von', 1, 50, 1], ['wdh_bis', 'Wdh. bis', 1, 50, 1], ['pause_s', 'Pause (Sek.)', 0, 600, 15], ['referenz_kg', r.historisch ? 'Startwert kg (historisch)' : 'Startgewicht kg', 0, 500, 0.25], ['schritt_kg', 'Gewichtsschritt kg', 0, 50, 0.25]].map(([k, n, mi, ma, st]) => `<label class="feld"><span>${n}</span><input type="number" inputmode="decimal" min="${mi}" max="${ma}" step="${st}" value="${esc(x[k] ?? '')}" placeholder="${k === 'saetze' && x.saetze_offen ? 'offen' : ''}" data-tr-r-feld="${k}" data-i="${i}" style="width:5.5em"></label>`).join('')}
+      <span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</span></div>
+    <div class="reihen-knoepfe"><button class="still" data-a="tr-r-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="${esc(ueb(x.uebung).name)} nach oben">▲ nach oben</button><button class="still" data-a="tr-r-runter" data-v="${i}" ${i < r.uebungen.length - 1 ? '' : 'disabled'} aria-label="${esc(ueb(x.uebung).name)} nach unten">▼ nach unten</button><button class="still" data-a="tr-r-weg" data-v="${i}">✕ entfernen</button></div>
+    <div class="zeile">${[['aufwaerm', 'Aufwärmsätze', 0, 5, 1], ['saetze', 'Arbeitssätze', 1, 10, 1], ...(istZeit(x) ? [['sek_von', 'Sek. von', 5, 600, 5], ['sek_bis', 'Sek. bis', 5, 600, 5]] : [['wdh_von', 'Wdh. von', 1, 50, 1], ['wdh_bis', 'Wdh. bis', 1, 50, 1]]), ['pause_s', 'Pause (Sek.)', 0, 600, 15], ['referenz_kg', r.historisch ? 'Startwert kg (historisch)' : 'Startgewicht kg', 0, 500, 0.25], ['schritt_kg', 'Gewichtsschritt kg', 0, 50, 0.25]].map(([k, n, mi, ma, st]) => `<label class="feld"><span>${n}</span><input type="number" inputmode="decimal" min="${mi}" max="${ma}" step="${st}" value="${esc(x[k] ?? '')}" placeholder="${k === 'saetze' && x.saetze_offen ? 'offen' : ''}" data-tr-r-feld="${k}" data-i="${i}" style="width:5.5em"></label>`).join('')}
       <label class="feld"><span>Ziel-RIR</span><input value="${esc(x.ziel_rir ?? '')}" data-tr-r-text="ziel_rir" data-i="${i}" placeholder="z. B. 1–2" style="width:6em"></label>
       <label class="feld" style="flex:1 1 160px"><span>Gerät/Variante</span><input value="${esc(x.variante ?? '')}" data-tr-r-text="variante" data-i="${i}" placeholder="z. B. Kabelturm 1. Stock"></label></div>
     <label><input type="checkbox" data-tr-r-check="je_seite" data-i="${i}" ${x.je_seite ? 'checked' : ''}> einseitig: Wiederholungen und Sätze je Seite</label>
+    <label><input type="checkbox" data-tr-r-check="zeit" data-i="${i}" ${istZeit(x) ? 'checked' : ''}> nach Zeit: Haltezeit in Sekunden statt Wiederholungen</label>
     ${x.saetze_offen ? '<p class="leise klein">Satzanzahl in der Vorlage nicht angegeben – bitte festlegen.</p>' : ''}${x.aufwaerm_schema ? `<p class="leise klein">Aufwärmen (persönliche Regel): ${esc(aufwaermText(x))}</p>` : ''}${x.notiz ? `<p class="leise klein">${esc(x.notiz)}</p>` : ''}</li>`).join('')}</ol>
   <p class="leise klein">Eine andere Variante (z. B. anderer Kabelturm) wird getrennt protokolliert, damit Gewichte nicht vermischt werden. Ändern der Routine verändert keine bereits gespeicherten Einheiten.</p>
   ${uebungsWahlHtml('routine')}
@@ -158,12 +162,12 @@ function zielErreicht(h, bis) {
   return h.saetze.every(s => { const ohneRir = s.rir === '' || s.rir == null; return (Number(s.kg) || 0) === h.top && Number(s.wdh) >= bis + (ohneRir ? 2 : 0) && (ohneRir || s.rir === '5+' || Number(s.rir) >= 1); });
 }
 const rirText = l => { const r = l.map(s => s.rir === '' || s.rir == null ? '?' : s.rir); return r.every(x => x === '?') ? 'RIR nicht eingetragen' : 'RIR ' + r.join('/'); };
-const sitzungText = h => `${datumDE(h.datum)}: ${h.saetze.map(s => (s.wdh || '?') + '×' + (s.kg !== '' && s.kg != null ? zahlDE(Number(s.kg), 2) : '–')).join(', ')} kg (${rirText(h.saetze)})${h.saetze.length < h.geplant ? `, ${h.geplant - h.saetze.length} Satz ausgelassen` : ''}`;
+const sitzungText = h => h.saetze.some(s => s.sek != null && s.sek !== '') ? `${datumDE(h.datum)}: ${h.saetze.map(s => s.sek != null && s.sek !== '' ? sekTeil(s) : (s.wdh || '?') + ' Wdh.').join(', ')}` : `${datumDE(h.datum)}: ${h.saetze.map(s => (s.wdh || '?') + '×' + (s.kg !== '' && s.kg != null ? zahlDE(Number(s.kg), 2) : '–')).join(', ')} kg (${rirText(h.saetze)})${h.saetze.length < h.geplant ? `, ${h.geplant - h.saetze.length} Satz ausgelassen` : ''}`;
 function progressionsVorschlag(u, eId) {
   const info = ueb(u.uebung); const hist = vergleichbareEinheiten(u.uebung, u.variante, eId).slice(0, 3);
   const von = Number(u.wdh_von) || null, bis = Number(u.wdh_bis) || von; const eigenerSchritt = Number(u.schritt_kg) || Number(info.schritt_kg) || null; const schritt = eigenerSchritt || Number(info.gewichtsschritt_kg_vorschlag) || null;
-  const zeitbasiert = /plank|halten|unterarmstütz/i.test(info.name + ' ' + info.id);
-  if (zeitbasiert) return { art: 'manuell', titel: 'Zeitbasierte Übung – selbst entscheiden', begruendung: 'Für Halteübungen gibt es hier keine Regel.', daten: '', unsicherheit: '' };
+  const zeitbasiert = istZeit(u) || /plank|halten|unterarmstütz/i.test(info.name + ' ' + info.id);
+  if (zeitbasiert) return { art: 'manuell', titel: 'Zeitbasierte Übung – selbst entscheiden', begruendung: 'Für Halteübungen gibt es hier keine Steigerungsregel. Möglich: etwas länger halten oder eine schwerere Stufe wählen – nur, solange die Ausführung sauber bleibt.', daten: '', unsicherheit: 'Die gelesenen Quellen nennen keine Haltezeiten.' };
   if (!hist.length) return { art: 'start', titel: 'Noch keine eigene Leistung an diesem Gerät', begruendung: u.referenz_kg ? `Die Referenz ${kgText(u.referenz_kg)} ist eine alte Angabe, keine bestätigte Leistung. Mit einem vorsichtigen Satz beginnen und selbst einschätzen.` : 'Gewicht selbst wählen; ab der zweiten vergleichbaren Einheit gibt es Vorschläge.', daten: u.variante ? 'Variante: ' + u.variante : '', unsicherheit: 'Ohne Leistungsdaten keine Empfehlung.' };
   const l = hist[0]; const pause = tageZwischen(l.datum, heute());
   const akt = trDaten().einheiten.find(x => x.id === eId); const ck = (akt && akt.check) || {};
@@ -205,18 +209,50 @@ function vorschlagHtml(u, ui, e) {
 
 /* ---------- Trainingseinrichtung und begründete Planvorschläge (regelbasiert; Regeln 13–18 in „Trainingswissenschaft – Grundlagen“) ----------
    Alles optional; nichts wird automatisch ersetzt – ein Vorschlag wird erst nach Vorschau als neuer, inaktiver Plan angelegt. */
-const TR_GERAETE = [['langhantel', 'Langhantel + Rack'], ['kurzhantel', 'Kurzhanteln'], ['kabel', 'Kabelzug'], ['maschine', 'Maschinen'], ['klimmzugstange', 'Klimmzugstange'], ['bank', 'Bank'], ['koerpergewicht', 'nur Körpergewicht']];
+const TR_GERAETE = [['langhantel', 'Langhantel + Rack'], ['kurzhantel', 'Kurzhanteln'], ['kabel', 'Kabelzug'], ['maschine', 'Maschinen'], ['klimmzugstange', 'Klimmzugstange'], ['bank', 'Bank'], ['band', 'Widerstandsband'], ['kettlebell', 'Kettlebell'], ['koerpergewicht', 'nur Körpergewicht']];
 const SPLITS = {
   gk: { name: 'Ganzkörper', tage: ['Ganzkörper A', 'Ganzkörper B', 'Ganzkörper C'], slots: { 'Ganzkörper A': ['kniebeuge', 'horizontal_druecken', 'vertikal_ziehen', 'hueftbeuge', 'iso:arme', 'rumpf'], 'Ganzkörper B': ['hueftbeuge', 'vertikal_druecken', 'horizontal_ziehen', 'kniebeuge', 'iso:schultern', 'iso:arme'], 'Ganzkörper C': ['kniebeuge', 'horizontal_druecken', 'horizontal_ziehen', 'hueftbeuge', 'iso:arme', 'rumpf'] },
-    plus: 'Jeder Muskel 2–3× pro Woche; ein ausgefallener Tag fällt weniger ins Gewicht.', minus: 'Einheiten werden bei viel Volumen lang; wenig Platz für viele Armübungen.' },
+    plus: 'Jeder Muskel an jedem Trainingstag; ein ausgefallener Tag fällt weniger ins Gewicht.', minus: 'Einheiten werden bei viel Volumen lang; wenig Platz für viele Armübungen.' },
   ou: { name: 'Ober-/Unterkörper', tage: ['Oberkörper A', 'Unterkörper A', 'Oberkörper B', 'Unterkörper B'], slots: { 'Oberkörper A': ['horizontal_druecken', 'vertikal_ziehen', 'vertikal_druecken', 'horizontal_ziehen', 'iso:arme', 'iso:arme'], 'Unterkörper A': ['kniebeuge', 'hueftbeuge', 'kniebeuge', 'rumpf'], 'Oberkörper B': ['vertikal_ziehen', 'horizontal_druecken', 'horizontal_ziehen', 'iso:schultern', 'iso:arme', 'iso:arme'], 'Unterkörper B': ['hueftbeuge', 'kniebeuge', 'hueftbeuge', 'rumpf'] },
-    plus: 'Oberkörper 2× pro Woche mit Platz für Arme und Schultern; gut planbar mit 4 Tagen.', minus: 'Fällt ein Tag aus, bekommt eine Körperhälfte in dieser Woche weniger.' },
+    plus: 'Platz für Arme und Schultern; die Muskelgruppen wechseln von Tag zu Tag.', minus:'Fällt ein Tag aus, bekommt eine Körperhälfte in dieser Woche weniger.' },
   ppl: { name: 'Push/Pull/Beine', tage: ['Push', 'Pull', 'Beine'], slots: { Push: ['horizontal_druecken', 'vertikal_druecken', 'horizontal_druecken', 'iso:schultern', 'iso:trizeps'], Pull: ['vertikal_ziehen', 'horizontal_ziehen', 'horizontal_ziehen', 'iso:bizeps'], Beine: ['kniebeuge', 'hueftbeuge', 'kniebeuge', 'rumpf'] },
-    plus: 'Viel Volumen pro Muskel in einer Einheit; übersichtlich je Tag.', minus: 'Mit 3 Tagen nur 1× pro Woche je Muskel; Ausfälle wiegen schwerer.' }
+    plus: 'Viel Volumen pro Muskel in einer Einheit; übersichtlich je Tag.', minus: 'Bei wenigen Tagen wird jeder Muskel selten trainiert; Ausfälle wiegen schwerer.' }
 };
+// Verfügbare Tage sind nicht gleich nötige Krafttage: Optionen mit allen Tagen und mit weniger Tagen (Rest frei oder Mobility)
 function splitOptionen(n) {
-  const o = { 2: [['gk', 2]], 3: [['gk', 3], ['ppl', 3]], 4: [['ou', 4], ['gk', 4]], 5: [['ou', 5], ['ppl', 5]], 6: [['ppl', 6], ['ou', 6]] };
-  return (o[Math.min(6, Math.max(2, n || 3))] || o[3]);
+  const o = { 1: [['gk', 1]], 2: [['gk', 2]], 3: [['gk', 3], ['ppl', 3]], 4: [['ou', 4], ['gk', 3], ['gk', 4]], 5: [['ou', 5], ['ppl', 5], ['ou', 4], ['gk', 3]], 6: [['ppl', 6], ['ou', 6], ['ou', 4], ['gk', 3]], 7: [['ppl', 6], ['ou', 4], ['gk', 3]] };
+  return o[Math.min(7, Math.max(1, n || 3))] || o[3];
+}
+// Welche Plätze eine Einheit zusätzlich füllen darf (gleiche Körperregion, damit z. B. ein Pull-Tag nie mit Fremdübungen „aufgefüllt“ wird)
+const TAG_FUELL = { 'Ganzkörper': ['kniebeuge', 'horizontal_druecken', 'horizontal_ziehen', 'hueftbeuge', 'vertikal_druecken', 'vertikal_ziehen', 'iso:gesaess', 'rumpf'], 'Oberkörper': ['horizontal_druecken', 'vertikal_druecken', 'horizontal_ziehen', 'vertikal_ziehen', 'iso:schultern', 'iso:arme'], 'Unterkörper': ['kniebeuge', 'hueftbeuge', 'iso:gesaess', 'rumpf'], Push: ['horizontal_druecken', 'vertikal_druecken', 'iso:trizeps', 'iso:schultern'], Pull: ['vertikal_ziehen', 'horizontal_ziehen', 'iso:bizeps', 'iso:hintere'], Beine: ['kniebeuge', 'hueftbeuge', 'iso:gesaess', 'rumpf'] };
+const TAG_GRUPPEN = { 'Ganzkörper': ['brust', 'ruecken', 'schultern', 'arme', 'beine', 'gesaess', 'rumpf'], 'Oberkörper': ['brust', 'ruecken', 'schultern', 'arme'], 'Unterkörper': ['beine', 'gesaess', 'rumpf'], Push: ['brust', 'schultern', 'arme'], Pull: ['ruecken', 'arme'], Beine: ['beine', 'gesaess', 'rumpf'] };
+const FOKUS_SLOT = { gesaess: ['hueftbeuge', 'iso:gesaess', 'kniebeuge'], brust: ['horizontal_druecken'], ruecken: ['horizontal_ziehen', 'vertikal_ziehen'], schultern: ['iso:schultern', 'vertikal_druecken'], arme: ['iso:arme'], beine: ['kniebeuge', 'hueftbeuge'], rumpf: ['rumpf'] };
+const tagTyp = name => Object.keys(TAG_FUELL).find(k => String(name).startsWith(k)) || 'Ganzkörper';
+// Zeitübungen (Haltezeit statt Wiederholungen); die Quellen nennen keine Haltezeiten – die Sekunden wählst du selbst
+const ZEIT_UEBUNGEN = ['ueb-plank', 'ueb-seitstuetz'];
+const zeitBereich = id => { const m = String((K.uebungen || []).find(u => u.id === id)?.wdh_bereich_vorschlag || '').match(/(\d+)\s*(?:–\s*(\d+)\s*)?s\b/); return m ? { von: Number(m[1]), bis: Number(m[2] || m[1]) } : null; };
+const istZeit = x => !!x && (x.messung ? x.messung === 'zeit' : ZEIT_UEBUNGEN.includes(x.uebung) || !!zeitBereich(x.uebung));
+// Neuer Routineneintrag mit passender Messart (Wiederholungen oder Sekunden aus der Bibliothek)
+function neuerEintrag(id, extra) {
+  const u = ueb(id); const zb = zeitBereich(id); const zeit = ZEIT_UEBUNGEN.includes(id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
+  return Object.assign({ uebung: id, aufwaerm: 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zb ? zb.von : null, sek_bis: zb ? zb.bis : null, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, extra || {});
+}
+// Sekundenziel: eigene Angabe, sonst die Spanne aus der Bibliothek (z. B. „20–45 s“), sonst offen
+function sekZiel(x) { if (x.sek_von || x.sek_bis) return { von: x.sek_von, bis: x.sek_bis }; const z = zeitBereich(x.uebung); return z || { von: null, bis: null }; }
+// Ziel kurz: „8–12“, „30–45 s“, „Haltezeit“ oder „Wdh. offen“ – nie ein nacktes Fragezeichen
+function zielKurz(x) {
+  const sp = (a, b) => a && b && a !== b ? a + '–' + b : String(b || a || '');
+  if (istZeit(x)) { const z = sekZiel(x); return z.von || z.bis ? sp(z.von, z.bis) + ' s' : 'Haltezeit'; }
+  return x.wdh_von || x.wdh_bis ? sp(x.wdh_von, x.wdh_bis) : 'Wdh. offen';
+}
+// m Tage aus den verfügbaren so wählen, dass die Abstände möglichst gleichmäßig sind (Erholung)
+function tageVerteilen(verf, m) {
+  const idx = WOCHENTAGE.map(w => w[0]).map((k, i) => verf.includes(k) ? i : -1).filter(i => i >= 0);
+  if (m >= idx.length) return idx.map(i => WOCHENTAGE[i][0]);
+  let best = null, bestWert = -1;
+  const rek = (start, wahl) => { if (wahl.length === m) { let min = 7; for (let i = 0; i < m; i++) { const a = wahl[i], b = wahl[(i + 1) % m]; const gap = m === 1 ? 7 : ((b - a + 7) % 7 || 7); min = Math.min(min, gap); } if (min > bestWert) { bestWert = min; best = wahl.slice(); } return; }
+    for (let i = start; i < idx.length; i++) { wahl.push(idx[i]); rek(i + 1, wahl); wahl.pop(); } };
+  rek(0, []); return (best || idx.slice(0, m)).map(i => WOCHENTAGE[i][0]);
 }
 // Verfügbar, wenn die Übung nur Körpergewicht braucht oder eines ihrer Geräte vorhanden ist (Klimmzug braucht die Stange)
 // Die Geräteliste einer Übung sind Alternativen; „koerpergewicht“ genügt allein, außer die Übung braucht eine Klimmzugstange
@@ -227,7 +263,7 @@ function uebVerfuegbar(u, ger) {
   const frei = roh.filter(x => x !== 'bank'); return !frei.length || frei.includes('koerpergewicht') || frei.some(x => ger.includes(x));
 }
 function slotUebung(slot, ger, nein, schon, versatz) {
-  const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'] }[slot];
+  const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'], 'iso:hintere': ['hintere_schulter'], 'iso:gesaess': ['gesaess'] }[slot];
   const muster = slot === 'kniebeuge' ? ['kniebeuge', 'ausfallschritt'] : [slot];
   const passt = u => uebVerfuegbar(u, ger) && !nein.includes(u.id) && (iso ? u.bewegungsmuster === 'isolation' && arr(u.muskeln_haupt).some(m => iso.includes(m)) : muster.includes(u.bewegungsmuster));
   // Mit vorhandenen Geräten belastbare Varianten zuerst (Körpergewicht nur, wenn sonst nichts passt oder nur Körpergewicht gewählt ist)
@@ -236,37 +272,143 @@ function slotUebung(slot, ger, nein, schon, versatz) {
   if (!kand.length) return alle.length ? 'doppelt' : null;
   const beste = kand.filter(u => rang(u) === rang(kand[0])); return beste[versatz % beste.length];
 }
-function planVorschlag(cfg, splitKey, n) {
+function uebEintrag(u, basis, erste, prio) {
+  const iso = u.bewegungsmuster === 'isolation' || u.bewegungsmuster === 'rumpf'; const nurKg = arr(u.geraet).every(g => g === 'koerpergewicht' || g === 'bank');
+  const zb = zeitBereich(u.id); const zeit = ZEIT_UEBUNGEN.includes(u.id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
+  const x = { uebung: u.id, aufwaerm: erste ? 2 : 0, saetze: basis, wdh_von: zeit ? null : (von ? Number(von[1]) : 8), wdh_bis: zeit ? null : (von ? Number(von[2]) : nurKg ? 15 : 12), pause_s: iso ? 90 : nurKg ? 120 : 150, ziel_rir: '1–3', _iso: iso, _fokus: uebGruppen(u).some(g => prio.includes(g)), _bonus: 0 };
+  if (zeit) { x.messung = 'zeit'; x.sek_von = zb ? zb.von : null; x.sek_bis = zb ? zb.bis : null; }
+  return x;
+}
+const planDauer = x => (x.saetze + (x.aufwaerm || 0)) * 45 + x.saetze * (x.pause_s || 0) + (x.aufwaerm || 0) * 60;
+const einheitSek = ue => ue.reduce((s, x) => s + planDauer(x), 0) + 300;
+const FOKUS_MAX = 20; // Planungsgrenze je Gruppe und Woche: Zusatznutzen flacht bei ca. 18–20 Wochensätzen ab (ACSM 2026, Regel in „Trainingswissenschaft – Grundlagen“)
+function planVorschlag(cfg, splitKey, m) {
   const sp = SPLITS[splitKey]; const ger = cfg.geraete && cfg.geraete.length ? cfg.geraete : ['langhantel', 'kurzhantel', 'kabel', 'maschine', 'klimmzugstange', 'koerpergewicht'];
   const nein = arr(cfg.unerwuenscht); const prio = arr(cfg.schwerpunkte); const basis = cfg.erfahrung === 'einsteiger' ? 2 : 3;
-  const tage = []; for (let i = 0; i < n; i++) tage.push(sp.tage[i % sp.tage.length]);
-  const zaehl = {}; const luecken = new Set(); const einheiten = tage.map((tn, ti) => { const schon = [];
-    const ue = sp.slots[tn].map((slot, si) => { const u = slotUebung(slot, ger, nein, schon, Math.floor(ti / sp.tage.length) + si); if (u === 'doppelt') return null; if (!u) { luecken.add(slot); return null; } schon.push(u.id);
-      const gr = uebGruppen(u); const iso = u.bewegungsmuster === 'isolation' || u.bewegungsmuster === 'rumpf'; const bonus = gr.some(g => prio.includes(g)) && basis < 4 ? 1 : 0;
-      const von = String(u.wdh_bereich_vorschlag || '8–12').match(/(\d+)\D+(\d+)/); return { uebung: u.id, aufwaerm: si === 0 ? 2 : 0, saetze: basis + bonus, _bonus: bonus, _iso: iso, wdh_von: u.id === 'ueb-plank' ? null : (von ? Number(von[1]) : 8), wdh_bis: u.id === 'ueb-plank' ? null : (von ? Number(von[2]) : 12), pause_s: iso ? 90 : 150, ziel_rir: '1–3' }; }).filter(Boolean);
-    let sek = ue.reduce((s, x) => s + (x.saetze + x.aufwaerm) * 45 + x.saetze * x.pause_s + x.aufwaerm * 60, 0) + 300;
-    // Zeitrahmen (nie Pausen kürzen): 1. Schwerpunkt-Zusatzsätze, 2. Isolation ohne Schwerpunkt, 3. Mehrgelenk über 2 Sätze, 4. hintere Übungen
-    const ziel = (Number(cfg.minuten) || 0) * 60; const gekuerzt = []; let bonusWeg = 0;
-    const satzWeg = (filter, text) => { for (let i = ue.length - 1; i >= 0 && sek > ziel; i--) { const x = ue[i]; if (filter(x)) { x.saetze--; if (x._bonus) { x._bonus = 0; bonusWeg++; } sek -= 45 + x.pause_s; gekuerzt.push(ueb(x.uebung).name + text); } } };
-    if (ziel) { satzWeg(x => x._bonus, ' −1 Schwerpunktsatz'); satzWeg(x => x._iso && !x._bonus && x.saetze > 2, ' −1 Satz'); satzWeg(x => !x._iso && x.saetze > 2, ' −1 Satz');
-      while (sek > ziel && ue.length > 3) { const x = ue.pop(); sek -= (x.saetze + x.aufwaerm) * 45 + x.saetze * x.pause_s; gekuerzt.push(ueb(x.uebung).name + ' entfällt'); } }
-    const bonusSaetze = ue.reduce((s, x) => s + (x._bonus || 0), 0); ue.forEach(x => { delete x._bonus; delete x._iso; });
-    ue.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { zaehl[g] = (zaehl[g] || 0) + x.saetze; }));
-    return { name: tn, uebungen: ue, minuten: Math.round(sek / 60), gekuerzt, bonusSaetze, bonusWeg }; });
-  // Ehrlich bewerten: Einheiten mit weniger als 3 Übungen sind kein vollständiger Plan
-  const unbrauchbar = einheiten.some(e => e.uebungen.length < 3);
-  return { key: splitKey, name: sp.name + (n > sp.tage.length ? ` (${n}×/Woche)` : ''), plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, fehlend: luecken.size > 0, luecken: [...luecken], unbrauchbar };
+  const verf = arr(cfg.tage); const tagKeys = tageVerteilen(verf, m); const ziel = (Number(cfg.minuten) || 0) * 60;
+  const namen = []; for (let i = 0; i < m; i++) namen.push(sp.tage[i % sp.tage.length]);
+  const zaehl = {}; const luecken = new Set();
+  const einheiten = namen.map((tn, ti) => {
+    const schon = []; const ue = []; const typ = tagTyp(tn); const gekuerzt = [];
+    const nimm = (slot, vers) => { const u = slotUebung(slot, ger, nein, schon, vers); if (!u || u === 'doppelt') return u; schon.push(u.id); const x = uebEintrag(u, basis, !ue.length, prio); ue.push(x); return x; };
+    sp.slots[tn].forEach((slot, si) => { if (nimm(slot, Math.floor(ti / sp.tage.length) + si) === null) luecken.add(slot); });
+    // Auffüllen auf 4 Übungen nur aus derselben Körperregion und nur, wenn es in die Zeit passt
+    for (const slot of TAG_FUELL[typ]) { if (ue.length >= 4) break; const u = slotUebung(slot, ger, nein, schon, ti); if (!u || u === 'doppelt') continue;
+      const x = uebEintrag(u, basis, !ue.length, prio); if (ziel && ue.length >= 3 && einheitSek(ue) + planDauer(x) > ziel) break; schon.push(u.id); x._fuell = true; ue.push(x); }
+    // Schwerpunkt: zuerst +1 Satz auf bis zu zwei passende Übungen, sonst eine Zusatzübung – bis zur Planungsgrenze
+    prio.filter(g => TAG_GRUPPEN[typ].includes(g)).forEach(g => {
+      const passend = ue.filter(x => uebGruppen(ueb(x.uebung)).includes(g));
+      if (passend.length < 2) { for (const slot of FOKUS_SLOT[g] || []) { const u = slotUebung(slot, ger, nein, schon, ti); if (!u || u === 'doppelt' || !uebGruppen(u).includes(g)) continue; schon.push(u.id); const x = uebEintrag(u, basis, false, prio); x._extra = true; ue.push(x); passend.push(x); break; } }
+      passend.slice(0, 2).forEach(x => { if (x.saetze < 4) { x.saetze++; x._bonus++; } });
+    });
+    // Zeitrahmen (Pausen werden nie gekürzt): 1. Isolation ohne Schwerpunkt, 2. Mehrgelenk ohne Schwerpunkt über 2 Sätze, 3. Auffüllübungen, 4. Schwerpunkt-Zusatzsätze, 5. hintere Übungen ohne Schwerpunkt
+    let bonusWeg = 0; let sek = einheitSek(ue);
+    const satzWeg = (filter, text) => { for (let i = ue.length - 1; i >= 0 && sek > ziel; i--) { const x = ue[i]; if (filter(x)) { x.saetze--; if (x._bonus) { x._bonus--; bonusWeg++; } sek -= 45 + x.pause_s; gekuerzt.push(ueb(x.uebung).name + text); } } };
+    const uebWeg = (filter) => { for (let i = ue.length - 1; i >= 0 && sek > ziel && ue.length > 3; i--) { const x = ue[i]; if (filter(x)) { ue.splice(i, 1); if (x._bonus) bonusWeg += x._bonus; sek -= planDauer(x); gekuerzt.push(ueb(x.uebung).name + ' entfällt'); } } };
+    if (ziel) { satzWeg(x => x._iso && !x._fokus && x.saetze > 2, ' −1 Satz'); satzWeg(x => !x._iso && !x._fokus && x.saetze > 2, ' −1 Satz'); uebWeg(x => x._fuell && !x._fokus);
+      satzWeg(x => x._bonus > 0, ' −1 Schwerpunktsatz'); uebWeg(x => !x._fokus); }
+    if (ue.length && !ue.some(x => x.aufwaerm)) ue[0].aufwaerm = 2;
+    return { name: tn, tag: tagKeys[ti] || '', uebungen: ue, minuten: Math.round(einheitSek(ue) / 60), zuLang: ziel > 0 && einheitSek(ue) > ziel + 120, gekuerzt, bonusWeg };
+  });
+  // Planungsgrenze für Schwerpunkt-Zusatzsätze über die Woche (Grundsätze bleiben unberührt)
+  einheiten.forEach(e => e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { zaehl[g] = (zaehl[g] || 0) + x.saetze; })));
+  let gekappt = 0; prio.forEach(g => { for (let ei = einheiten.length - 1; ei >= 0 && zaehl[g] > FOKUS_MAX; ei--) einheiten[ei].uebungen.forEach(x => { if (x._bonus && zaehl[g] > FOKUS_MAX && uebGruppen(ueb(x.uebung)).includes(g)) { x.saetze--; x._bonus--; gekappt++; uebGruppen(ueb(x.uebung)).forEach(g2 => { zaehl[g2]--; }); } }); });
+  const bonusSaetze = einheiten.reduce((s, e) => s + e.uebungen.reduce((a, x) => a + (x._bonus || 0), 0), 0); const extra = einheiten.reduce((s, e) => s + e.uebungen.filter(x => x._extra).length, 0);
+  einheiten.forEach(e => { e.minuten = Math.round(einheitSek(e.uebungen) / 60); e.uebungen.forEach(x => { delete x._bonus; delete x._iso; delete x._fokus; delete x._fuell; delete x._extra; }); });
+  // Ehrlich prüfen: leere oder zu dünne Einheiten machen den Vorschlag unbrauchbar; Erholung zwischen gleichen Einheiten
+  const fehler = []; const hinweise = [];
+  einheiten.forEach(e => { const f = !e.uebungen.length ? `${e.name}: keine einzige passende Übung` : e.uebungen.length < 3 ? `${e.name}: nur ${e.uebungen.length} Übung${e.uebungen.length === 1 ? '' : 'en'}` : ''; if (f && !fehler.includes(f)) fehler.push(f); });
+  const tagIdx = k => WOCHENTAGE.findIndex(w => w[0] === k);
+  for (let i = 0; i < einheiten.length; i++) { const a = einheiten[i], b = einheiten[(i + 1) % einheiten.length]; if (einheiten.length < 2 || !a.tag || !b.tag) continue; const gap = (tagIdx(b.tag) - tagIdx(a.tag) + 7) % 7;
+    if (gap === 1 && (splitKey === 'gk' || tagTyp(a.name) === tagTyp(b.name))) { hinweise.push(`${a.name} und ${b.name} liegen direkt hintereinander und belasten dieselben Muskeln – besser mit einem Tag Abstand oder den zweiten Tag leichter.`); break; } }
+  if (einheiten.some(e => e.zuLang)) hinweise.push(`Mindestens eine Einheit braucht trotz Kürzungen länger als ${cfg.minuten} Min. – im Entwurf kannst du Übungen entfernen.`);
+  const haeufig = {}; einheiten.forEach(e => { const gs = new Set(); e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => gs.add(g))); gs.forEach(g => { haeufig[g] = (haeufig[g] || 0) + 1; }); });
+  const rest = verf.length - m;
+  return { key: splitKey, m, tage: tagKeys, name: `${sp.name} an ${m} Tag${m === 1 ? '' : 'en'}`, untertitel: rest > 0 ? `${m} Krafttage von ${verf.length} verfügbaren; ${rest} Tag${rest === 1 ? '' : 'e'} frei für Erholung oder Mobility` : `alle ${m} verfügbaren Tage`,
+    plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, haeufigkeit: haeufig, luecken: [...luecken], fehler, hinweise, bonusSaetze, extra, gekappt, bonusWeg: einheiten.reduce((s, e) => s + e.bonusWeg, 0) };
 }
-const PLATZ_NAME = { kniebeuge: 'Kniebeuge/Ausfallschritt', hueftbeuge: 'Hüftstreckung (Gesäß/Beinbeuger)', horizontal_druecken: 'Drücken horizontal (Brust)', vertikal_druecken: 'Drücken über Kopf (Schulter)', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben (Latissimus)', rumpf: 'Rumpf', 'iso:arme': 'Arme (Isolation)', 'iso:bizeps': 'Bizeps', 'iso:trizeps': 'Trizeps', 'iso:schultern': 'Schultern (Isolation)' };
-const SLOT_GERAET = { vertikal_ziehen: 'Klimmzugstange oder Kabelzug/Latzug', horizontal_ziehen: 'Kurzhanteln, Kabelzug oder ein stabiler Tisch für umgekehrtes Rudern', vertikal_druecken: 'Kurzhanteln oder Langhantel', 'iso:arme': 'Kurzhanteln, Kabel oder Band', 'iso:bizeps': 'Kurzhanteln, Kabel oder Band', 'iso:trizeps': 'Kabel, Kurzhanteln oder Dips am Stuhl', 'iso:schultern': 'Kurzhanteln, Kabel oder Band', hueftbeuge: 'Kurzhanteln/Langhantel oder eine Bank für Hip Thrusts' };
-let trVorschlagWahl = null;
+const PLATZ_NAME = { kniebeuge: 'Kniebeuge/Ausfallschritt', hueftbeuge: 'Hüftstreckung (Gesäß/Beinbeuger)', horizontal_druecken: 'Drücken horizontal (Brust)', vertikal_druecken: 'Drücken über Kopf (Schulter)', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben (Latissimus)', rumpf: 'Rumpf', 'iso:arme': 'Arme (Isolation)', 'iso:bizeps': 'Bizeps', 'iso:trizeps': 'Trizeps', 'iso:schultern': 'Schultern (Isolation)', 'iso:hintere': 'hintere Schulter', 'iso:gesaess': 'Gesäß (Isolation)' };
+const SLOT_GERAET = { vertikal_ziehen: 'Klimmzugstange oder Kabelzug/Latzug', horizontal_ziehen: 'Widerstandsband, Kurzhanteln, Kabelzug oder Langhantel im Rack (umgekehrtes Rudern)', vertikal_druecken: 'Kurzhanteln oder Langhantel', 'iso:arme': 'Kurzhanteln, Kabel oder Band', 'iso:bizeps': 'Kurzhanteln, Kabel oder Band', 'iso:trizeps': 'Kabel, Kurzhanteln oder Dips am Stuhl', 'iso:schultern': 'Kurzhanteln, Kabel oder Band', 'iso:hintere': 'Kurzhanteln, Kabel oder Maschine', hueftbeuge: 'Kurzhanteln/Langhantel oder eine Bank für Hip Thrusts' };
+// Liefert { ok: ausführbare Vorschläge, nicht: verworfene mit Grund }; nie ein Vorschlag mit leeren oder zu dünnen Einheiten
 function vorschlagsOptionen(c) {
-  const n = arr(c.tage).length; if (!n) return [];
-  const opts = splitOptionen(n).map(([k, m]) => planVorschlag(c, k, m));
-  // Ist keine Aufteilung sinnvoll erfüllbar, ehrlich eine Alternative mit weniger Tagen anbieten
-  if (opts.every(o => o.unbrauchbar) && n > 2) { const m = Math.min(3, n - 1); const alt = planVorschlag(c, 'gk', m); alt.name = `Alternative: Ganzkörper an ${m} Tagen`; alt.plus = 'Mit der vorhandenen Ausstattung lassen sich weniger, dafür vollständigere Einheiten bilden; die übrigen Tage können aktive Erholung oder Mobility sein.'; alt.minus = 'Weniger Trainingstage als gewünscht.'; opts.push(alt); }
-  return opts;
+  const n = arr(c.tage).length; if (!n) return { ok: [], nicht: [] };
+  const alle = splitOptionen(n).filter(([, m]) => m <= n).map(([k, m]) => planVorschlag(c, k, m));
+  const ok = alle.filter(o => !o.fehler.length); const nicht = alle.filter(o => o.fehler.length);
+  if (c.erfahrung === 'einsteiger') ok.sort((a, b) => (a.key === 'gk' ? 0 : 1) - (b.key === 'gk' ? 0 : 1));
+  return { ok: ok.slice(0, 4), nicht };
 }
+/* ---------- Entwurf: Vorschau vor dem Speichern bearbeiten (Übung tauschen, Sätze, Tag, entfernen, hinzufügen) ---------- */
+let trPlanEntwurf = null;
+function entwurfGeraete() { const c = trDaten().einrichtung || {}; return { ger: arr(c.geraete).length ? c.geraete : ['langhantel', 'kurzhantel', 'kabel', 'maschine', 'klimmzugstange', 'koerpergewicht'], nein: arr(c.unerwuenscht) }; }
+function entwurfAlternativen(id) {
+  const u = ueb(id); const { ger, nein } = entwurfGeraete(); const gr = uebGruppen(u);
+  const kand = alleUebungen().filter(x => x.id !== id && !nein.includes(x.id) && (x.quelle === 'eigen' || uebVerfuegbar(x, ger)));
+  const gleich = kand.filter(x => x.quelle !== 'eigen' && x.bewegungsmuster && x.bewegungsmuster === u.bewegungsmuster && (u.bewegungsmuster !== 'isolation' || uebGruppen(x).some(g => gr.includes(g))));
+  const muskel = kand.filter(x => !gleich.includes(x) && x.quelle !== 'eigen' && uebGruppen(x).some(g => gr.includes(g)));
+  const eigen = kand.filter(x => x.quelle === 'eigen');
+  const n = a => a.sort((p, q) => p.name.localeCompare(q.name, 'de'));
+  return { gleich: n(gleich), muskel: n(muskel), eigen: n(eigen) };
+}
+function entwurfPruefen(ew) {
+  const p = []; if (!ew.einheiten.length) p.push('Der Plan hat keine Einheit.');
+  ew.einheiten.forEach((e, i) => { if (!e.uebungen.length) p.push(`Einheit ${i + 1} (${e.name || 'ohne Namen'}) hat keine Übung – Übung hinzufügen oder Einheit entfernen.`); if (e.uebungen.some(x => !(x.saetze >= 1))) p.push(`Einheit ${i + 1}: jede Übung braucht mindestens 1 Satz.`); });
+  const tage = ew.einheiten.map(e => e.tag).filter(Boolean); const doppelt = tage.filter((t, i) => tage.indexOf(t) !== i);
+  if (doppelt.length) p.push(`Zwei Einheiten am selben Tag (${[...new Set(doppelt)].map(k => (WOCHENTAGE.find(w => w[0] === k) || [])[1]).join(', ')}) – Tag ändern oder „flexibel“ wählen.`);
+  return p;
+}
+function entwurfWocheHtml(ew) {
+  const z = {}; ew.einheiten.forEach(e => e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { z[g] = (z[g] || 0) + (Number(x.saetze) || 0); })));
+  return 'Arbeitssätze pro Woche (nur Hauptmuskeln): ' + (MUSKEL_GRUPPEN.filter(([k]) => z[k]).map(([k, n2]) => `${n2} ${z[k]}`).join(' · ') || '–');
+}
+function entwurfHtml() {
+  const ew = trPlanEntwurf; if (!ew) return ''; const c = trDaten().einrichtung || {}; const { ger, nein } = entwurfGeraete(); const probleme = entwurfPruefen(ew);
+  const opt = (l, sel) => l.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  const zahl = (te, ei, ui, wert, ext) => `<input type="number" inputmode="numeric" data-te="${te}" data-e="${ei}" data-u="${ui}" value="${wert == null ? '' : esc(wert)}" ${ext}>`;
+  return `<section class="karte entwurf" id="tr-entwurf"><h2 style="margin-top:0">Vorschau bearbeiten</h2>
+    <p class="leise klein">Noch nichts ist gespeichert. Tausche Übungen, ändere Sätze, Tage und Pausen – erst „Als neuen Plan anlegen“ speichert. Bestehende Pläne bleiben unverändert.</p>
+    <label class="feld"><span>Planname</span><input data-te="name" value="${esc(ew.name)}" maxlength="60"></label>
+    ${ew.einheiten.map((e, ei) => { const typ = tagTyp(e.name); const imTag = e.uebungen.map(x => x.uebung);
+      const dazu = alleUebungen().filter(x => !imTag.includes(x.id) && !nein.includes(x.id) && (x.quelle === 'eigen' || (uebVerfuegbar(x, ger) && uebGruppen(x).some(g => TAG_GRUPPEN[typ].includes(g))))).sort((p, q) => p.name.localeCompare(q.name, 'de'));
+      return `<fieldset class="te-einheit"><legend>Einheit ${ei + 1}</legend>
+      <div class="zeile"><label class="feld"><span>Name</span><input data-te="e-name" data-e="${ei}" value="${esc(e.name)}" maxlength="40"></label>
+        <label class="feld"><span>Tag</span><select data-te="e-tag" data-e="${ei}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n2]) => `<option value="${k}" ${e.tag === k ? 'selected' : ''}>${n2}${arr(c.tage).includes(k) ? '' : ' (nicht verfügbar)'}</option>`).join('')}</select></label></div>
+      <p class="leise klein" data-te-min="${ei}">ca. ${Math.round(einheitSek(e.uebungen) / 60)} Min. · ${e.uebungen.length} Übung${e.uebungen.length === 1 ? '' : 'en'}${c.minuten && einheitSek(e.uebungen) > c.minuten * 60 + 120 ? ` · <b>länger als ${esc(c.minuten)} Min.</b>` : ''}</p>
+      <ol class="te-liste">${e.uebungen.map((x, ui) => { const alt = entwurfAlternativen(x.uebung); const zeit = istZeit(x);
+        return `<li class="te-ueb"><div class="te-kopf"><b>${esc(ueb(x.uebung).name)}</b>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</div>
+        <div class="te-felder"><label class="feld"><span>Sätze</span>${zahl('saetze', ei, ui, x.saetze, 'min="1" max="10" step="1"')}</label>
+        ${zeit ? `<label class="feld"><span>Sek. von</span>${zahl('sek_von', ei, ui, x.sek_von, 'min="5" max="600" step="5" placeholder="selbst"')}</label><label class="feld"><span>bis</span>${zahl('sek_bis', ei, ui, x.sek_bis, 'min="5" max="600" step="5" placeholder="selbst"')}</label>`
+          : `<label class="feld"><span>Wdh. von</span>${zahl('wdh_von', ei, ui, x.wdh_von, 'min="1" max="50"')}</label><label class="feld"><span>bis</span>${zahl('wdh_bis', ei, ui, x.wdh_bis, 'min="1" max="50"')}</label>`}
+        <label class="feld"><span>Pause (s)</span>${zahl('pause_s', ei, ui, x.pause_s, 'min="0" max="600" step="15"')}</label></div>
+        <div class="te-aktion"><label class="feld"><span>Tauschen gegen</span><select data-te="tausch" data-e="${ei}" data-u="${ui}"><option value="">– Alternative wählen –</option>${alt.gleich.length ? `<optgroup label="Gleiches Bewegungsmuster">${opt(alt.gleich)}</optgroup>` : ''}${alt.muskel.length ? `<optgroup label="Gleiche Muskelgruppe">${opt(alt.muskel)}</optgroup>` : ''}${alt.eigen.length ? `<optgroup label="Eigene Übungen">${opt(alt.eigen)}</optgroup>` : ''}</select></label>
+          <label class="wahl-chip"><input type="checkbox" data-te="zeit" data-e="${ei}" data-u="${ui}" ${zeit ? 'checked' : ''}> nach Zeit</label>
+          <button class="klein still" data-a="tr-te-weg" data-v="${ei}:${ui}">Entfernen</button></div></li>`; }).join('')}</ol>
+      ${e.uebungen.length ? '' : '<p class="hinweis warn klein">Diese Einheit ist leer.</p>'}
+      <div class="te-aktion"><label class="feld"><span>Übung hinzufügen</span><select data-te="dazu" data-e="${ei}"><option value="">– wählen –</option>${opt(dazu)}</select></label>
+        <button class="klein still" data-a="tr-te-einheit-weg" data-v="${ei}">Einheit entfernen</button></div></fieldset>`; }).join('')}
+    <p class="leise klein" id="te-woche">${entwurfWocheHtml(ew)}</p>
+    ${ew.hinweise && ew.hinweise.length ? `<p class="hinweis klein">${ew.hinweise.map(esc).join('<br>')}</p>` : ''}
+    <div id="te-probleme">${probleme.length ? `<div class="hinweis warn klein"><b>Noch nicht speicherbar:</b><br>${probleme.map(esc).join('<br>')}</div>` : ''}</div>
+    <div class="knopfreihe"><button class="haupt" data-a="tr-te-anlegen" ${probleme.length ? 'disabled' : ''}>Als neuen Plan anlegen (inaktiv)</button><button data-a="tr-te-verwerfen">Entwurf verwerfen</button></div></section>`;
+}
+function entwurfNeuZeichnen() { const el = $('#tr-entwurf'); if (!el) { route(); return; } el.outerHTML = entwurfHtml(); }
+function entwurfZahlAktualisieren(ei) {
+  const ew = trPlanEntwurf; const c = trDaten().einrichtung || {}; const e = ew.einheiten[ei]; const m = $(`[data-te-min="${ei}"]`);
+  if (m && e) m.innerHTML = `ca. ${Math.round(einheitSek(e.uebungen) / 60)} Min. · ${e.uebungen.length} Übung${e.uebungen.length === 1 ? '' : 'en'}${c.minuten && einheitSek(e.uebungen) > c.minuten * 60 + 120 ? ` · <b>länger als ${esc(c.minuten)} Min.</b>` : ''}`;
+  const w = $('#te-woche'); if (w) w.textContent = entwurfWocheHtml(ew);
+  const p = entwurfPruefen(ew); const pe = $('#te-probleme'); if (pe) pe.innerHTML = p.length ? `<div class="hinweis warn klein"><b>Noch nicht speicherbar:</b><br>${p.map(esc).join('<br>')}</div>` : '';
+  const k = $('[data-a="tr-te-anlegen"]'); if (k) k.disabled = p.length > 0;
+}
+document.addEventListener('change', ev => {
+  const el = ev.target; const te = el && el.dataset && el.dataset.te; if (!te || !trPlanEntwurf) return;
+  const ew = trPlanEntwurf; const ei = Number(el.dataset.e); const ui = Number(el.dataset.u); const e = ew.einheiten[ei]; const x = e && e.uebungen[ui];
+  if (te === 'name') { ew.name = el.value.trim().slice(0, 60) || ew.name; return; }
+  if (te === 'e-name' && e) { e.name = el.value.trim().slice(0, 40) || e.name; return; }
+  if (te === 'e-tag' && e) { e.tag = el.value; entwurfZahlAktualisieren(ei); return; }
+  if (['saetze', 'wdh_von', 'wdh_bis', 'sek_von', 'sek_bis', 'pause_s'].includes(te) && x) { const v = el.value === '' ? null : Math.max(0, Math.round(Number(el.value))); x[te] = te === 'saetze' ? (v || 0) : v; entwurfZahlAktualisieren(ei); return; }
+  if (te === 'zeit' && x) { if (el.checked) { x.messung = 'zeit'; x.sek_von = x.sek_von || null; x.sek_bis = x.sek_bis || null; } else { x.messung = 'wdh'; if (!x.wdh_von) { x.wdh_von = 8; x.wdh_bis = 12; } } entwurfNeuZeichnen(); return; }
+  if (te === 'tausch' && x && el.value) { const u = ueb(el.value); const neu = uebEintrag(u, x.saetze, !!x.aufwaerm, []); neu.saetze = x.saetze; neu.aufwaerm = x.aufwaerm; delete neu._iso; delete neu._fokus; delete neu._bonus; e.uebungen[ui] = neu; entwurfNeuZeichnen(); return; }
+  if (te === 'dazu' && e && el.value) { const neu = uebEintrag(ueb(el.value), (trDaten().einrichtung || {}).erfahrung === 'einsteiger' ? 2 : 3, !e.uebungen.length, []); delete neu._iso; delete neu._fokus; delete neu._bonus; e.uebungen.push(neu); entwurfNeuZeichnen(); return; }
+});
 function trEinrichtungHtml() {
   const t = trDaten(); const c = t.einrichtung || {};
   const chk = (name, wert, an, text) => `<label class="wahl-chip"><input type="checkbox" name="${name}" value="${wert}" ${an ? 'checked' : ''}> ${text}</label>`;
@@ -274,6 +416,7 @@ function trEinrichtungHtml() {
   const opts = vorschlagsOptionen(c);
   return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Trainingseinrichtung</h1>
   <p class="leise klein">Alles ist freiwillig und jederzeit änderbar. Es bleibt nur auf diesem Gerät. Eigene Pläne und Training ohne Vorschläge bleiben möglich – ein Vorschlag ersetzt nie deinen Plan.</p>
+  ${entwurfHtml()}
   <form id="tr-einr" class="karte">
     <div class="zeile"><label class="feld"><span>Ziel</span><select name="ziel">${[['', '–'], ['muskelaufbau', 'Muskelaufbau'], ['kraft', 'Kraft'], ['fitness', 'allgemeine Fitness'], ['kombi', 'Kombination']].map(([v, t2]) => `<option value="${v}" ${c.ziel === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label>
       <label class="feld"><span>Erfahrung</span><select name="erfahrung">${[['', '–'], ['einsteiger', 'Einsteiger (< 1 Jahr)'], ['fortgeschritten', 'Fortgeschritten'], ['erfahren', 'Erfahren']].map(([v, t2]) => `<option value="${v}" ${c.erfahrung === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label>
@@ -293,15 +436,23 @@ function trEinrichtungHtml() {
     <div class="knopfreihe">${p.aktiv ? '<span class="chip gut">aktiv</span>' : `<button class="haupt klein" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Diesen Plan verwenden</button>`}<a class="knopf klein" href="#/training/plan/${esc(p.id)}">Ansehen und anpassen</a><button class="klein" data-a="tr-plan-kopie" data-v="${esc(p.id)}">Als eigene Variante kopieren</button></div></section>`).join('')}
   ${(() => { const idx = WOCHENTAGE.map(w => w[0]).map((k, i) => tage.includes(k) ? i : -1).filter(i => i >= 0); let lauf = 1, max = idx.length ? 1 : 0; for (let i = 1; i < idx.length; i++) { lauf = idx[i] === idx[i - 1] + 1 ? lauf + 1 : 1; max = Math.max(max, lauf); }
     return max >= 4 ? `<p class="hinweis klein"><b>${max} Tage am Stück:</b> möglich – die Vorschläge wechseln die Muskelgruppen von Tag zu Tag (z. B. Ober-/Unterkörper), damit derselbe Muskel nicht an zwei Tagen hintereinander schwer belastet wird. Nachteil: kaum ganze Ruhetage in diesem Block; bei ungewöhnlicher Ermüdung oder Beschwerden darf ein Tag ausfallen oder leichter sein – die nächste Einheit bleibt dann einfach die nächste.</p>` : ''; })()}
-  ${n ? `<h2>Vorschläge für ${n} Tage</h2><p class="leise klein">Bei gleichem Wochenvolumen sind die Aufteilungen für Muskelaufbau etwa gleichwertig – entscheidend sind Tage, Zeit und was du durchhältst. Übungen nur aus der geprüften Bibliothek (${(K.uebungen || []).length} Übungen); eigene Übungen kannst du danach ergänzen.</p>
-    ${opts.map((o, oi) => `<section class="karte"><h3 style="margin-top:0">${esc(o.name)}</h3><p class="klein">+ ${esc(o.plus)}<br>− ${esc(o.minus)}</p>
-      ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul class="anl-liste">${e.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${x.wdh_von ? x.wdh_von + '–' + x.wdh_bis : 'Zeit'} · Pause ${x.pause_s} s</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
+  ${n ? (() => { const tn = k => (WOCHENTAGE.find(w => w[0] === k) || [])[1] || ''; const gn = k => (MUSKEL_GRUPPEN.find(g => g[0] === k) || [])[1] || k;
+    const lu = [...new Set(opts.ok.concat(opts.nicht).flatMap(o => o.luecken))]; const prio = arr(c.schwerpunkte);
+    return `<h2>Vorschläge für ${n} verfügbare Tag${n === 1 ? '' : 'e'}</h2><p class="leise klein">Verfügbare Tage sind nicht automatisch nötige Krafttage: Manche Vorschläge nutzen weniger Tage, die übrigen bleiben frei oder für Mobility. Bei gleichem Wochenvolumen sind die Aufteilungen für Muskelaufbau etwa gleichwertig – entscheidend sind Tage, Zeit und was du durchhältst. Übungen nur aus der geprüften Bibliothek (${(K.uebungen || []).length} Übungen). Gespeichert wird erst nach der bearbeitbaren Vorschau.</p>
+    ${lu.length ? `<div class="hinweis warn klein"><b>Mit deiner Ausstattung nicht abgedeckt:</b> ${esc(lu.map(s => PLATZ_NAME[s] || s).join(', '))}. Die Bibliothek hat dafür keine Übung, die nur mit deinen Geräten geht – es wird keine erfunden.${lu.some(s => SLOT_GERAET[s]) ? ` Möglich wäre es mit: ${esc(lu.filter(s => SLOT_GERAET[s]).map(s => SLOT_GERAET[s]).join('; '))} – kein Kauf nötig, nur als Hinweis.` : ''}</div>` : ''}
+    ${arr(c.geraete).length && arr(c.geraete).every(g => g === 'koerpergewicht') && c.erfahrung !== 'einsteiger' ? '<p class="leise klein">Grenze reinen Körpergewichtstrainings: Für Fortgeschrittene steigt der Reiz vor allem über schwerere Varianten (einbeinig, langsamere Bewegung, größerer Bewegungsumfang) – nicht nur über immer mehr Wiederholungen. Ohne Zuggerät bleibt der Rücken (außer Rückenstrecker) untrainiert.</p>' : ''}
+    ${opts.ok.length ? '' : '<div class="hinweis warn klein"><b>Kein vollständiger Plan möglich:</b> Mit diesen Angaben hätte jede Aufteilung leere oder zu dünne Einheiten. Mehr Geräte wählen, unerwünschte Übungen reduzieren oder einen eigenen Plan anlegen.</div>'}
+    ${opts.ok.map((o, oi) => `<section class="karte"><h3 style="margin-top:0">${esc(o.name)}</h3><p class="klein leise" style="margin-top:-.4em">${esc(o.untertitel)}</p>
+      <p class="klein">${o.einheiten.map(e => `<b>${esc(tn(e.tag) || 'flexibel')}</b> ${esc(e.name)}`).join(' · ')}${arr(c.tage).filter(k => !o.tage.includes(k)).length ? ` · frei: ${esc(arr(c.tage).filter(k => !o.tage.includes(k)).map(tn).join(', '))}` : ''}</p>
+      <p class="klein">+ ${esc(o.plus)}<br>− ${esc(o.minus)}</p>
+      <p class="leise klein">Pro Woche trainiert: ${MUSKEL_GRUPPEN.filter(([k]) => o.haeufigkeit[k]).map(([k, n2]) => `${n2} ${o.haeufigkeit[k]}×`).join(' · ') || '–'}</p>
+      ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul class="anl-liste">${e.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${istZeit(x) ? 'Haltezeit (Sek. selbst wählen)' : x.wdh_von + '–' + x.wdh_bis} · Pause ${x.pause_s} s</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
       <p class="leise klein">Arbeitssätze pro Woche (nur Hauptmuskeln): ${MUSKEL_GRUPPEN.filter(([k]) => o.wochensaetze[k]).map(([k, n2]) => `${n2} ${o.wochensaetze[k]}`).join(' · ') || '–'}</p>
-      ${o.fehlend ? `<div class="hinweis warn klein"><b>${o.unbrauchbar ? 'So nicht sinnvoll erfüllbar:' : 'Lücken:'}</b> Mit deiner Ausstattung gibt es in der Bibliothek keine passende Übung für ${esc(o.luecken.map(s => PLATZ_NAME[s] || s).join(', '))}.${o.luecken.some(s => SLOT_GERAET[s]) ? ` Optional möglich mit: ${esc(o.luecken.filter(s => SLOT_GERAET[s]).map(s => SLOT_GERAET[s]).join('; '))} – kein Kauf nötig, nur als Hinweis.` : ''}${o.unbrauchbar ? ' Einzelne Einheiten hätten weniger als 3 Übungen; besser weniger Tage mit Ganzkörper wählen oder Ausstattung ergänzen.' : ''}</div>` : ''}
-      ${arr(c.geraete).length && arr(c.geraete).every(g => g === 'koerpergewicht') && c.erfahrung !== 'einsteiger' ? '<p class="leise klein">Grenze reinen Körpergewichtstrainings: Für Fortgeschrittene steigt der Reiz vor allem über schwerere Varianten (einbeinig, langsamere Bewegung, größerer Bewegungsumfang) – nicht nur über immer mehr Wiederholungen. Für manche Muskeln (z. B. Rücken ohne Stange) fehlen dann gute Optionen.</p>' : ''}
-      ${arr(c.schwerpunkte).length ? `<p class="leise klein">Schwerpunkt: ${o.einheiten.reduce((s, e) => s + e.bonusSaetze, 0)} Zusatzsätze pro Woche (je ca. 2–4 Min.)${o.einheiten.some(e => e.bonusWeg) ? `; ${o.einheiten.reduce((s, e) => s + e.bonusWeg, 0)} weitere passten nicht in die Zeitvorgabe` : ''}. Andere Gruppen behalten ihre Grundsätze.</p>` : ''}
-      <button class="klein" data-a="tr-vorschlag-anlegen" data-v="${oi}">Als neuen Plan anlegen (inaktiv)</button></section>`).join('')}
-    ${c.cardio === 'ja' ? `<p class="hinweis klein"><b>Cardio:</b> getrennt protokolliert. Als Ableitung aus Studien: Radfahren stört Kraftzuwächse weniger als Laufen; an Krafttagen am besten nach dem Krafttraining oder mit einigen Stunden Abstand. Trainingskalorien werden nicht automatisch zum Ernährungsbudget addiert – Schätzungen von Uhren und Formeln weichen oft über 20 % ab.</p>` : ''}` : '<p class="leise">Trainingstage wählen, dann erscheinen Vorschläge.</p>'}`;
+      ${prio.length ? `<p class="leise klein">Schwerpunkt ${esc(prio.map(gn).join(', '))}: ${o.bonusSaetze} Zusatzsätze${o.extra ? ` und ${o.extra} Zusatzübung${o.extra === 1 ? '' : 'en'}` : ''} pro Woche, zusammen ${esc(prio.map(g => `${gn(g)} ${o.wochensaetze[g] || 0}`).join(', '))} Wochensätze.${o.bonusWeg ? ` ${o.bonusWeg} weitere passten nicht in ${esc(c.minuten)} Min.` : ''}${o.gekappt ? ` ${o.gekappt} weggelassen: Planungsgrenze ${FOKUS_MAX} Sätze pro Woche, weil der Zusatznutzen darüber abflacht.` : ''}${prio.some(g => !o.haeufigkeit[g]) ? ' Für ' + esc(prio.filter(g => !o.haeufigkeit[g]).map(gn).join(', ')) + ' gibt es mit deiner Ausstattung keine passende Übung.' : ''} Andere Gruppen behalten ihre Grundsätze.</p>` : ''}
+      ${o.hinweise.length ? `<p class="hinweis klein">${o.hinweise.map(esc).join('<br>')}</p>` : ''}
+      <button class="klein haupt" data-a="tr-vorschlag-entwurf" data-v="${oi}">Ansehen und anpassen</button></section>`).join('')}
+    ${opts.nicht.length ? `<details class="karte klein"><summary>Nicht angeboten (${opts.nicht.length})</summary><ul>${opts.nicht.map(o => `<li><b>${esc(o.name)}</b>: ${esc(o.fehler.join('; '))}</li>`).join('')}</ul><p class="leise">Solche Vorschläge hätten leere oder zu dünne Einheiten und werden deshalb nicht als Plan angeboten.</p></details>` : ''}
+    ${c.cardio === 'ja' ? `<p class="hinweis klein"><b>Cardio:</b> getrennt protokolliert. Als Ableitung aus Studien: Radfahren stört Kraftzuwächse weniger als Laufen; an Krafttagen am besten nach dem Krafttraining oder mit einigen Stunden Abstand. Trainingskalorien werden nicht automatisch zum Ernährungsbudget addiert – Schätzungen von Uhren und Formeln weichen oft über 20 % ab.</p>` : ''}`; })() : '<p class="leise">Trainingstage wählen, dann erscheinen Vorschläge.</p>'}`;
 }
 
 /* ---------- Pläne und Verlauf (Unterreiter im Training) ---------- */
@@ -416,7 +567,7 @@ function trImportVorschauHtml(obj) {
   let plan; try { plan = trainingsplanImport(obj); } catch (err) { return `<p class="hinweis warn klein">${esc(err.message)}</p>`; }
   const ab = arr(obj.einheiten).map(pe => pe.tag); const map = trImportZuordnung(obj);
   return `<div class="karte fz-importvorschau"><h3 style="margin-top:0">Vorschau: ${esc(obj.plan.name)}</h3><p class="klein">${esc(plan.text)}</p>
-    ${plan.doppelt ? '' : `<ol class="klein">${obj.routinen.map(r => `<li><b>${esc(r.name)}</b>${ab.length ? '' : ''}<ul>${r.uebungen.map(x => { const id = map[x.uebung] || x.uebung; const nm = (alleUebungen().find(y => y.id === id) || arr(obj.uebungen).find(y => y.id === x.uebung) || { name: id }).name; return `<li>${esc(nm)}${x.variante ? ` <span class="leise">· ${esc(x.variante)}</span>` : ''}: ${x.saetze_offen ? '<b>Sätze offen</b>' : esc(x.saetze) + ' ×'} ${esc(x.wdh_bis || x.wdh_von || '?')}${x.je_seite ? ' je Seite' : ''}${x.referenz_kg ? ` · Startwert ${esc(kgText(x.referenz_kg))}` : ''}${x.optional ? ' · optional' : ''}${x.gewicht_hinweis ? ` <span class="chip warn">prüfen</span>` : ''}</li>`; }).join('')}</ul></li>`).join('')}</ol>`}
+    ${plan.doppelt ? '' : `<ol class="klein">${obj.routinen.map(r => `<li><b>${esc(r.name)}</b>${ab.length ? '' : ''}<ul>${r.uebungen.map(x => { const id = map[x.uebung] || x.uebung; const nm = (alleUebungen().find(y => y.id === id) || arr(obj.uebungen).find(y => y.id === x.uebung) || { name: id }).name; return `<li>${esc(nm)}${x.variante ? ` <span class="leise">· ${esc(x.variante)}</span>` : ''}: ${x.saetze_offen ? '<b>Sätze offen</b>' : esc(x.saetze) + ' ×'} ${esc(zielKurz(x))}${x.je_seite ? ' je Seite' : ''}${x.referenz_kg ? ` · Startwert ${esc(kgText(x.referenz_kg))}` : ''}${x.optional ? ' · optional' : ''}${x.gewicht_hinweis ? ` <span class="chip warn">prüfen</span>` : ''}</li>`; }).join('')}</ul></li>`).join('')}</ol>`}
     <div class="knopfreihe">${plan.doppelt && !plan.etwasNeu ? '' : `<button class="haupt" data-a="tr-import-ok">${plan.doppelt ? 'Ergänzungen übernehmen' : 'Plan übernehmen'}</button>`}<button class="still" data-a="tr-import-ab">Verwerfen</button></div></div>`;
 }
 function trPlaeneHtml() {
@@ -529,17 +680,17 @@ document.addEventListener('click', ev => {
   switch (a) {
     case 'mob-filter': mobFilter[b.dataset.k] = v; route(); break;
     case 'mob-start': aendere(null, d => { mobDaten(); d.mobility.lauf = { id: v, i: 0, start: new Date().toISOString() }; }, { neuZeichnen: false }); location.hash = '#/mobility/lauf'; break;
-    case 'mob-schritt': aendere(null, d => { d.mobility.lauf.i = Math.max(0, d.mobility.lauf.i + Number(v)); }); window.scrollTo(0, 0); break;
-    case 'mob-fertig': case 'mob-abbruch': { const l = m.lauf; const r = l && mobRoutine(l.id); const voll = a === 'mob-fertig';
+    case 'mob-schritt': mobTimerStopp(); aendere(null, d => { d.mobility.lauf.i = Math.max(0, d.mobility.lauf.i + Number(v)); }); window.scrollTo(0, 0); break;
+    case 'mob-fertig': case 'mob-abbruch': { const l = m.lauf; const r = l && mobRoutine(l.id); const voll = a === 'mob-fertig'; mobTimerStopp();
       aendere(voll ? 'Routine abgeschlossen' : 'Routine abgebrochen', d => { if (r && (voll || l.i > 0)) d.mobility.verlauf = [...arr(d.mobility.verlauf), { datum: heute(), id: r.id, name: r.name, vollstaendig: voll }]; d.mobility.lauf = null; }, { neuZeichnen: false }); location.hash = '#/mobility'; break; }
     case 'mob-fav': aendere(null, d => { const f = new Set(arr(d.mobility.favoriten)); f.has(v) ? f.delete(v) : f.add(v); d.mobility.favoriten = [...f]; }); break;
     case 'mob-eigen-weg': aendere('Eigene Routine gelöscht – Rückgängig möglich', d => { d.mobility.eigene = arr(d.mobility.eigene).filter(r => r.id !== v); }, { neuZeichnen: false }); location.hash = '#/mobility'; break;
     case 'mob-eigen-speichern': { const c = m.einrichtung || {}; const vs = mobVorschlag(c); if (!vs.uebungen.length) return; const id = uid('mrou');
-      aendere('Als eigene Routine gespeichert', d => { d.mobility.eigene = [...arr(d.mobility.eigene), { id, name: 'Meine Routine (' + (MOB_ZIEL[c.ziel] || 'allgemein') + ')', ziel: c.ziel || 'allgemein', kontext: c.kontext || 'eigenstaendig', dauer_min: vs.minuten, bereiche: arr(c.bereiche), uebungen: vs.uebungen.map(u => u.id + '|' + (u.dauer_vorschlag || '')) }]; }, { neuZeichnen: false }); location.hash = '#/mobility/routine/' + id; break; }
+      aendere('Als eigene Routine gespeichert', d => { d.mobility.eigene = [...arr(d.mobility.eigene), { id, name: 'Meine Routine (' + (MOB_ZIEL[c.ziel] || 'allgemein') + ')', ziel: c.ziel || 'allgemein', kontext: c.kontext || 'eigenstaendig', dauer_min: vs.minuten, runden: vs.runden, bereiche: arr(c.bereiche), uebungen: vs.uebungen.map(u => u.id + '|' + (u.dauer_vorschlag || '')) }]; }, { neuZeichnen: false }); location.hash = '#/mobility/routine/' + id; break; }
   }
 });
 document.addEventListener('submit', ev => { const f = ev.target; if (f.id !== 'mob-einr') return; ev.preventDefault(); const w = n => [...f.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
-  aendere('Gespeichert', d => { mobDaten(); d.mobility.einrichtung = { ziel: f.ziel.value, minuten: Number(f.minuten.value) || 10, kontext: f.kontext.value, bereiche: w('bereiche'), hilfsmittel: w('hilfsmittel'), unerwuenscht: [...f.unerwuenscht.selectedOptions].map(o => o.value), beschwerden: f.beschwerden.value.trim() }; }); });
+  aendere('Gespeichert', d => { mobDaten(); d.mobility.einrichtung = { ziel: f.ziel.value, minuten: Number(f.minuten.value) || 10, kontext: f.kontext.value, bereiche: w('bereiche'), hilfsmittel: w('hilfsmittel'), umgebung: w('umgebung'), unerwuenscht: [...f.unerwuenscht.selectedOptions].map(o => o.value), beschwerden: f.beschwerden.value.trim() }; }); });
 function alleMobRoutinen() { return [...MOB().routinen.map(r => Object.assign({ quelle: 'bibliothek' }, r)), ...arr(mobDaten().eigene).map(r => Object.assign({ quelle: 'eigen' }, r))]; }
 function mobRoutine(id) { return alleMobRoutinen().find(r => r.id === id); }
 function vMobility(teil, id) {
@@ -564,7 +715,7 @@ function vMobility(teil, id) {
 function mobRoutineHtml(id) {
   const r = mobRoutine(id); if (!r) return '<p class="leer">Routine nicht gefunden.</p>'; const fav = arr(mobDaten().favoriten).includes(r.id);
   return `<p class="klein"><a class="knopf still klein" href="#/mobility">${ico('zurueck', 'klein')} Mobility</a></p><h1>${esc(r.name)}</h1>
-  <p class="leise klein">${esc(r.dauer_min)} Min. · ${esc(MOB_ZIEL[r.ziel] || '')} · ${esc(MOB_KONTEXT[r.kontext] || '')}</p>
+  <p class="leise klein">${esc(r.dauer_min)} Min. · ${esc(MOB_ZIEL[r.ziel] || '')} · ${esc(MOB_KONTEXT[r.kontext] || '')}${Number(r.runden) > 1 ? ` · ${esc(r.runden)} Runden (statisches Dehnen nur in Runde 1)` : ''}</p>
   <div class="knopfreihe"><button class="haupt" data-a="mob-start" data-v="${esc(r.id)}">Routine starten</button><button data-a="mob-fav" data-v="${esc(r.id)}">${fav ? '★ Favorit' : '☆ Als Favorit merken'}</button>${r.quelle === 'eigen' ? `<button class="still" data-a="mob-eigen-weg" data-v="${esc(r.id)}">✕ Löschen</button>` : ''}</div>
   <ol class="tr-liste">${arr(r.uebungen).map(e => { const [uid2, dauer] = String(e).split('|'); const u = mobUeb(uid2.trim()); return `<li class="karte"><div class="zeile" style="justify-content:space-between;align-items:flex-start"><span><b><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a></b> <span class="chip">${esc(MOB_ART[u.art] || u.art || '')}</span><br><span class="klein">${esc((dauer || u.dauer_vorschlag || '').trim())}</span></span>${anleitungsKnopf('mob', u.id, '', true)}</div>${u.intensitaet_hinweis ? `<span class="leise klein">${esc(u.intensitaet_hinweis)}</span>` : ''}</li>`; }).join('')}</ol>
   ${r.md ? `<details class="abschnitt-zu"><summary>Wofür, Hinweise und Grenzen</summary>${md(String(r.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
@@ -582,11 +733,12 @@ function mobUebungHtml(id) {
 function mobLaufHtml() {
   const mobLauf = mobDaten().lauf; const r = mobLauf && mobRoutine(mobLauf.id);
   if (!r) return '<p class="leer">Keine Routine aktiv. <a href="#/mobility">Zu den Routinen</a></p>';
-  const l = arr(r.uebungen); const i = Math.min(mobLauf.i, l.length - 1); const [uid2, dauer] = String(l[i]).split('|'); const u = mobUeb(uid2.trim());
-  const sek = (String(dauer || u.dauer_vorschlag).match(/(\d+)\s*(?:–\s*\d+\s*)?s\b/) || [])[1];
-  return `<p class="leise klein">${esc(r.name)} · Übung ${i + 1} von ${l.length}</p><div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / l.length)}%"></i></div>
-  <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div><p class="klein"><b>${esc((dauer || u.dauer_vorschlag || '').trim())}</b> · ${esc(MOB_ART[u.art] || '')}</p>
-  ${sek ? `<div class="knopfreihe"><button data-a="timer" data-min="${Number(sek) / 60}" data-name="${esc(u.name)}">⏱ ${sek} s</button></div>` : ''}
+  const l = mobFolge(r); const i = Math.min(mobLauf.i, l.length - 1); const [uid2, dauer] = String(l[i].e).split('|'); const u = mobUeb(uid2.trim()); const runden = Math.max(1, Number(r.runden) || 1);
+  const dText = String(dauer || u.dauer_vorschlag || ''); const sek = (dText.replace(/\([^)]*\)/g, '').match(/(\d+)\s*(?:–\s*\d+\s*)?s\b/) || [])[1]; const seiten = /je (Seite|Bein|Arm|Fuß)|und (Seite|Arm|Fuß|Bein)/i.test(dText);
+  const tKnopf = (txt, name) => `<button class="gross" data-a="timer" data-quelle="mob" data-min="${Number(sek) / 60}" data-name="${esc(name)}">⏱ ${txt}</button>`;
+  return `<p class="leise klein">${esc(r.name)} · Schritt ${i + 1} von ${l.length}${runden > 1 ? ` · Runde ${l[i].runde} von ${runden}` : ''}</p><div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / l.length)}%"></i></div>
+  <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div><p class="klein"><b>${esc(dText.trim())}</b> · ${esc(MOB_ART[u.art] || '')}${arr(u.hilfsmittel).includes('matte') ? ' · auf Matte, Teppich oder Handtuch' : ''}</p>
+  ${sek ? `<div class="knopfreihe">${seiten ? tKnopf(`${sek} s links`, u.name + ' links') + tKnopf(`${sek} s rechts`, u.name + ' rechts') : tKnopf(`${sek} s`, u.name)}</div><p class="leise klein">Timer nur als Hilfe; er stoppt bei „Weiter“ und beim Abbrechen. Bei gesperrtem iPhone kann der Ton ausbleiben.</p>` : ''}
   ${(() => { const b = arr(u.anleitung)[0]; return b ? `<section class="karte"><p><b>Start:</b> ${inline(String(b.start || ''))}</p><ol class="anl-schritte">${arr(b.schritte).map(x => `<li>${inline(String(x))}</li>`).join('')}</ol>${b.intensitaet ? `<p class="klein"><b>Intensität:</b> ${inline(String(b.intensitaet))}</p>` : ''}<p class="leise klein">Fehler, Kontrolle, Varianten und „Dehngefühl oder Schmerz?“ unter „ⓘ Anleitung“.</p></section>` : u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''; })()}
   <p class="hinweis warn klein">Deutliches Ziehen ist in Ordnung, Schmerz nicht: bei Schmerz, Taubheit oder Kribbeln diese Übung beenden.</p>
   <div style="height:80px"></div>
@@ -598,19 +750,53 @@ function mobVerlaufHtml() {
   return `<h1>Verlauf</h1>${v.length ? `<ul class="eintraege">${v.slice(0, 40).map(x => `<li><span>${esc(datumDE(x.datum))} · <b>${esc(x.name)}</b>${x.vollstaendig ? '' : ' <span class="leise klein">(teilweise)</span>'}</span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Routine abgeschlossen.</p>'}
   <p class="leise klein">Nur ein Protokoll – daraus wird keine Beweglichkeits-„Messung“ abgeleitet.</p>`;
 }
-/* Persönliche Routine: aus geprüften Übungen nach Ziel, Bereichen, Zeit, Hilfsmitteln; unerwünschte Übungen ausgeschlossen */
-function mobSekunden(u, dauer) { const t = String(dauer || u.dauer_vorschlag || ''); const sets = Number((t.match(/(\d+)\s*×/) || [])[1]) || 1; const seiten = /seite/i.test(t) ? 2 : 1; const s = Number((t.match(/(\d+)\s*(?:–\s*(\d+)\s*)?s\b/) || [])[1]); const w = Number((t.match(/(\d+)\s*(?:–\s*\d+\s*)?Wdh/) || [])[1]); return (s ? s : w ? w * 4 : 45) * sets * seiten + 15; }
-function mobVorschlag(c) {
-  const artNach = { vorbereitung: ['dynamisch', 'aktiv'], beweglichkeit: ['statisch', 'aktiv'], aktive_kontrolle: ['aktiv'], allgemein: ['dynamisch', 'aktiv', 'statisch'] }[c.ziel || 'allgemein'];
-  const hm = arr(c.hilfsmittel).length ? arr(c.hilfsmittel) : ['keins']; const nein = arr(c.unerwuenscht); const ber = arr(c.bereiche);
-  const kand = MOB().uebungen.filter(u => artNach.includes(u.art) && !nein.includes(u.id) && arr(u.hilfsmittel).every(h => h === 'keins' || hm.includes(h)) && (!ber.length || arr(u.bereiche).some(b => ber.includes(b))));
-  const ziel = (Number(c.minuten) || 10) * 60; const gew = []; let sek = 0; const genutzt = new Set();
-  // Bereiche reihum abdecken, dann auffüllen
-  const reihen = ber.length ? ber : [...new Set(kand.flatMap(u => arr(u.bereiche)))];
-  for (let runde = 0; runde < 3 && sek < ziel; runde++) for (const b of reihen) { const u = kand.find(x => !genutzt.has(x.id) && arr(x.bereiche).includes(b)); if (!u) continue; const s = mobSekunden(u); if (sek + s > ziel * 1.1) continue; genutzt.add(u.id); gew.push(u); sek += s; if (sek >= ziel) break; }
-  if (c.ziel === 'vorbereitung') gew.sort((a, b) => (a.art === 'dynamisch' ? 0 : 1) - (b.art === 'dynamisch' ? 0 : 1));
-  return { uebungen: gew, minuten: Math.round(sek / 60), fehlend: ber.filter(b => !gew.some(u => arr(u.bereiche).includes(b))) };
+/* Persönliche Routine: aus geprüften Übungen nach Ziel, Bereichen, Zeit, Hilfsmitteln; unerwünschte Übungen ausgeschlossen.
+   „Matte“ und „Wand“ sind keine Anschaffung: Boden (Matte, Teppich oder Handtuch) und eine freie Wand gelten als vorhanden, solange du sie nicht abwählst. */
+function mobUmgebung(c) { return Array.isArray(c.umgebung) ? c.umgebung : (c.kontext === 'buero' ? ['wand'] : ['matte', 'wand']); }
+function mobHmVerfuegbar(c) { return ['keins', ...arr(c.hilfsmittel), ...mobUmgebung(c)]; }
+// Dauer realistisch schätzen: Sätze, Seiten, Richtungen, Haltezeit oder Wiederholungen mit Tempo; plus Wechselzeit
+function mobSekunden(u, dauer) {
+  const t = String(dauer || u.dauer_vorschlag || ''); const ohneKlammer = t.replace(/\([^)]*\)/g, '');
+  const saetze = Number((ohneKlammer.match(/(\d+)(?:\s*–\s*\d+)?\s*×/) || [])[1]) || 1;
+  let mult = 1; if (/je (Seite|Bein|Arm|Fuß)/i.test(t)) mult *= 2; if (/je Richtung/i.test(t)) mult *= 2; if (/je Richtung und (Seite|Arm|Fuß|Bein)/i.test(t)) mult *= 2;
+  const halt = ohneKlammer.match(/(\d+)(?:\s*–\s*(\d+))?\s*s\b/); const wdh = ohneKlammer.match(/(\d+)(?:\s*–\s*(\d+))?\s*(?:langsame\s+)?(?:Wdh|Kreise)/i);
+  const plus = Number((ohneKlammer.match(/\+\s*(\d+)/) || [])[1]) || 0;
+  const tempoKl = (t.match(/\(([^)]*)\)/) || [])[1] || ''; const tempoS = (tempoKl.match(/(\d+)\s*s\b/g) || []).reduce((s, x) => s + Number(x.replace(/\D/g, '')), 0);
+  const proWdh = tempoS ? Math.max(tempoS, 4) : (/langsam/i.test(t) ? 6 : 4);
+  const mitte = m => m[2] ? (Number(m[1]) + Number(m[2])) / 2 : Number(m[1]);
+  const kern = halt ? mitte(halt) : wdh ? (mitte(wdh) + plus) * proWdh : 45;
+  return Math.round(kern * mult * saetze + (saetze - 1) * 10 + 15);
 }
+function mobVorschlag(c) {
+  const zielArt = c.ziel || 'allgemein';
+  const artNach = { vorbereitung: ['dynamisch', 'aktiv'], beweglichkeit: ['statisch', 'aktiv'], aktive_kontrolle: ['aktiv'], allgemein: ['dynamisch', 'aktiv', 'statisch'] }[zielArt];
+  const ergaenzArt = { aktive_kontrolle: ['dynamisch'], beweglichkeit: ['dynamisch'] }[zielArt] || [];
+  const hm = mobHmVerfuegbar(c); const nein = arr(c.unerwuenscht); const ber = arr(c.bereiche);
+  const passt = (u, arten) => arten.includes(u.art) && !nein.includes(u.id) && arr(u.hilfsmittel).every(h => hm.includes(h)) && (!ber.length || arr(u.bereiche).some(b => ber.includes(b)));
+  const kand = MOB().uebungen.filter(u => passt(u, artNach)); const kand2 = MOB().uebungen.filter(u => passt(u, ergaenzArt));
+  const ziel = (Number(c.minuten) || 10) * 60; const gew = []; let sek = 0; const genutzt = new Set();
+  const reihen = ber.length ? ber : [...new Set(kand.concat(kand2).flatMap(u => arr(u.bereiche)))];
+  const nimm = (liste, grenze) => { for (let runde = 0; runde < 3 && sek < grenze; runde++) for (const b of reihen) { const u = liste.find(x => !genutzt.has(x.id) && arr(x.bereiche).includes(b)); if (!u) continue; const s = mobSekunden(u); if (sek + s > ziel * 1.1) continue; genutzt.add(u.id); gew.push(u); sek += s; if (sek >= grenze) break; } };
+  nimm(kand, ziel);
+  // Fehlt ein Bereich oder ist es deutlich zu kurz: ergänzend aus der verwandten Art (z. B. kontrollierte dynamische Übungen), klar gekennzeichnet
+  const ergaenzt = []; const fehltHaupt = ber.filter(b => !gew.some(u => arr(u.bereiche).includes(b)));
+  const ergaenzen = () => { const vorher = gew.length; nimm(kand2, ziel * 0.75); gew.slice(vorher).forEach(u => ergaenzt.push(u.id)); };
+  // Runden: aktive und dynamische Übungen dürfen wiederholt werden; statisches Dehnen nicht (die Dosierung enthält schon 2 Durchgänge)
+  const rundenRechnen = () => { const rs = gew.filter(u => u.art !== 'statisch').reduce((s, u) => s + mobSekunden(u), 0); let n = 1, s = sek; while (n < 3 && rs > 0 && s + rs <= ziel * 1.1) { n++; s += rs; } return { n, s }; };
+  if (kand2.length && fehltHaupt.length) ergaenzen();   // fehlender Bereich: zuerst abdecken
+  let rr = rundenRechnen();
+  if (kand2.length && rr.s < ziel * 0.6) { ergaenzen(); rr = rundenRechnen(); }   // auch mit Runden deutlich zu kurz
+  if (zielArt === 'vorbereitung') gew.sort((a, b) => (a.art === 'dynamisch' ? 0 : 1) - (b.art === 'dynamisch' ? 0 : 1));
+  const runden = rr.n; sek = rr.s;
+  return { uebungen: gew, runden, minuten: Math.max(1, Math.round(sek / 60)), fehlend: ber.filter(b => !gew.some(u => arr(u.bereiche).includes(b))), fehltHaupt, ergaenzt, umgebung: mobUmgebung(c) };
+}
+// Ablauf einer Routine mit Runden: in Runde 2+ nur aktive/dynamische Übungen
+function mobFolge(r) {
+  const l = arr(r.uebungen); const n = Math.max(1, Number(r.runden) || 1); const out = l.map(e => ({ e, runde: 1 }));
+  for (let k = 2; k <= n; k++) l.forEach(e => { const u = mobUeb(String(e).split('|')[0].trim()); if (u.art !== 'statisch') out.push({ e, runde: k }); });
+  return out;
+}
+const mobTimerStopp = () => { const vorher = timer.length; timer = timer.filter(t => t.quelle !== 'mob'); if (timer.length !== vorher) { timerSpeichern(); zeichneTimer(); } };
 function mobPlanHtml() {
   const c = mobDaten().einrichtung || {}; const v = c.ziel ? mobVorschlag(c) : null;
   const chk = (n, w, an, t) => `<label class="wahl-chip"><input type="checkbox" name="${n}" value="${w}" ${an ? 'checked' : ''}> ${t}</label>`;
@@ -620,14 +806,18 @@ function mobPlanHtml() {
       <label class="feld"><span>Minuten</span><input name="minuten" type="number" min="3" max="45" step="1" value="${esc(c.minuten || 10)}" inputmode="numeric" style="width:5em"></label>
       <label class="feld"><span>Wann</span><select name="kontext">${Object.entries(MOB_KONTEXT).map(([k, n]) => `<option value="${k}" ${c.kontext === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
     <fieldset><legend>Körperbereiche</legend><div class="chips-wrap">${Object.entries(MOB_BEREICH).map(([k, n]) => chk('bereiche', k, arr(c.bereiche).includes(k), n)).join('')}</div></fieldset>
-    <fieldset><legend>Hilfsmittel</legend><div class="chips-wrap">${[['matte', 'Matte'], ['band', 'Band'], ['wand', 'Wand'], ['stuhl', 'Stuhl'], ['stange', 'Stange']].map(([k, n]) => chk('hilfsmittel', k, arr(c.hilfsmittel).includes(k), n)).join('')}</div></fieldset>
+    <fieldset><legend>Platz</legend><div class="chips-wrap">${[['matte', 'Boden zum Hinlegen (Matte, Teppich oder Handtuch)'], ['wand', 'freie Wand oder Türrahmen']].map(([k, n]) => chk('umgebung', k, mobUmgebung(c).includes(k) || arr(c.hilfsmittel).includes(k), n)).join('')}</div>
+      <p class="leise klein">Eine Matte ist keine Pflicht – ein Teppich oder Handtuch reicht. Abwählen, wenn du z. B. im Büro nicht auf den Boden kannst.</p></fieldset>
+    <fieldset><legend>Hilfsmittel</legend><div class="chips-wrap">${[['band', 'Band'], ['stuhl', 'Stuhl'], ['stange', 'Stange']].map(([k, n]) => chk('hilfsmittel', k, arr(c.hilfsmittel).includes(k), n)).join('')}</div></fieldset>
     <label class="feld"><span>Unerwünschte Übungen</span><select name="unerwuenscht" multiple size="4">${MOB().uebungen.map(u => `<option value="${esc(u.id)}" ${arr(c.unerwuenscht).includes(u.id) ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
     <label class="feld"><span>Einschränkungen oder Beschwerden (nur Notiz)</span><input name="beschwerden" value="${esc(c.beschwerden || '')}"></label>
     <button class="haupt" type="submit">Speichern und Vorschlag zeigen</button></form>
   ${c.beschwerden ? '<p class="hinweis warn klein">Du hast Beschwerden notiert: Die Routine ist allgemein und berücksichtigt sie nicht medizinisch. Bei akuten oder ungeklärten Beschwerden zuerst abklären lassen; Übungen, die schmerzen, weglassen.</p>' : ''}
-  ${v ? `<section class="karte"><h2 style="margin-top:0">Vorschlag · ca. ${v.minuten} Min.</h2>${v.uebungen.length ? `<ol>${v.uebungen.map(u => `<li class="anl-zeile"><span><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a> <span class="leise klein">· ${esc(MOB_ART[u.art])} · ${esc(u.dauer_vorschlag || '')}</span></span>${anleitungsKnopf('mob', u.id, '', true)}</li>`).join('')}</ol>` : '<p>Mit diesen Angaben passt keine Übung – Bereiche oder Hilfsmittel erweitern.</p>'}
-    ${v.fehlend.length ? `<p class="leise klein">Für ${esc(v.fehlend.map(b => MOB_BEREICH[b] || b).join(', '))} passte keine Übung zu Ziel/Hilfsmitteln.</p>` : ''}
-    ${v.uebungen.length && v.minuten < (Number(c.minuten) || 10) * 0.7 ? `<p class="leise klein">Kürzer als gewünscht: Für diese Auswahl gibt es nicht mehr passende Übungen – weitere Bereiche oder Hilfsmittel wählen, oder Übungen in Ruhe zweimal durchgehen.</p>` : ''}
+  ${v ? `<section class="karte"><h2 style="margin-top:0">Vorschlag · ca. ${v.minuten} Min.</h2>${v.runden > 1 ? `<p class="klein"><b>${v.runden} Runden:</b> Die aktiven und dynamischen Übungen gehst du ${v.runden}× durch${v.uebungen.some(u => u.art === 'statisch') ? ', statische Dehnungen nur in Runde 1' : ''}.</p>` : ''}${v.uebungen.length ? `<ol>${v.uebungen.map(u => `<li class="anl-zeile"><span><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a> <span class="leise klein">· ${esc(MOB_ART[u.art])}${v.ergaenzt.includes(u.id) ? ' (ergänzend)' : ''} · ${esc(u.dauer_vorschlag || '')} · ca. ${zahlDE(Math.round(mobSekunden(u) / 6) / 10, 1)} Min.${arr(u.hilfsmittel).some(h => h === 'matte') ? ' · auf weicher Unterlage' : ''}</span></span>${anleitungsKnopf('mob', u.id, '', true)}</li>`).join('')}</ol>` : '<p>Mit diesen Angaben passt keine Übung – Bereiche, Platz oder Hilfsmittel erweitern.</p>'}
+    ${v.ergaenzt.length ? `<p class="leise klein">Ergänzend: Für ${esc(MOB_ZIEL[c.ziel] || '')} gibt es in der Bibliothek zu wenige passende Übungen, darum kommen kontrollierte dynamische Übungen dazu.</p>` : ''}
+    ${v.fehlend.length ? `<p class="leise klein">Für ${esc(v.fehlend.map(b => MOB_BEREICH[b] || b).join(', '))} passte keine Übung zu Ziel, Platz und Hilfsmitteln.</p>` : ''}
+    ${v.uebungen.length && v.minuten < (Number(c.minuten) || 10) * 0.7 ? `<p class="leise klein">Kürzer als gewünscht (${v.minuten} statt ${esc(c.minuten || 10)} Min.): Für diese Auswahl gibt es nicht mehr passende Übungen. Weitere Bereiche, Platz oder Hilfsmittel wählen, oder die Routine kürzer lassen – das ist in Ordnung.</p>` : ''}
+    <p class="leise klein">Dosierung wie in der Übungsbeschreibung; Dauer geschätzt mit Seitenwechseln. Keine Garantie für mehr Beweglichkeit oder Verletzungsschutz.</p>
     ${v.uebungen.length ? '<button class="klein haupt" data-a="mob-eigen-speichern">Als meine Routine speichern</button>' : ''}</section>` : ''}`;
 }
 
@@ -729,7 +919,7 @@ function trPlanHtml(id) {
     return ohne || offen.length || unklar.length ? `<div class="hinweis klein"><b>Vor dem ersten Training prüfen</b><ul>${ohne ? `<li>${ohne} Startgewichte sind ${p.art === 'historisch' ? 'historische Angaben' : 'Startwerte'}: vorausgefüllt, jederzeit änderbar, nicht als Leistung gespeichert. Gesteigert wird erst nach deinen eigenen bestätigten Einheiten.</li>` : ''}${offen.length ? `<li>Satzanzahl offen: ${esc(offen.join(', '))} – wird vor der Übung abgefragt.</li>` : ''}${unklar.length ? `<li>Gewichtsangabe unklar (gesamt oder je Seite, Kabelübersetzung): ${esc(unklar.join(', '))}.</li>` : ''}</ul></div>` : ''; })()}
   ${p.einheiten.length ? `<ol class="tr-liste">${p.einheiten.map((pe, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between;align-items:center"><b><a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}</a></b>
       <button class="haupt klein" data-a="tr-start" data-v="${esc(pe.routine)}" data-plan="${esc(p.id)}" data-pe="${i}" ${t.aktiv ? 'disabled' : ''}>▶ Starten</button></div>
-      <div class="zeile" style="justify-content:flex-end"><a class="knopf klein" href="#/training/routine/${esc(pe.routine)}">Übungen und Startwerte</a><button class="klein still" data-a="tr-pe-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="klein still" data-a="tr-pe-weg" data-v="${i}">entfernen</button></div>
+      <div class="zeile" style="justify-content:flex-end"><a class="knopf klein" href="#/training/routine/${esc(pe.routine)}">Übungen und Startwerte</a></div><div class="reihen-knoepfe"><button class="still" data-a="tr-pe-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="Einheit nach oben">▲ nach oben</button><button class="still" data-a="tr-pe-weg" data-v="${i}">✕ entfernen</button></div>
       <label class="feld"><span>Wochentag (optional)</span><select data-tr-pe-tag="${i}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n]) => `<option value="${k}" ${pe.tag === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       ${(() => { const r = t.routinen.find(x => x.id === pe.routine); return r && r.uebungen.length ? `<details class="klein"><summary>Übungen (${r.uebungen.length}) mit Anleitung</summary><ul class="anl-liste">${r.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}${x.variante ? ` <span class="leise">· ${esc(x.variante)}</span>` : ''}</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul></details>` : ''; })()}</li>`).join('')}</ol>` : '<p class="leise">Noch keine Einheit im Plan.</p>'}
   <div class="zeile"><label class="feld" style="flex:1 1 200px"><span>Einheit hinzufügen</span><select id="tr-pe-neu"><option value="">– Routine wählen –</option>${t.routinen.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label><button data-a="tr-pe-add" data-v="${esc(p.id)}">hinzufügen</button><button class="still" data-a="tr-pe-neu" data-v="${esc(p.id)}">neue Einheit anlegen</button></div>
@@ -763,17 +953,17 @@ function trEinheitHtml() {
   ${e.uebungen.map((u, ui) => { const info = ueb(u.uebung); const l = letzteLeistung(u.uebung, e.id, u.variante);
     return `<section class="karte tr-uebung"><div class="zeile" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(info.name)}</h2>${anleitungsKnopf('tr', u.uebung, u.variante)}</div>
       ${u.variante ? `<p class="klein" style="margin:.1em 0">${esc(u.variante)}</p>` : ''}
-      <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(gewichtArt(info))}</b> · ${u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
+      <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(istZeit(u) ? 'Haltezeit in Sekunden; Zusatz-kg nur bei Gewicht' : gewichtArt(info))}</b> · ${istZeit(u) ? `${zielKurz(u) === 'Haltezeit' ? 'Haltezeit selbst wählen' : 'Ziel ' + esc(zielKurz(u))}${u.je_seite ? ' je Seite' : ''} · ` : u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
       ${u.aufwaerm_schema && u.saetze.some(s => s.art === 'aufwaerm') ? `<p class="leise klein" style="margin:-.3em 0 .5em">Aufwärmen (deine Regel): ${esc(aufwaermText(u))} – Gewichte als Vorschlag im Feld, bezogen auf ${l && l.saetze.length ? 'den letzten Arbeitssatz' : u.referenz_kg ? 'das Referenzgewicht' : 'dein Arbeitsgewicht'}.</p>` : ''}
       ${!u.saetze.some(s => s.art === 'arbeit') ? '<p class="hinweis klein">Satzanzahl offen – Arbeitssätze mit „+ Satz“ hinzufügen.</p>' : ''}
       ${vorschlagHtml(u, ui, e)}
-      <table class="tr-saetze"><thead><tr><th>Satz</th><th>Vorher</th><th>kg</th><th>Wdh.</th><th>RIR</th><th></th></tr></thead><tbody>
+      <table class="tr-saetze"><thead><tr><th>Satz</th><th>Vorher</th><th>${istZeit(u) ? 'Zusatz-kg' : 'kg'}</th><th>${istZeit(u) ? 'Sek.' : 'Wdh.'}</th><th>RIR</th><th></th></tr></thead><tbody>
       ${u.saetze.map((s, si) => `<tr class="${s.erledigt ? 'erledigt' : ''}"><td><button class="klein still" data-a="tr-satz-art" data-u="${ui}" data-s="${si}" aria-label="Satzart wechseln">${s.art === 'aufwaerm' ? 'A' : 'W' + (u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length)}</button></td>
-        <td class="vorher">${(() => { const idx = u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length - 1; const vs = s.art === 'arbeit' && l ? l.saetze[idx] : null; return vs ? esc((vs.kg !== '' && vs.kg != null ? zahlDE(Number(vs.kg), 2) : '–') + '×' + (vs.wdh || '?')) : '–'; })()}</td>
+        <td class="vorher">${(() => { const idx = u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length - 1; const vs = s.art === 'arbeit' && l ? l.saetze[idx] : null; return vs ? esc(vs.sek != null && vs.sek !== '' ? vs.sek + ' s' : (vs.kg !== '' && vs.kg != null ? zahlDE(Number(vs.kg), 2) : '–') + '×' + (vs.wdh || '?')) : '–'; })()}</td>
         <td><input type="number" inputmode="decimal" step="0.25" min="0" value="${esc(s.kg ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'kg') : trVorher(u, l, si, 'kg'))}" data-tr-satz="kg" data-u="${ui}" data-s="${si}" aria-label="Gewicht kg"></td>
-        <td><input type="number" inputmode="numeric" step="1" min="0" value="${esc(s.wdh ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'wdh') : trVorher(u, l, si, 'wdh'))}" data-tr-satz="wdh" data-u="${ui}" data-s="${si}" aria-label="Wiederholungen"></td>
+        <td>${istZeit(u) ? `<input type="number" inputmode="numeric" step="5" min="0" value="${esc(s.sek ?? '')}" placeholder="${esc(trVorher(u, l, si, 'sek') || sekZiel(u).bis || sekZiel(u).von || '')}" data-tr-satz="sek" data-u="${ui}" data-s="${si}" aria-label="Haltezeit in Sekunden">` : `<input type="number" inputmode="numeric" step="1" min="0" value="${esc(s.wdh ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'wdh') : trVorher(u, l, si, 'wdh'))}" data-tr-satz="wdh" data-u="${ui}" data-s="${si}" aria-label="Wiederholungen">`}</td>
         <td><select data-tr-satz="rir" data-u="${ui}" data-s="${si}" aria-label="RIR"><option value=""></option>${[0, 1, 2, 3, 4, '5+'].map(x => `<option ${String(s.rir) === String(x) ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
-        <td><button class="klein ${s.erledigt ? '' : 'haupt'}" data-a="tr-satz-ok" data-u="${ui}" data-s="${si}" aria-label="Satz ${s.erledigt ? 'wieder öffnen' : 'abschließen'}">${s.erledigt ? ico('haken', 'klein') : 'fertig'}</button></td></tr>`).join('')}
+        <td><button class="klein ${s.erledigt ? '' : 'haupt'}" data-a="tr-satz-ok" data-u="${ui}" data-s="${si}" aria-label="Satz ${s.erledigt ? 'wieder öffnen' : 'abschließen'}">${s.erledigt ? ico('haken', 'klein') : '<span class="tr-ok-text">fertig</span>'}</button></td></tr>`).join('')}
       </tbody></table>
       <p class="leise klein" style="margin:.4em 0">A = Aufwärmsatz, W = Arbeitssatz (Kürzel antippen zum Wechseln). Pause: ${u.pause_s ? zahlDE(u.pause_s / 60, 1) + ' Min.' : 'frei'}${trDaten().einstellungen.auto_pause !== false ? ' – startet nach einem fertigen Arbeitssatz' : ''}. <button class="klein still" data-a="tr-pause-start" data-u="${ui}">Pause jetzt starten</button></p>
       <div class="knopfreihe"><button class="klein" data-a="tr-satz-add" data-u="${ui}">${ico('plus', 'klein')} Satz</button><button class="klein still" data-a="tr-satz-weg" data-u="${ui}" ${u.saetze.length ? '' : 'disabled'}>letzten Satz entfernen</button>
@@ -832,6 +1022,7 @@ function trSoll(e, ui, si) {
     else { kg = basis ? trRund(basis * 0.5, u) : null; ziel = '6–8'; wdh = 6; zusatz = 'leichter Aufwärmsatz (ca. 50 %)'; } }
   const idx = u.saetze.slice(0, si + 1).filter(x => x.art === s.art).length - 1;
   const letzter = s.art === 'arbeit' && l ? l.saetze[idx] || null : null;
+  if (istZeit(u)) { const z = sekZiel(u); ziel = zielKurz(u); wdh = (letzter && Number(letzter.sek)) || Number(z.bis || z.von) || ''; }
   return { kg: kg == null || isNaN(kg) ? '' : kg, wdh, ziel, rir: s.art === 'arbeit' ? (u.ziel_rir || '') : '', herkunft: s.art === 'arbeit' ? herkunft : zusatz, letzte: l, letzter, vs, einheit: gewichtArt(info) };
 }
 function trEntwurf(e, f) {
@@ -853,7 +1044,7 @@ function trStartHtml(rid) {
   return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><h1>${esc(r.name)}</h1>
   <p class="leise klein">${r.uebungen.length} Übungen · ca. ${min} Min. (grob geschätzt)</p>
   ${pruefen.length ? `<div class="hinweis klein"><b>Vor dem ersten Start prüfen</b><ul>${pruefen.join('')}</ul></div>` : ''}
-  <ol class="fz-vorschau">${r.uebungen.map(x => { const n = Number(x.saetze) || 0; const kg = x.start_kg || x.referenz_kg; return `<li><span><b>${esc(ueb(x.uebung).name)}</b>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}${x.optional ? ' <span class="chip">optional</span>' : ''}<br><span class="klein">${x.aufwaerm ? x.aufwaerm + ' Aufwärm + ' : ''}${n ? n + ' × ' : 'Sätze offen × '}${esc(x.wdh_von && x.wdh_bis && x.wdh_von !== x.wdh_bis ? x.wdh_von + '–' + x.wdh_bis : (x.wdh_bis || x.wdh_von || '?'))}${x.je_seite ? ' je Seite' : ''}${kg ? ` · Start ${esc(kgText(kg))}` : ''}${x.ziel_rir ? ` · Ziel-RIR ${esc(x.ziel_rir)}` : ''}</span></span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`; }).join('')}</ol>
+  <ol class="fz-vorschau">${r.uebungen.map(x => { const n = Number(x.saetze) || 0; const kg = x.start_kg || x.referenz_kg; return `<li><span><b>${esc(ueb(x.uebung).name)}</b>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}${x.optional ? ' <span class="chip">optional</span>' : ''}<br><span class="klein">${x.aufwaerm ? x.aufwaerm + ' Aufwärm + ' : ''}${n ? n + ' × ' : 'Sätze offen × '}${esc(zielKurz(x))}${x.je_seite ? ' je Seite' : ''}${kg ? ` · Start ${esc(kgText(kg))}` : ''}${x.ziel_rir ? ` · Ziel-RIR ${esc(x.ziel_rir)}` : ''}</span></span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`; }).join('')}</ol>
   <button class="haupt fz-ok" data-a="tr-f-start" data-v="${esc(r.id)}">▶ Training starten</button>
   <div class="knopfreihe"><a class="knopf still klein" href="#/training/routine/${esc(r.id)}">Übungen und Startwerte bearbeiten</a><button class="still klein" data-a="tr-start-tabelle" data-v="${esc(r.id)}">Ohne Führung (Tabelle)</button></div>`;
 }
@@ -876,7 +1067,7 @@ function trFuehrungHtml() {
     ${f.phase === 'satz' && e.uebungen[f.ui] ? `<details class="klein"><summary>Übung ersetzen (Gerät besetzt)</summary>${tauschHtml(e.uebungen[f.ui], f.ui, ueb(e.uebungen[f.ui].uebung)).replace(/data-a="tr-tausch"/g, 'data-a="tr-f-tausch"').replace(/data-tr-tausch=/g, 'data-tr-f-tausch=')}</details>` : ''}</details>`;
   if (f.korrektur) { const k = f.korrektur; const u = e.uebungen[k.ui]; const s = u && u.saetze[k.si]; if (s) return `<div class="fz">${uebersicht}<p class="fz-kopf">Korrektur · ${esc(ueb(u.uebung).name)} · ${esc(satzLabel(u, k.si))}</p>
     <h1>Satz korrigieren</h1><p class="leise klein">Bisher: ${esc(satzText(s))}</p>
-    ${s.seiten ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-k-kgL', 'Gewicht', s.seiten.l.kg, trSchritt(u))}${stepperHtml('fz-k-wdhL', 'Wdh.', s.seiten.l.wdh, 1)}</div><div><b>Rechts</b>${stepperHtml('fz-k-kgR', 'Gewicht', s.seiten.r.kg, trSchritt(u))}${stepperHtml('fz-k-wdhR', 'Wdh.', s.seiten.r.wdh, 1)}</div></div>` : `${stepperHtml('fz-k-kg', 'Gewicht', s.kg, trSchritt(u), gewichtArt(ueb(u.uebung)))}${stepperHtml('fz-k-wdh', 'Wiederholungen', s.wdh, 1)}`}
+    ${s.seiten ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-k-kgL', 'Gewicht', s.seiten.l.kg, trSchritt(u))}${stepperHtml('fz-k-wdhL', 'Wdh.', s.seiten.l.wdh, 1)}</div><div><b>Rechts</b>${stepperHtml('fz-k-kgR', 'Gewicht', s.seiten.r.kg, trSchritt(u))}${stepperHtml('fz-k-wdhR', 'Wdh.', s.seiten.r.wdh, 1)}</div></div>` : s.sek != null && s.sek !== '' ? `${stepperHtml('fz-k-kg', 'Zusatzgewicht', s.kg, trSchritt(u), 'kg')}${stepperHtml('fz-k-wdh', 'Sekunden', s.sek, 5)}` : `${stepperHtml('fz-k-kg', 'Gewicht', s.kg, trSchritt(u), gewichtArt(ueb(u.uebung)))}${stepperHtml('fz-k-wdh', 'Wiederholungen', s.wdh, 1)}`}
     <p class="klein"><b>RIR (tatsächlich)</b></p>${chipsHtml('k-rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), f.korrektur.rir !== undefined ? f.korrektur.rir : s.rir, 'unbekannt')}
     <button class="haupt fz-ok" data-a="tr-f-korr-ok">Korrektur speichern</button><button class="still" data-a="tr-f-korr-ab">abbrechen</button></div>`; }
   if (f.phase === 'fertig') return `<div class="fz">${uebersicht}<h1>Alle Sätze erledigt</h1><p>Gut gemacht. Beende das Training, um die Zusammenfassung und die Vorschläge für das nächste Mal zu sehen.</p>
@@ -891,7 +1082,7 @@ function trFuehrungHtml() {
       <div class="fz-pausenknoepfe"><button class="haupt" data-a="tr-f-pause-ende">${rest === 0 ? 'Weiter zum nächsten Satz' : 'Pause beenden'}</button>${t && rest > 0 ? `<button data-a="timer-plus" data-v="${esc(t.id)}" data-s="30">+30 s</button><button data-a="timer-plus" data-v="${esc(t.id)}" data-s="60">+60 s</button><button data-a="timer-halt" data-v="${esc(t.id)}">${t.pausiert != null ? '▶ fortsetzen' : 'Ⅱ anhalten'}</button>` : ''}</div>
       ${ls ? `<p class="klein">Bestätigt: <b>${esc(ueb(lu.uebung).name)}</b>, ${esc(satzLabel(lu, f.letzter.si))}: ${esc(satzText(ls))} <button class="still klein" data-a="tr-f-korr">korrigieren</button></p>` : ''}
       ${nx ? `<section class="karte fz-naechst"><p class="leise klein" style="margin:0">Als Nächstes – noch nicht begonnen</p><h2 style="margin:.2em 0">${esc(ueb(nu.uebung).name)}</h2>${nu.variante ? `<p class="klein" style="margin:0">${esc(nu.variante)}</p>` : ''}
-        <p style="margin:.4em 0">${nx.si >= 0 ? `${esc(satzLabel(nu, nx.si))}: <b>${nso.kg !== '' ? esc(zahlDE(Number(nso.kg), 2)) + ' kg' : 'Gewicht selbst wählen'}</b> · ${esc(nso.ziel || '?')} Wdh.${nu.je_seite ? ' je Seite' : ''}` : 'Satzanzahl festlegen'}</p>
+        <p style="margin:.4em 0">${nx.si >= 0 ? `${esc(satzLabel(nu, nx.si))}: <b>${nso.kg !== '' ? esc(zahlDE(Number(nso.kg), 2)) + ' kg' : istZeit(nu) ? 'Haltezeit' : 'Gewicht selbst wählen'}</b> · ${istZeit(nu) ? (nso.ziel === 'Haltezeit' ? 'selbst wählen' : esc(nso.ziel)) : esc(nso.ziel || 'Wdh. offen') + ' Wdh.'}${nu.je_seite ? ' je Seite' : ''}` : 'Satzanzahl festlegen'}</p>
         ${block && block.einstellung ? `<p class="klein"><b>Einstellung:</b> ${inline(String(block.einstellung))}</p>` : ''}${wechsel ? anleitungsKnopf('tr', nu.uebung, nu.variante, true) : ''}</section>` : '<p>Das war der letzte Satz.</p>'}
       <label class="klein"><input type="checkbox" data-tr-einst="auto_weiter" ${trDaten().einstellungen.auto_weiter !== false ? 'checked' : ''}> Nach Ablauf automatisch zur Ansicht des nächsten Satzes wechseln</label>
       ${weitere}</div>`; }
@@ -905,13 +1096,13 @@ function trFuehrungHtml() {
   return `<div class="fz">${uebersicht}${kopf}
     <h1 class="fz-titel">${esc(info.name)}</h1>${u.variante ? `<p class="fz-var">${esc(u.variante)}</p>` : ''}
     <div class="fz-zeile"><span class="fz-satz">${esc(satzLabel(u, f.si))}</span>${anleitungsKnopf('tr', u.uebung, u.variante)}</div>
-    <div class="fz-soll"><div><span>Soll Gewicht</span><b>${so.kg !== '' ? esc(zahlDE(Number(so.kg), 2)) + ' kg' : '–'}</b></div><div><span>Ziel Wdh.</span><b>${esc(so.ziel || '–')}${u.je_seite ? ' <small>je Seite</small>' : ''}</b></div>${so.rir ? `<div><span>Ziel-RIR</span><b>${esc(so.rir)}</b></div>` : ''}</div>
-    <p class="leise klein fz-herkunft">${esc(so.herkunft || (so.kg === '' ? 'Kein Startwert – Gewicht selbst wählen' : ''))}${so.letzter ? ` · Letztes Mal dieser Satz: ${esc(satzText(so.letzter))}` : so.letzte ? ` · Zuletzt ${esc(datumDE(so.letzte.datum))}: ${esc(so.letzte.saetze.map(satzText).join(', '))}` : ''}</p>
+    <div class="fz-soll"><div><span>${istZeit(u) ? 'Zusatzgewicht' : 'Soll Gewicht'}</span><b>${so.kg !== '' ? esc(zahlDE(Number(so.kg), 2)) + ' kg' : '–'}</b></div><div><span>${istZeit(u) ? 'Ziel Zeit' : 'Ziel Wdh.'}</span><b>${esc(so.ziel || '–')}${u.je_seite ? ' <small>je Seite</small>' : ''}</b></div>${so.rir ? `<div><span>Ziel-RIR</span><b>${esc(so.rir)}</b></div>` : ''}</div>
+    <p class="leise klein fz-herkunft">${esc(so.herkunft || (istZeit(u) ? 'Haltezeit selbst wählen – nur so lange die Ausführung sauber bleibt; Zusatzgewicht nur, wenn du eins nutzt' : so.kg === '' ? 'Kein Startwert – Gewicht selbst wählen' : ''))}${so.letzter ? ` · Letztes Mal dieser Satz: ${esc(satzText(so.letzter))}` : so.letzte ? ` · Zuletzt ${esc(datumDE(so.letzte.datum))}: ${esc(so.letzte.saetze.map(satzText).join(', '))}` : ''}</p>
     ${hinw.length ? `<p class="hinweis klein">${hinw.map(esc).join('<br>')}</p>` : ''}${vsKurz}
     <div class="fz-eingabe"><p class="fz-ist">Tatsächlich – bestätigen oder ändern:</p>
       ${u.je_seite ? `<label class="klein"><input type="checkbox" data-a="tr-f-getrennt" ${ent.getrennt ? 'checked' : ''}> Seiten unterschiedlich</label>` : ''}
       ${u.je_seite && ent.getrennt ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-kgL', 'Gewicht', ent.kgL, schritt)}${stepperHtml('fz-wdhL', 'Wdh.', ent.wdhL, 1)}</div><div><b>Rechts</b>${stepperHtml('fz-kgR', 'Gewicht', ent.kgR, schritt)}${stepperHtml('fz-wdhR', 'Wdh.', ent.wdhR, 1)}</div></div>`
-        : `<div class="fz-paar">${stepperHtml('fz-kg', 'Gewicht', ent.kg, schritt, so.einheit)}${stepperHtml('fz-wdh', u.je_seite ? 'Wdh. je Seite' : 'Wiederholungen', ent.wdh, 1)}</div>`}
+        : `<div class="fz-paar">${stepperHtml('fz-kg', 'Gewicht', ent.kg, schritt, so.einheit)}${istZeit(u) ? stepperHtml('fz-wdh', u.je_seite ? 'Sekunden je Seite' : 'Sekunden gehalten', ent.wdh, 5) : stepperHtml('fz-wdh', u.je_seite ? 'Wdh. je Seite' : 'Wiederholungen', ent.wdh, 1)}</div>`}
       ${s.art === 'arbeit' ? `<p class="klein fz-label"><b>RIR</b> – Wiederholungen in Reserve (freiwillig; leer = unbekannt)</p>${chipsHtml('rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), ent.rir, 'unbekannt')}` : ''}
       <details class="fz-optional"><summary>Ausführung, Zielmuskel, Beschwerden <span class="leise">(freiwillig)</span></summary>
         <p class="klein fz-label"><b>Ausführung</b></p>${chipsHtml('technik', TECHNIK, ent.technik, '–')}
@@ -952,11 +1143,12 @@ document.addEventListener('click', ev => {
       const ent = Object.assign(trEntwurf(e, f), trFEntwurfLesen(f)); const so = trSoll(e, f.ui, f.si);
       const seiten = u.je_seite && ent.getrennt ? { l: { kg: ent.kgL, wdh: ent.wdhL }, r: { kg: ent.kgR, wdh: ent.wdhR } } : null;
       const wdh = seiten ? Math.min(Number(seiten.l.wdh) || 0, Number(seiten.r.wdh) || 0) : ent.wdh; const kg = seiten ? (Number(seiten.l.wdh) <= Number(seiten.r.wdh) ? seiten.l.kg : seiten.r.kg) : ent.kg;
-      if (wdh === '' || wdh == null || !(Number(wdh) >= 0)) { toast('Bitte die tatsächlichen Wiederholungen eintragen'); return; }
+      if (wdh === '' || wdh == null || !(Number(wdh) >= 0)) { toast(istZeit(u) ? 'Bitte die gehaltenen Sekunden eintragen' : 'Bitte die tatsächlichen Wiederholungen eintragen'); return; }
       trFSperre = Date.now(); b.disabled = true;
       aendere(null, d => { const e2 = trEinheit(); const f2 = e2.fuehrung; const u2 = e2.uebungen[f2.ui]; const s2 = u2.saetze[f2.si];
         Object.assign(s2, { soll: { kg: so.kg, wdh: so.wdh, ziel: so.ziel, rir: so.rir }, kg: kg === '' ? '' : Number(kg), wdh: Number(wdh), rir: ent.rir == null ? '' : ent.rir, erledigt: true, zeit: new Date().toISOString() });
         if (seiten) s2.seiten = seiten; else delete s2.seiten;
+        if (istZeit(u2)) { s2.sek = Number(wdh); s2.wdh = ''; s2.soll.sek = so.wdh; s2.soll.wdh = ''; }
         if (ent.technik) s2.technik = ent.technik; if (ent.gefuehl) s2.gefuehl = ent.gefuehl;
         if (ent.beschwerde) { s2.beschwerde = true; s2.beschwerde_text = ent.beschwerde_text || ''; u2.beschwerde = true; u2.beschwerde_text = [u2.beschwerde_text, ent.beschwerde_text].filter(Boolean).join('; '); }
         if (ent.technik === 'unsauber') u2.qualitaet = 'unsauber'; else if (ent.technik && !u2.qualitaet) u2.qualitaet = ent.technik;
@@ -966,7 +1158,7 @@ document.addEventListener('click', ev => {
     case 'tr-f-korr': if (f.letzter) { f.korrektur = { ui: f.letzter.ui, si: f.letzter.si }; route(); window.scrollTo(0, 0); } break;
     case 'tr-f-korr-ab': delete f.korrektur; route(); break;
     case 'tr-f-korr-ok': { const k = f.korrektur; const s = e.uebungen[k.ui].saetze[k.si]; const v = id => { const el = document.getElementById(id); return el && el.value !== '' ? Number(String(el.value).replace(',', '.')) : ''; };
-      aendere('Satz korrigiert', () => { if (s.seiten) { s.seiten = { l: { kg: v('fz-k-kgL'), wdh: v('fz-k-wdhL') }, r: { kg: v('fz-k-kgR'), wdh: v('fz-k-wdhR') } }; const lw = Number(s.seiten.l.wdh) <= Number(s.seiten.r.wdh); s.wdh = Math.min(Number(s.seiten.l.wdh) || 0, Number(s.seiten.r.wdh) || 0); s.kg = lw ? s.seiten.l.kg : s.seiten.r.kg; } else { s.kg = v('fz-k-kg'); s.wdh = v('fz-k-wdh'); } if (k.rir !== undefined) s.rir = k.rir; s.korrigiert = new Date().toISOString(); delete f.korrektur; }); break; }
+      aendere('Satz korrigiert', () => { if (s.seiten) { s.seiten = { l: { kg: v('fz-k-kgL'), wdh: v('fz-k-wdhL') }, r: { kg: v('fz-k-kgR'), wdh: v('fz-k-wdhR') } }; const lw = Number(s.seiten.l.wdh) <= Number(s.seiten.r.wdh); s.wdh = Math.min(Number(s.seiten.l.wdh) || 0, Number(s.seiten.r.wdh) || 0); s.kg = lw ? s.seiten.l.kg : s.seiten.r.kg; } else if (s.sek != null && s.sek !== '') { s.kg = v('fz-k-kg'); s.sek = v('fz-k-wdh'); } else { s.kg = v('fz-k-kg'); s.wdh = v('fz-k-wdh'); } if (k.rir !== undefined) s.rir = k.rir; s.korrigiert = new Date().toISOString(); delete f.korrektur; }); break; }
     case 'tr-f-skip-satz': aendere('Satz übersprungen – zählt nicht', () => { const s = e.uebungen[f.ui].saetze[f.si]; if (s && trOffen(s)) s.uebersprungen = true; trFWeiter(f, e); }); break;
     case 'tr-f-satz-plus': aendere('Zusätzlicher Arbeitssatz', () => { const ui0 = f.phase === 'fertig' && f.letzter ? f.letzter.ui : f.ui; const u = e.uebungen[ui0]; u.saetze.push({ art: 'arbeit', kg: '', wdh: '', rir: '', erledigt: false, extra: true }); if (f.phase === 'fertig') { f.ui = ui0; f.si = u.saetze.length - 1; f.phase = 'satz'; } }); break;
     case 'tr-f-skip-uebung': aendere('Übung übersprungen – offene Sätze zählen nicht', () => { const u = e.uebungen[f.ui]; u.saetze.forEach(s => { if (trOffen(s)) s.uebersprungen = true; }); u.heute_ausgelassen = 'übersprungen'; f.si = u.saetze.length; trFWeiter(f, e); }); break;
@@ -1143,7 +1335,7 @@ function trVorher(u, l, si, feld) {
 function trEinheit() { const t = trDaten(); return t.einheiten.find(e => e.id === t.aktiv); }
 function trSpeichernStill(fn) { fn(D); speichern(); }   // Eingaben in der Einheit ohne Neuzeichnen (Fokus bleibt)
 function trNeueSaetze(x) { const s = []; const n = x.saetze_offen && !(Number(x.saetze) > 0) ? 0 : (Number(x.saetze) || 3); for (let i = 0; i < (Number(x.aufwaerm) || 0); i++) s.push({ art: 'aufwaerm', kg: '', wdh: '', rir: '', erledigt: false }); for (let i = 0; i < n; i++) s.push({ art: 'arbeit', kg: '', wdh: '', rir: '', erledigt: false }); return s; }
-const ROUTINE_FELDER = ['wdh_von', 'wdh_bis', 'pause_s', 'je_seite', 'referenz_kg', 'ziel_rir', 'variante', 'aufwaerm_schema', 'schritt_kg', 'saetze_offen', 'gewicht_hinweis', 'start_kg', 'optional'];
+const ROUTINE_FELDER = ['messung', 'sek_von', 'sek_bis', 'wdh_von', 'wdh_bis', 'pause_s', 'je_seite', 'referenz_kg', 'ziel_rir', 'variante', 'aufwaerm_schema', 'schritt_kg', 'saetze_offen', 'gewicht_hinweis', 'start_kg', 'optional'];
 // Die Einheit bekommt eine Kopie der Routine – spätere Planänderungen verändern gespeicherte Trainings nicht
 function trEinheitAnlegen(d, r, plan, pe, gefuehrt) {
   trDaten(); const id = uid('tre');
@@ -1167,18 +1359,18 @@ document.addEventListener('click', ev => {
   const ui = Number(b.dataset.u), si = Number(b.dataset.s);
   switch (a) {
     case 'tr-wahl-gruppe': trWahl.gruppe = v; { const el = $('#tr-wahl-liste'); const z = (b.closest('.tr-wahl').querySelector('[data-tr-wahl-q]') || {}).dataset.trWahlQ; if (el) el.innerHTML = uebungsWahlListe(z); b.parentElement.querySelectorAll('.filterchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.v === v))); } break;
-    case 'tr-wahl': { const u = ueb(v); const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/); const x = { uebung: v, aufwaerm: 1, saetze: 3, wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12, pause_s: 120 };
+    case 'tr-wahl': { const u = ueb(v); const x = neuerEintrag(v);
       trWahl.offen = b.dataset.ziel;
       if (b.dataset.ziel === 'routine') { const rid = location.hash.split('/')[3]; aendere(`${u.name} hinzugefügt`, d => { d.training.routinen.find(r => r.id === rid).uebungen.push(x); }); }
-      else aendere(`${u.name} hinzugefügt`, d => { trEinheit().uebungen.push({ uebung: v, wdh_von: x.wdh_von, wdh_bis: x.wdh_bis, pause_s: x.pause_s, saetze: trNeueSaetze(x), notiz: '', beschwerde: false }); });
+      else aendere(`${u.name} hinzugefügt`, d => { trEinheit().uebungen.push(Object.assign({ uebung: v, wdh_von: x.wdh_von, wdh_bis: x.wdh_bis, pause_s: x.pause_s }, x.messung ? { messung: x.messung, sek_von: x.sek_von, sek_bis: x.sek_bis } : {}, { saetze: trNeueSaetze(x), notiz: '', beschwerde: false })); });
       break; }
     case 'tr-beispiele': { const vorhanden = new Set(trDaten().routinen.map(r => r.name)); const neu = BEISPIEL_ROUTINEN.filter(([n, l]) => !vorhanden.has(n) && l.every(id => (K.uebungen || []).some(u => u.id === id)));
       if (!neu.length) { toast('Beispielroutinen sind schon da'); return; }
       aendere(`${neu.length} Beispielroutinen übernommen – bitte an dich anpassen`, d => { neu.forEach(([n, l]) => d.training.routinen.push({ id: uid('rou'), name: n, beispiel: true, uebungen: l.map(id => ({ uebung: id, aufwaerm: id === 'ueb-plank' ? 0 : 1, saetze: 3, wdh_von: id === 'ueb-plank' ? null : 8, wdh_bis: id === 'ueb-plank' ? null : 12, pause_s: 120 })) })); }); break; }
     case 'tr-routine-neu': { const id = uid('rou'); aendere(null, d => { trDaten(); d.training.routinen.push({ id, name: 'Neue Routine', uebungen: [] }); }, { neuZeichnen: false }); location.hash = '#/training/routine/' + id; break; }
     case 'tr-routine-weg': { const r = trDaten().routinen.find(x => x.id === v); if (!r || !confirm(`Routine „${r.name}“ löschen? Bisherige Einheiten bleiben erhalten.`)) return; aendere('Routine gelöscht', d => { d.training.routinen = d.training.routinen.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/training'; break; }
-    case 'tr-r-add': { const sel = $('#tr-r-neu'); if (!sel || !sel.value) { toast('Bitte eine Übung wählen'); return; } const u = ueb(sel.value); const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
-      aendere(null, d => { d.training.routinen.find(x => x.id === v).uebungen.push({ uebung: sel.value, aufwaerm: 1, saetze: 3, wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12, pause_s: 120 }); }); break; }
+    case 'tr-r-add': { const sel = $('#tr-r-neu'); if (!sel || !sel.value) { toast('Bitte eine Übung wählen'); return; }
+      aendere(null, d => { d.training.routinen.find(x => x.id === v).uebungen.push(neuerEintrag(sel.value)); }); break; }
     case 'tr-r-weg': { const rid = location.hash.split('/')[3]; aendere(null, d => { d.training.routinen.find(x => x.id === rid).uebungen.splice(Number(v), 1); }); break; }
     case 'tr-r-hoch': { const rid = location.hash.split('/')[3]; const i = Number(v); aendere(null, d => { const l = d.training.routinen.find(x => x.id === rid).uebungen; [l[i - 1], l[i]] = [l[i], l[i - 1]]; }); break; }
     case 'tr-start': { if (trDaten().aktiv) { toast('Es läuft schon eine Einheit'); return; } const plan = b.dataset.plan || null; const pe = b.dataset.pe != null ? Number(b.dataset.pe) : null;
@@ -1192,16 +1384,24 @@ document.addEventListener('click', ev => {
     case 'tr-vz-var': trVVar[b.dataset.u] = v; route(); break;
     case 'tr-tausch': { if (!v) return; aendere(`Ersetzt durch ${ueb(v).name} – Gewichte nicht übernommen`, d => { trTausche(d, ui, v); }); break; }
     case 'tr-satz-ok': { const e = trEinheit(); const u = e.uebungen[ui]; const s = u.saetze[si]; const fertig = !s.erledigt;
-      if (fertig && s.art === 'arbeit' && (s.wdh === '' || s.wdh == null)) { const l0 = letzteLeistung(u.uebung, e.id, u.variante); const vw = trVorher(u, l0, si, 'wdh'); if (vw === '') { toast('Bitte zuerst die Wiederholungen eintragen'); return; } s.wdh = Number(vw); if (s.kg === '' || s.kg == null) { const vk = trVorher(u, l0, si, 'kg'); if (vk !== '') s.kg = Number(vk); } }
+      if (fertig && s.art === 'arbeit' && istZeit(u) && (s.sek === '' || s.sek == null)) { const vs0 = trVorher(u, letzteLeistung(u.uebung, e.id, u.variante), si, 'sek'); if (vs0 === '') { toast('Bitte zuerst die gehaltenen Sekunden eintragen'); return; } s.sek = Number(vs0); }
+      else if (fertig && s.art === 'arbeit' && !istZeit(u) && (s.wdh === '' || s.wdh == null)) { const l0 = letzteLeistung(u.uebung, e.id, u.variante); const vw = trVorher(u, l0, si, 'wdh'); if (vw === '') { toast('Bitte zuerst die Wiederholungen eintragen'); return; } s.wdh = Number(vw); if (s.kg === '' || s.kg == null) { const vk = trVorher(u, l0, si, 'kg'); if (vk !== '') s.kg = Number(vk); } }
       aendere(null, d => { const s2 = trEinheit().uebungen[ui].saetze[si]; s2.erledigt = fertig; s2.zeit = fertig ? new Date().toISOString() : null; });
       // Pause nur nach Arbeitssätzen und nur, wenn eingeschaltet; spätere Sätze werden nie automatisch abgeschlossen
       const einst = trDaten().einstellungen;
       if (fertig && s.art === 'arbeit' && u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
       break; }
-    case 'tr-vorschlag-anlegen': { const c = trDaten().einrichtung || {}; const vs = vorschlagsOptionen(c)[Number(v)]; if (!vs) return; const tage = WOCHENTAGE.map(w => w[0]).filter(k => arr(c.tage).includes(k));
-      if (!confirm(`Plan „${vs.name}“ mit ${vs.einheiten.length} Einheiten als neuen, inaktiven Plan anlegen? Bestehende Pläne und Routinen bleiben unverändert.`)) return; let pid;
-      aendere('Vorschlag als neuer Plan angelegt – aktivieren kannst du ihn im Plan', d => { trDaten(); const ids = vs.einheiten.map(e => { const id = uid('rou'); d.training.routinen.push({ id, name: e.name + ' (Vorschlag)', uebungen: JSON.parse(JSON.stringify(e.uebungen)) }); return id; }); pid = uid('plan'); d.training.plaene.push({ id: pid, name: vs.name + ' – Vorschlag', art: 'eigen', hinweis: 'aus Planvorschlag erstellt ' + heute(), aktiv: !d.training.plaene.some(p => p.aktiv), erstellt: heute(), einheiten: ids.map((r, i) => ({ routine: r, tag: tage[i] || '' })) }); }, { neuZeichnen: false });
-      location.hash = '#/training/plan/' + pid; break; }
+    case 'tr-vorschlag-entwurf': { const vs = vorschlagsOptionen(trDaten().einrichtung || {}).ok[Number(v)]; if (!vs) return;
+      trPlanEntwurf = { name: vs.name + ' – Vorschlag', key: vs.key, hinweise: vs.hinweise.slice(), einheiten: vs.einheiten.map(e => ({ name: e.name, tag: e.tag, uebungen: JSON.parse(JSON.stringify(e.uebungen)) })) };
+      route(); setTimeout(() => { const el = $('#tr-entwurf'); if (el) el.scrollIntoView({ block: 'start' }); }, 30); break; }
+    case 'tr-te-weg': { if (!trPlanEntwurf) return; const [ei, ui] = String(v).split(':').map(Number); const e = trPlanEntwurf.einheiten[ei]; if (e) e.uebungen.splice(ui, 1); if (e && e.uebungen.length && !e.uebungen.some(x => x.aufwaerm)) e.uebungen[0].aufwaerm = 2; entwurfNeuZeichnen(); break; }
+    case 'tr-te-einheit-weg': { if (!trPlanEntwurf) return; const e = trPlanEntwurf.einheiten[Number(v)]; if (e && e.uebungen.length && !confirm(`Einheit „${e.name}“ aus dem Entwurf entfernen?`)) return; trPlanEntwurf.einheiten.splice(Number(v), 1); entwurfNeuZeichnen(); break; }
+    case 'tr-te-verwerfen': if (trPlanEntwurf && !confirm('Entwurf verwerfen? Gespeichert war noch nichts.')) return; trPlanEntwurf = null; route(); break;
+    case 'tr-te-anlegen': { const ew = trPlanEntwurf; if (!ew) return; const p0 = entwurfPruefen(ew); if (p0.length) { toast(p0[0]); return; }
+      if (!confirm(`Plan „${ew.name}“ mit ${ew.einheiten.length} Einheit${ew.einheiten.length === 1 ? '' : 'en'} als neuen, inaktiven Plan anlegen? Bestehende Pläne und Routinen bleiben unverändert.`)) return; let pid;
+      const sauber = x => { const y = JSON.parse(JSON.stringify(x)); Object.keys(y).forEach(k => { if (k[0] === '_') delete y[k]; }); if (y.messung !== 'zeit') { delete y.sek_von; delete y.sek_bis; if (y.messung === 'wdh') delete y.messung; } else { y.wdh_von = null; y.wdh_bis = null; } return y; };
+      aendere('Plan angelegt (inaktiv) – unten aktivierbar', d => { trDaten(); const ids = ew.einheiten.map(e => { const id = uid('rou'); d.training.routinen.push({ id, name: e.name, uebungen: e.uebungen.map(sauber) }); return id; }); pid = uid('plan'); d.training.plaene.push({ id: pid, name: ew.name, art: 'eigen', hinweis: 'aus Planvorschlag erstellt ' + heute(), aktiv: false, erstellt: heute(), einheiten: ids.map((r, i) => ({ routine: r, tag: ew.einheiten[i].tag || '' })) }); }, { neuZeichnen: false });
+      trPlanEntwurf = null; location.hash = '#/training/plan/' + pid; break; }
     case 'tr-cardio-weg': aendere('Eintrag gelöscht', d => { d.training.cardio = arr(d.training.cardio).filter(x => x.id !== v); }); break;
     case 'tr-zeit-plan': { const m = Number(($('#tr-zeit-min') || {}).value); if (!(m > 0)) { toast('Bitte verfügbare Minuten eintragen'); return; } trZeitMin = m; trZeitVorschlag = zeitKuerzen(trEinheit(), m); const el = $('#tr-zeit-vorschau'); if (el) el.innerHTML = trZeitVorschauHtml(trEinheit()); break; }
     case 'tr-zeit-ab': trZeitVorschlag = null; route(); break;
@@ -1259,6 +1459,7 @@ document.addEventListener('input', ev => {
 });
 document.addEventListener('change', ev => {
   const el = ev.target; const d = el.dataset || {};
+  if (d.trRCheck === 'zeit') { const rid = location.hash.split('/')[3]; aendere(null, () => { const x = trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)]; x.messung = el.checked ? 'zeit' : 'wdh'; }); return; }
   if (d.trRCheck) { const rid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)][d.trRCheck] = el.checked; }); return; }
   if (d.trPeTag != null) { const pid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().plaene.find(x => x.id === pid).einheiten[Number(d.trPeTag)].tag = el.value; }); return; }
   if (d.trEinst) { trSpeichernStill(() => { trDaten().einstellungen[d.trEinst] = el.checked; }); return; }
@@ -1271,7 +1472,7 @@ document.addEventListener('submit', ev => {
   const f = ev.target;
   if (f.id === 'tr-ueb-neu') { ev.preventDefault(); const name = f.name.value.trim(); if (!name) return;
     aendere('Eigene Übung gespeichert', d => { trDaten(); d.training.uebungen.push({ id: uid('uebe'), name, geraet: f.geraet.value.trim() || null, schritt_kg: f.schritt_kg.value === '' ? null : Number(f.schritt_kg.value), link: /^https:\/\//.test(f.link.value) ? f.link.value : null, notiz: f.notiz.value.trim() || null }); }); }
-  if (f.id === 'tr-einr') { ev.preventDefault(); const werte = n => [...f.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
+  if (f.id === 'tr-einr') { ev.preventDefault(); trPlanEntwurf = null; const werte = n => [...f.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
     aendere('Einrichtung gespeichert', d => { trDaten(); d.training.einrichtung = { ziel: f.ziel.value, erfahrung: f.erfahrung.value, minuten: f.minuten.value === '' ? '' : Number(f.minuten.value), tage: werte('tage'), ort: f.ort.value, geraete: werte('geraete'), schwerpunkte: werte('schwerpunkte'), unerwuenscht: [...f.unerwuenscht.selectedOptions].map(o => o.value), cardio: f.cardio.value, cardio_art: f.cardio_art.value.trim(), cardio_min: f.cardio_min.value === '' ? '' : Number(f.cardio_min.value), einschraenkungen: f.einschraenkungen.value.trim(), geaendert: heute() }; }); return; }
   if (f.id === 'tr-cardio') { ev.preventDefault(); const m = Number(f.minuten.value); if (!(m > 0)) return;
     aendere('Cardio eingetragen', d => { trDaten(); (d.training.cardio = d.training.cardio || []).push({ id: uid('car'), datum: f.datum.value || heute(), art: f.art.value.trim().slice(0, 40), minuten: m, intensitaet: f.intensitaet.value }); }); return; }

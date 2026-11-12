@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611122149 */
+/* Fitomat-Build 202611122256 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
@@ -74,15 +74,27 @@ function rezeptSuchtext(r) {
   r.zutaten.forEach(z => { teile.push(z.text); const zz = z.zutat && Z[z.zutat]; if (zz) teile.push(zz.name, ...arr(zz.aliases)); });
   const t = suchNorm(teile.filter(Boolean).join(' | ')); suchIndex.set(r.id, t); return t;
 }
-function suchePasst(r, q) { const w = suchNorm(q).split(/\s+/).filter(Boolean); if (!w.length) return true; const t = rezeptSuchtext(r); return w.every(x => t.includes(x)); }
+/* Synonyme je Suchwort (Englisch ↔ Deutsch, Schreibvarianten); bereits normalisiert (ohne Umlaute). Ein Wort passt, wenn eine Variante vorkommt.
+   Bewusst ohne zu kurze Teilwörter wie „ei“, die überall vorkämen. */
+const SUCH_SYNONYME = [['honey', 'honig'], ['chicken', 'hahnchen', 'huhn', 'huhner', 'huhnchen', 'geflugel', 'pollo'], ['turkey', 'pute', 'puten', 'truthahn'], ['beef', 'rind', 'rinder'], ['duck', 'ente'], ['lamb', 'lamm'],
+  ['minced', 'mince', 'ground', 'hack', 'hackfleisch'], ['fish', 'fisch'], ['salmon', 'lachs'], ['tuna', 'thunfisch'], ['cod', 'kabeljau', 'dorsch'], ['shrimp', 'shrimps', 'prawn', 'prawns', 'garnele', 'garnelen', 'gambas'],
+  ['rice', 'reis'], ['noodle', 'noodles', 'nudel', 'nudeln', 'pasta'], ['egg', 'eggs', 'eier', 'ruhrei', 'spiegelei', 'omelett'], ['garlic', 'knoblauch'], ['ginger', 'ingwer'], ['lemon', 'zitrone', 'zitronen'], ['lime', 'limette', 'limetten'],
+  ['soup', 'suppe'], ['salad', 'salat'], ['cake', 'kuchen'], ['bread', 'brot'], ['pancake', 'pancakes', 'pfannkuchen'], ['potato', 'potatoes', 'kartoffel', 'kartoffeln'], ['sweet potato', 'susskartoffel'], ['tomato', 'tomatoes', 'tomate', 'tomaten'],
+  ['cheese', 'kase'], ['mushroom', 'mushrooms', 'pilz', 'pilze', 'champignon', 'champignons'], ['onion', 'zwiebel', 'zwiebeln'], ['bean', 'beans', 'bohne', 'bohnen'], ['chickpea', 'chickpeas', 'kichererbse', 'kichererbsen'], ['lentil', 'lentils', 'linse', 'linsen'],
+  ['sesame', 'sesam'], ['soy', 'soja'], ['peanut', 'peanuts', 'erdnuss', 'erdnusse'], ['coconut', 'kokos'], ['oat', 'oats', 'hafer', 'haferflocken', 'porridge'], ['chocolate', 'schokolade', 'schoko'], ['vegetable', 'vegetables', 'veggie', 'gemuse'],
+  ['spinach', 'spinat'], ['broccoli', 'brokkoli'], ['curd', 'quark'], ['yogurt', 'yoghurt', 'joghurt'], ['stew', 'eintopf'], ['sauce', 'sosse', 'sose'], ['fried', 'gebraten', 'braten'], ['baked', 'gebacken', 'ofen'], ['grilled', 'gegrillt', 'grill'],
+  ['spicy', 'scharf'], ['sweet', 'suss'], ['sour', 'sauer'], ['quick', 'schnell'], ['easy', 'einfach'], ['breakfast', 'fruhstuck'], ['dessert', 'nachtisch', 'nachspeise'], ['protein', 'eiweiss'], ['meal prep', 'mealprep', 'vorkochen']];
+const SYN_MAP = new Map(); SUCH_SYNONYME.forEach(g => g.forEach(w => { if (!w.includes(' ')) SYN_MAP.set(w, g.filter(x => !x.includes(' '))); }));
+const suchVarianten = w => SYN_MAP.get(w) || [w];
+function suchePasst(r, q) { const w = suchNorm(q).split(/\s+/).filter(Boolean); if (!w.length) return true; const t = rezeptSuchtext(r); return w.every(x => suchVarianten(x).some(v => t.includes(v))); }
 const titelTreffer = (r, q) => suchNorm(r.titel).includes(suchNorm(q).trim());
 /* Rangfolge: Titel vor ganzem Wort (z. B. Zutat „Huhn“) vor Wortanfang vor Wortteil (z. B. „Hühnerei“) */
 function suchRang(r, q) {
   const t = rezeptSuchtext(r), ti = suchNorm(r.titel);
-  return suchNorm(q).split(/\s+/).filter(Boolean).reduce((s, w) => {
+  return suchNorm(q).split(/\s+/).filter(Boolean).reduce((s, w0) => s + Math.max(...suchVarianten(w0).map(w => {
     const wort = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)'), anfang = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    return s + (ti.includes(w) ? 8 : wort.test(t) ? 4 : anfang.test(t) ? 2 : 1);
-  }, 0);
+    return ti.includes(w) ? 8 : wort.test(t) ? 4 : anfang.test(t) ? 2 : t.includes(w) ? 1 : 0;
+  })), 0);
 }
 
 /* ---------- Zeiten verständlich: Arbeit, Warte-/Garzeit, gesamt, Vortag ---------- */
@@ -950,12 +962,22 @@ document.addEventListener('click', ev => {
     aendere(`${ok.length} Preise übernommen${schlecht.length ? `, ${schlecht.length} Zeilen übersprungen (${schlecht.slice(0, 2).join('; ')})` : ''} – Rückgängig möglich`, d => { d.preise = arr(d.preise); ok.forEach(p => { if (!d.preise.some(x => x.zutat === p.zutat && x.haendler === p.haendler && x.datum === p.datum && x.packung === p.packung && x.preis === p.preis)) d.preise.push(p); }); }); }
 });
 /* ---------- „Was passt jetzt?“: Zeit → Personen → Vorschläge aus Vorrat, Restportionen, Geräten, Vorlieben und Tagesspielraum ---------- */
-const jetztZustand = { zeit: null, personen: null };
-function jetztVorschlaege(zeit, personen) {
+const jetztZustand = { zeit: null, personen: null, art: 'mahlzeit' };
+// Rolle eines Rezepts: Dips und Saucen sind keine Mahlzeit und kein eigenständiger Snack, auch wenn sie als Snack verschlagwortet sind
+const JETZT_ART = { mahlzeit: 'Mahlzeit', fruehstueck: 'Frühstück', snack: 'Snack', beilage: 'Beilage, Dip oder Sauce' };
+function jetztRollen(r) {
+  const b = arr(r.meta.bereiche).length ? arr(r.meta.bereiche) : [r.meta.bereich]; const haupt = b.includes('hauptgericht') || b.includes('suppe');
+  const dip = !haupt && (b.includes('sauce') || r.meta.bereich === 'sauce'); const rollen = new Set();
+  if (haupt) rollen.add('mahlzeit'); if (b.includes('fruehstueck')) rollen.add('fruehstueck');
+  if (b.includes('snack') && !dip) rollen.add('snack');
+  if (dip || b.includes('beilage') || (b.includes('salat') && !haupt)) rollen.add('beilage');
+  return rollen;
+}
+function jetztVorschlaege(zeit, personen, art) {
   const gv = new Set(arr(D.einstellungen.grundvorrat)); const geoeffnet = new Set(D.vorrat.filter(v => v.geoeffnet || (v.verbrauchsdatum && tageBis(v.verbrauchsdatum) <= 3)).map(v => v.zutat));
   const ziele = aktuelleZiele(); const s = tagWerte(heute()); const tagInfo = (D.tage || {})[heute()] || {};
   const rest = ziele && ziele.kcal ? { kcal: Number(ziele.kcal) - s.kcal, protein: ziele.protein ? Number(ziele.protein) - s.protein : null } : null;
-  const liste = K.rezepte.map(x => R[x.id]).filter(r => !ausgeschlossen(r).length && !(geraeteFehlen(r) || []).length && ['haupt', 'snack', 'fruehstueck'].some(a => plPasstArt(r, a))).map(r => {
+  const liste = K.rezepte.map(x => R[x.id]).filter(r => !ausgeschlossen(r).length && !(geraeteFehlen(r) || []).length && jetztRollen(r).has(art || 'mahlzeit')).map(r => {
     const i = rezeptInfo(r); if (zeit && (i.gesamt == null || i.gesamt > zeit)) return null;
     const noetig = r.zutaten.filter(z => z.zutat && z.bedarf !== 'optional');
     const fehlt = noetig.filter(z => z.bedarf === 'grundvorrat' ? false : !vorratMenge(z.zutat).vorhanden);
@@ -973,6 +995,8 @@ function jetztVorschlaege(zeit, personen) {
     if (gvUnklar.length) gruende.push('Grundvorrat prüfen: ' + gvUnklar.slice(0, 2).map(z => Z[z.zutat].name).join(', '));
     const ab = (D.einstellungen.abneigungen || {}); if (r.zutaten.some(z => ab[z.zutat] && ab[z.zutat] < 3)) punkte -= 3;
     if (arr((D.kochbuch || {}).favoriten).includes(r.id)) { gruende.push('Favorit'); punkte += 1; }
+    if ((art || 'mahlzeit') === 'mahlzeit' && np.kcal != null && np.kcal < 300) gruende.push('eher leicht – ggf. mit Beilage ergänzen');
+    if (art === 'beilage') { const rol = arr(r.meta.bereiche); gruende.unshift(rol.includes('sauce') && !rol.includes('beilage') ? 'Dip/Sauce – ergänzt ein Gericht' : 'Beilage – ergänzt ein Gericht'); }
     return { r, i, fehlt, punkte, gruende, spielraum };
   }).filter(Boolean).sort((a, b) => b.punkte - a.punkte || (a.i.aktiv || 99) - (b.i.aktiv || 99));
   return { liste, rest, tagVollstaendig: !!tagInfo.vollstaendig, eintraege: s.eintraege };
@@ -984,8 +1008,9 @@ function vJetzt() {
   const frage2 = z.zeit != null ? `<div class="karte"><h2 style="margin-top:0">Für wie viele?</h2><div class="chips-wrap">${[1, 2, 3, 4].map(v => knopf('personen', v, v + (v === 1 ? ' Person' : ' Personen'))).join('')}</div></div>` : '';
   let erg = '';
   if (z.zeit != null && z.personen) {
-    const v = jetztVorschlaege(z.zeit || null, z.personen); const top = v.liste.slice(0, 8);
-    erg = `${restp.length ? `<div class="hinweis klein"><b>Schon fertig:</b> ${restp.map(p => `${esc(kurztitel(p.titel))} (${zahlDE(p.portionen, 1)} Port.${p.verbrauchen_bis ? ', bis ' + esc(datumDE(p.verbrauchen_bis)) : ''})`).join(' · ')} – nur aufwärmen. <a href="#/tagebuch">Im Tagebuch eintragen</a></div>` : ''}
+    const v = jetztVorschlaege(z.zeit || null, z.personen, z.art); const top = v.liste.slice(0, 8);
+    erg = `<div class="chips-wrap" role="group" aria-label="Was suchst du?">${Object.entries(JETZT_ART).map(([k, t]) => `<button class="filterchip" data-a="jetzt-art" data-v="${k}" aria-pressed="${z.art === k}">${t}</button>`).join('')}</div>
+      ${restp.length ? `<div class="hinweis klein"><b>Schon fertig:</b> ${restp.map(p => `${esc(kurztitel(p.titel))} (${zahlDE(p.portionen, 1)} Port.${p.verbrauchen_bis ? ', bis ' + esc(datumDE(p.verbrauchen_bis)) : ''})`).join(' · ')} – nur aufwärmen. <a href="#/tagebuch">Im Tagebuch eintragen</a></div>` : ''}
       ${v.rest ? `<p class="leise klein">Spielraum heute: ca. ${zahlDE(Math.round(Math.max(0, v.rest.kcal)))} kcal${v.rest.protein != null ? ` · ${zahlDE(Math.round(Math.max(0, v.rest.protein)))} g Eiweiß` : ''} – laut ${v.eintraege} Tagebucheinträgen${v.tagVollstaendig ? '' : '; der Tag ist nicht als vollständig markiert, der Spielraum ist deshalb unsicher'}. Rezeptwerte sind Schätzungen.</p>` : '<p class="leise klein">Ohne Ernährungsziel kein Abgleich mit dem Tagesspielraum.</p>'}
       ${D.vorrat.length ? '' : '<p class="hinweis klein">Dein Vorrat ist leer erfasst – „alles im Vorrat“ lässt sich deshalb nicht prüfen. <a href="#/vorrat">Vorrat eintragen</a></p>'}
       ${top.length ? `<ul class="eintraege jetzt-liste">${top.map(x => `<li><span><a href="#/rezept/${esc(x.r.id)}"><b>${esc(x.r.titel)}</b></a><br><span class="leise klein">${x.i.aktiv || '?'} Min. aktiv · ${x.i.gesamt || '?'} Min. gesamt · Rezept für ${esc(x.r.meta.portionen)}${Number(x.r.meta.portionen) !== z.personen ? ` → auf ${z.personen} umrechnen` : ''}</span><br><span class="klein">${esc([...x.gruende, x.spielraum].filter(Boolean).join(' · '))}</span></span><span><button class="klein" data-a="jetzt-kochen" data-v="${esc(x.r.id)}">Kochen</button></span></li>`).join('')}</ul>` : `<p class="leer">Nichts passt in ${z.zeit} Min. – <button class="klein" data-a="jetzt-wahl" data-k="zeit" data-v="0">Zeit egal</button></p>`}
@@ -996,5 +1021,6 @@ function vJetzt() {
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a;
   if (a === 'jetzt-wahl') { jetztZustand[b.dataset.k] = Number(b.dataset.v); route(); }
+  else if (a === 'jetzt-art') { jetztZustand.art = b.dataset.v in JETZT_ART ? b.dataset.v : 'mahlzeit'; route(); }
   else if (a === 'jetzt-kochen') { portionenWahl[b.dataset.v] = jetztZustand.personen || portionenWahl[b.dataset.v]; location.hash = '#/rezept/' + b.dataset.v; }
 });
