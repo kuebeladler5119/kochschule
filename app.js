@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.15.0';
-const APP_BUILD = '202611120901';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.16.0';
+const APP_BUILD = '202611121022';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -288,7 +288,7 @@ const BEREICH_VON_SEITE = { tagebuch: 'ernaehrung', ziele: 'ernaehrung', produkt
 function weitermachenHtml() {
   const teile = [];
   Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<span class="weiter-gruppe"><a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a><button class="weiter-x" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">✕ abbrechen</button></span>`); });
-  if (D.training && D.training.aktiv) teile.push(`<a class="weiter-chip" href="#/training/einheit">${ico('hantel', 'klein')} Training fortsetzen</a>`);
+  if (D.training && D.training.aktiv) { const e = (D.training.einheiten || []).find(x => x.id === D.training.aktiv); teile.push(`<a class="weiter-chip" href="#/training/${e && e.fuehrung ? 'fuehrung' : 'einheit'}">${ico('hantel', 'klein')} Training fortsetzen</a>`); }
   if (D.mobility && D.mobility.lauf) teile.push(`<a class="weiter-chip" href="#/mobility/lauf">${ico('dehnen', 'klein')} Mobility-Routine fortsetzen</a>`);
   D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
   return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';

@@ -445,3 +445,61 @@ dialog.anl[open] { display: block; }
 /* Auswahllisten mit langen Einträgen nicht breiter als die Karte */
 select { max-width: 100%; }
 .knopfreihe > details { flex: 1 1 100%; min-width: 0; }
+
+/* Ersatzübungen: Begründung je Alternative */
+.ersatz-liste { list-style: none; padding: 0; margin: 0 0 6px; }
+.ersatz-liste li { display: grid; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--linie); min-width: 0; overflow-wrap: anywhere; }
+.ersatz-liste li button { justify-self: start; min-height: 44px; white-space: normal; text-align: left; }
+
+/* Geführter Modus „Training starten“ */
+body.fz-aktiv .pausetimer { display: none; }
+.fz { max-width: 640px; margin: 0 auto; }
+.fz-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--leise); font-size: .9rem; margin: 0 0 4px; }
+.fz-titel { margin: 0; font-size: 1.6rem; line-height: 1.2; overflow-wrap: anywhere; }
+.fz-var { margin: 2px 0 0; color: var(--leise); overflow-wrap: anywhere; }
+.fz-zeile { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.fz-satz { font-weight: 700; font-size: 1.05rem; }
+.fz-soll { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin: 6px 0 2px; }
+.fz-soll > div { background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--r); padding: 8px 10px; min-width: 0; }
+.fz-soll span { display: block; font-size: .78rem; color: var(--leise); }
+.fz-soll b { font-size: 1.25rem; overflow-wrap: anywhere; }
+.fz-herkunft { margin: 4px 0 8px; overflow-wrap: anywhere; }
+.fz-eingabe { background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--r); padding: 10px 12px; margin: 10px 0; }
+.fz-ist { margin: 0 0 6px; font-weight: 600; }
+.fz-paar, .fz-seiten { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.fz-seiten > div { min-width: 0; }
+.fz-feld { min-width: 0; }
+.fz-feld label { display: block; font-size: .85rem; margin-bottom: 3px; }
+.fz-stepper { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; gap: 6px; align-items: stretch; }
+.fz-stepper button { min-height: 52px; padding: 0; font-size: 1.5rem; border-radius: 12px; }
+.fz-stepper input { min-height: 52px; font-size: 1.4rem; text-align: center; width: 100%; min-width: 0; border-radius: 12px; }
+.fz-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.fz-chips .filterchip { min-height: 44px; min-width: 48px; justify-content: center; }
+.fz-chips .fz-gross { min-width: 64px; min-height: 56px; font-size: 1.2rem; }
+.fz-label { margin: 10px 0 2px; }
+.fz-optional summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.fz-ok { width: 100%; min-height: 58px; font-size: 1.1rem; margin: 6px 0 10px; }
+.fz-mehr { margin: 8px 0; border-top: 1px solid var(--linie); padding-top: 4px; }
+.fz-mehr > summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+.fz-aktionen { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 6px 0; }
+.fz-aktionen > * { min-height: 48px; white-space: normal; text-align: center; }
+.fz-countdown { font-size: clamp(3.4rem, 18vw, 6rem); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin: 10px 0; line-height: 1.1; }
+.fz-countdown.fertig { font-size: clamp(2rem, 9vw, 3rem); color: var(--salbei, var(--akzent)); }
+.fz-countdown small { display: block; font-size: 1rem; color: var(--leise); font-weight: 400; }
+.fz-pausenknoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.fz-pausenknoepfe .haupt { grid-column: 1 / -1; min-height: 58px; font-size: 1.1rem; }
+.fz-pausenknoepfe button { min-height: 50px; }
+.fz-naechst { margin: 12px 0; }
+.fz-uebersicht ol { padding-left: 1.2em; } .fz-uebersicht li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--linie); min-width: 0; overflow-wrap: anywhere; }
+.fz-uebersicht li.aktuell { font-weight: 600; }
+.fz-vorschau { padding-left: 1.2em; } .fz-vorschau li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--linie); min-width: 0; overflow-wrap: anywhere; }
+.fz-vorschau li > span { min-width: 0; }
+.fz-importvorschau ol, .fz-importvorschau ul { padding-left: 1.2em; overflow-wrap: anywhere; }
+/* Fortschrittsdiagramme */
+figure.diagramm { margin: 10px 0; }
+figure.diagramm figcaption { font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
+figure.diagramm svg { width: 100%; height: auto; max-width: 560px; display: block; background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--r); }
+
+table.verlauf-tabelle { width: 100%; table-layout: fixed; }
+table.verlauf-tabelle td, table.verlauf-tabelle th { white-space: normal; overflow-wrap: anywhere; vertical-align: top; text-align: left; }
+table.verlauf-tabelle td:first-child, table.verlauf-tabelle th:first-child { width: 6.5em; }

@@ -356,24 +356,64 @@ function vTagebuch2(datum) {
 }
 /* Häufige Suchen ohne allgemeinen BLS-Eintrag → verwandte Einträge als Hinweis (bewusst keine Gleichsetzung) */
 const TB_VERWANDT = { skyr: ['Magerquark', 'Joghurt, fettarm', 'Hüttenkäse'], proteinriegel: ['Müsliriegel'], proteinpudding: ['Joghurt, fettarm'], 'griechischer joghurt': ['Joghurt, fettarm'], tofu: [], seitan: [], wrap: ['Weizentortilla'], toast: ['Toastbrot'], semmel: ['Brötchen'], schrippe: ['Brötchen'], bratkartoffeln: ['Kartoffeln, gekocht'], pommes: ['Pommes frites, aus dem Ofen'], cappuccino: ['Kaffee', 'Fettarme Milch'], latte: ['Kaffee', 'Fettarme Milch'], energy: ['Cola'] };
+/* Trefferbewertung Lebensmittelsuche (kleiner = besser, 99 = kein Treffer).
+   Name vor Alias; Wortanfang vor Wortinnerem; ein Treffer nur auf ein Beiwort im Alias (z. B. „mageres Rindfleisch“ bei „mager“) ist schwach
+   und wird ausgeblendet, sobald es passende Treffer gibt. Mehrere Wörter müssen alle vorkommen (Reihenfolge egal). */
+const RE_ESC = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function suchBewertung(name, aliases, qn, roh) {
+  const worte = qn.split(/[\s,]+/).filter(Boolean); const wortAnfang = (s, w) => new RegExp('(^|[^a-z0-9])' + RE_ESC(w)).test(s);
+  const umlaut = roh && /[äöüß]/.test(roh) ? roh : '';   // „öl“ soll nicht zuerst „Oliven“ treffen
+  let best = 99;
+  [[name, false], ...arr(aliases).map(a => [a, true])].forEach(([o, alias]) => {
+    const s = suchNorm(o); const sk = s.replace(/,/g, ''); let p;
+    if (s === qn || sk === qn) p = 0;
+    else if (s.startsWith(qn + ',') || s.startsWith(qn + ' ')) p = 0.5;
+    else if (s.startsWith(qn)) p = 1;
+    else if (worte.length > 1 && worte.every(w => wortAnfang(s, w))) p = 1.5;
+    else if (worte.length === 1 && wortAnfang(s, qn)) p = 2;
+    else if (worte.length === 1 && s.split(/[\s,]+/).some(x => x.length > qn.length && x.endsWith(qn))) p = 2.5;   // Grundwort eines zusammengesetzten Worts, z. B. „Rapsöl“ bei „öl“
+    else if (qn.length >= 4 && worte.every(w => s.includes(w))) p = 3;   // sonstiges Wortinneres
+    else return;
+    // Trifft ein einzelnes Suchwort nur ein klein geschriebenes Beiwort („mageres“, „gekocht“), ist das kein passender Name
+    if (worte.length === 1 && p > 0) { const w = String(o).split(/[\s,()–-]+/).find(x => suchNorm(x).startsWith(worte[0])); if (w && /^[a-zäöüß]/.test(w)) p = Math.max(p, 2) + 2; }
+    if (umlaut && !String(o).toLowerCase().includes(umlaut)) p += 2;
+    if (alias) p += p >= 2 ? 2 : 0.3;
+    best = Math.min(best, p);
+  });
+  return best;
+}
+// Vorsichtige Tippfehlertoleranz: höchstens 1 Fehler (ab 5 Zeichen) bzw. 2 (ab 9 Zeichen), Vertauschung zählt als 1
+function tippAbstand(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1; const d = []; for (let i = 0; i <= a.length; i++) { d[i] = [i]; } for (let j = 0; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) { let zeileMin = 99; for (let j = 1; j <= b.length; j++) { const k = a[i - 1] === b[j - 1] ? 0 : 1; d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + k); if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); zeileMin = Math.min(zeileMin, d[i][j]); } if (zeileMin > max) return max + 1; }
+  return d[a.length][b.length];
+}
+function tippVorschlaege(qn) {
+  const max = qn.length >= 9 ? 2 : qn.length >= 5 ? 1 : 0; if (!max) return [];
+  return K.zutaten.filter(z => Object.keys(z.bls || {}).length).map(z => { const kand = [z.name, ...arr(z.aliases)].flatMap(n => { const s = suchNorm(n); return [s, s.split(/[\s,]+/)[0]]; }); return [z, Math.min(...kand.map(s => tippAbstand(qn, s.slice(0, qn.length + max), max)))]; })
+    .filter(([, d]) => d <= max).sort((a, b) => a[1] - b[1] || a[0].name.length - b[0].name.length).slice(0, 4).map(([z]) => z);
+}
 function tbTreffer() {
   const q = tbSuche.trim().toLowerCase(); if (q.length < 2) return '';
-  const qn = suchNorm(q);
-  const rang = n => { const s = suchNorm(n); return s === qn ? 0 : (s.startsWith(qn + ',') || s.startsWith(qn + ' ')) ? 0.5 : s.startsWith(qn) ? 1 : new RegExp('(^|[^a-z])' + qn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(s) ? 2 : 3; };
-  const zt = K.zutaten.filter(z => (suchNorm(z.name).includes(qn) || (z.aliases || []).some(a => suchNorm(a).includes(qn))) && Object.keys(z.bls || {}).length)
-    .sort((a, b) => rang(a.name) - rang(b.name) || a.name.length - b.name.length).slice(0, 8);
-  const eg = (D.lebensmittel || []).filter(l => suchNorm(l.name + ' ' + (l.marke || '') + ' ' + (l.gtin || '')).includes(qn)).sort((a, b) => rang(a.name) - rang(b.name)).slice(0, 6);
-  const rz = K.rezepte.filter(r => suchNorm(r.titel).includes(qn)).sort((a, b) => rang(a.titel) - rang(b.titel)).slice(0, 5);
-  const mz = (D.mahlzeiten || []).filter(m => suchNorm(m.name).includes(qn)).slice(0, 4);
-  if (!rz.length && !zt.length && !eg.length && !mz.length) {
-    // Verwandte allgemeine Einträge nur als Hinweis anbieten – keine automatische Gleichsetzung
+  const qn = suchNorm(q).replace(/\s+/g, ' ').trim();
+  const roh = q.replace(/\s+/g, ' ').trim(); const rang = n => suchBewertung(n, [], qn, roh);
+  const bewertet = K.zutaten.filter(z => Object.keys(z.bls || {}).length).map(z => [z, suchBewertung(z.name, z.aliases, qn, roh)]).filter(([, p]) => p < 99);
+  const stark = bewertet.some(([, p]) => p < 3);
+  const zt = bewertet.filter(([, p]) => !stark || p < 3.5).sort((a, b) => a[1] - b[1] || a[0].name.length - b[0].name.length).slice(0, 8).map(([z]) => z);
+  const eg = (D.lebensmittel || []).map(l => [l, suchBewertung(l.name + (l.marke ? ' ' + l.marke : ''), [l.gtin || ''], qn, roh)]).filter(([, p]) => p < 99).sort((a, b) => a[1] - b[1]).slice(0, 6).map(([l]) => l);
+  const rz = K.rezepte.map(r => [r, rang(r.titel)]).filter(([, p]) => p < 99).sort((a, b) => a[1] - b[1]).slice(0, 5).map(([r]) => r);
+  const mz = (D.mahlzeiten || []).filter(m => rang(m.name) < 99).slice(0, 4);
+  if (!zt.length && !eg.length && !mz.length) {
+    // Verwandte allgemeine Einträge nur als Hinweis anbieten – keine automatische Gleichsetzung; Tippfehler nur als Rückfrage
     const verw = (TB_VERWANDT[qn] || []).map(n => K.zutaten.find(z => z.name === n && Object.keys(z.bls || {}).length)).filter(Boolean);
-    return `<div class="hinweis klein"><b>Kein allgemeiner Eintrag zu „${esc(tbSuche.trim())}“.</b>${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
-      <br>Genauer: <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a> – dort auch Barcode-Abfrage bei Open Food Facts. Oder unten einen freien Eintrag machen.</div>`;
+    const tipp = verw.length ? [] : tippVorschlaege(qn);
+    return `<div class="hinweis klein"><b>Kein Lebensmittel „${esc(tbSuche.trim())}“ gefunden.</b>${tipp.length ? `<br>Meintest du: ${tipp.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
+      <br>Genauer: <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a> – dort auch Barcode-Abfrage bei Open Food Facts. Oder unten einen freien Eintrag machen.</div>`
+      + (rz.length ? `<h4 class="tg-titel">Rezepte mit „${esc(tbSuche.trim())}“</h4><ul class="eintraege treffer">${rz.map(r => `<li><span class="tz-name"><b>${esc(r.titel)}</b><br><span class="leise klein">Rezept</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">${ico('plus', 'klein')} 1 Portion</button></span></li>`).join('')}</ul>` : '');
   }
   const gruppe = (titel, inhalt) => inhalt ? `<h4 class="tg-titel">${titel}</h4><ul class="eintraege treffer">${inhalt}</ul>` : '';
   const lmZeile = z => { const c = Object.keys(z.bls)[0]; const sm = startMenge(z); const fl = istFluessig(z); const zust = zustandText(z);
-    return `<li><span class="tz-name"><b>${esc(z.name)}</b>${zust ? ` <span class="chip">${esc(zust)}</span>` : ''}<br><span class="leise klein">allgemeiner Wert (${/^USDA-/.test(c) ? 'USDA' : 'BLS'}) · ${zahlDE(z.bls[c].werte.kcal)} kcal/100 g${fl ? (z.dichte ? ` · ${zahlDE(z.dichte, 2)} g/ml` : ' · ml ≈ g (Näherung)') : ''}</span></span>
+    return `<li><span class="tz-name"><b>${esc(z.name)}</b>${zust ? ` <span class="chip">${esc(zust)}</span>` : ''}${z.wert_hinweis ? ' <span class="chip warn">Näherung</span>' : ''}<br><span class="leise klein">allgemeiner Wert (${/^USDA-/.test(c) ? 'USDA' : 'BLS'}) · ${zahlDE(z.bls[c].werte.kcal)} kcal/100 g${fl ? (z.dichte ? ` · ${zahlDE(z.dichte, 2)} g/ml` : ' · ml ≈ g (Näherung)') : ''}${z.wert_hinweis ? `<br>${esc(z.wert_hinweis)}` : ''}</span></span>
       <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge ${esc(z.name)}</span><input type="number" min="1" value="${sm.m}" data-gramm="${esc(z.id)}" inputmode="decimal"></label>${fl ? `<select data-einheit="${esc(z.id)}" aria-label="Einheit"><option value="ml" ${sm.e === 'ml' ? 'selected' : ''}>ml</option><option value="g" ${sm.e === 'g' ? 'selected' : ''}>g</option></select>` : '<span class="einh">g</span>'}
       <button class="haupt klein" data-a="tb-lm" data-v="${esc(z.id)}">${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="tb-korb-add" data-t="lm" data-v="${esc(z.id)}">+ Liste</button></span></li>`; };
   const egZeile = l => `<li><span class="tz-name"><b>${esc(l.name)}</b>${l.marke ? ' · ' + esc(l.marke) : ''}<br><span class="leise klein">eigenes Produkt · ${l.naehr.kcal != null ? zahlDE(l.naehr.kcal) + ' kcal/100 ' + (l.bezug === '100ml' ? 'ml' : 'g') : 'kcal unbekannt'}</span></span>
