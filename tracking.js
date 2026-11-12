@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121956 */
+/* Fitomat-Build 202611122028 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -324,10 +324,12 @@ function offUebernehmen() {
    Ausgewählte Produkte werden privat in „Eigene Produkte“ gespeichert (mit Quelle) und nie zurückgesendet oder veröffentlicht. */
 const datumJahr = d => { try { return new Date(d + 'T12:00:00').toLocaleDateString('de-DE'); } catch (e) { return d; } };
 const OFF_FELDER = 'code,product_name,product_name_de,generic_name_de,brands,quantity,product_quantity,product_quantity_unit,serving_quantity,serving_size,nutrition_data_per,nutrition_data_prepared_per,nutriments,last_modified_t,allergens_tags,ingredients_text_de,countries_tags';
-let offOnline = { q: '', status: 'leer', treffer: [], fehler: '', seq: 0, ctrl: null, timer: null, cache: false };
+/* Zustände: leer · bereit (Namenssuche wartet auf Knopf) · laedt · ok · fehler (mit Art) · limit (eigene Bremse) · pause (Sperre nach Ablehnung) */
+let offOnline = { q: '', status: 'leer', treffer: [], fehler: '', art: '', seq: 0, ctrl: null, timer: null, cache: false, host: 0, sperreBis: { suche: 0, code: 0 }, alt: null };
 const offAufrufe = { suche: [], code: [] };
 const offCacheName = () => 'kochschule.off.v1.' + PROFIL;   // erst zur Laufzeit (PROFIL kommt aus app.js)
-function offCache(key, wert) { const OFF_CACHE = offCacheName(); try { const c = JSON.parse(localStorage.getItem(OFF_CACHE) || '{}'); if (wert === undefined) { const e = c[key]; return e && Date.now() - e.t < 864e5 ? e.d : null; }
+// frisch = jünger als 24 h; alt = beliebiges Alter (nur als gekennzeichneter Ausweg, wenn Open Food Facts nicht antwortet)
+function offCache(key, wert, alt) { const OFF_CACHE = offCacheName(); try { const c = JSON.parse(localStorage.getItem(OFF_CACHE) || '{}'); if (wert === undefined) { const e = c[key]; if (alt) return e ? { d: e.d, t: e.t } : null; return e && Date.now() - e.t < 864e5 ? e.d : null; }
   c[key] = { t: Date.now(), d: wert }; Object.keys(c).sort((a, b) => c[b].t - c[a].t).slice(40).forEach(k => delete c[k]); localStorage.setItem(OFF_CACHE, JSON.stringify(c)); } catch (e) { return null; } }
 const istBarcode = q => /^\d{8}$|^\d{12,14}$/.test(q);
 // OFF-Datensatz → einheitliches Produkt; Auffälligkeiten werden benannt, nie stillschweigend „repariert“
@@ -347,52 +349,77 @@ function offNormalisieren(p) {
     de: arr(p.countries_tags).includes('en:germany'),   // laut OFF in Deutschland verkauft (Community-Angabe)
     allergene: arr(p.allergens_tags).map(t => OFF_ALLERGENE[t]).filter(Boolean), zutaten: p.ingredients_text_de || '' };
 }
+/* Barcode: automatisch (eine exakte, günstige Abfrage). Name: nur per Knopf – Open Food Facts drosselt die Namenssuche stark
+   (Grenze je Internetanschluss, Antwort dann 503 ohne CORS-Freigabe → im Browser nur „Failed to fetch“). Keine automatischen Wiederholungen. */
 function offOnlineSuche(q, sofort) {
   clearTimeout(offOnline.timer); const qn = String(q || '').trim(); const seq = ++offOnline.seq;
   if (offOnline.ctrl) { try { offOnline.ctrl.abort(); } catch (e) { /* */ } offOnline.ctrl = null; }   // veraltete Anfrage abbrechen
-  offOnline.q = qn; offOnline.treffer = []; offOnline.fehler = '';
+  offOnline.q = qn; offOnline.treffer = []; offOnline.fehler = ''; offOnline.art = ''; offOnline.alt = null; offOnline.cache = false;
   if (qn.length < 3 && !istBarcode(qn)) { offOnline.status = 'leer'; offOnlineZeichnen(); return; }
   const code = istBarcode(qn); const key = (code ? 'c:' : 'q:') + suchNorm(qn); const c = offCache(key);
-  if (c) { offOnline.status = 'ok'; offOnline.treffer = c; offOnline.cache = true; offOnlineZeichnen(); return; }
-  if (!navigator.onLine) { offOnline.status = 'offline'; offOnlineZeichnen(); return; }
-  offOnline.status = 'wartet'; offOnlineZeichnen();
-  offOnline.timer = setTimeout(() => offOnlineAbfrage(qn, key, code, seq), sofort ? 0 : code ? 300 : 1300);
+  if (c) { offOnline.status = 'ok'; offOnline.treffer = c; offOnline.cache = true; offOnlineZeichnen(); return; }   // frischer Zwischenspeicher: keine Anfrage
+  if (!code && !sofort) { offOnline.status = 'bereit'; offOnlineZeichnen(); return; }   // Namenssuche wartet auf den Knopf
+  if (!navigator.onLine) { offOnlineFehler('offline', '', key); return; }
+  offOnline.timer = setTimeout(() => offOnlineAbfrage(qn, key, code, seq), sofort ? 0 : 400);
+}
+const OFF_PRUEF_BARCODE = '4337256501569';   // öffentlicher Barcode (ja! Magerquark) nur für die Erreichbarkeitsprüfung
+// Bei „Failed to fetch“ genau EINE Prüfung: Ist die Barcode-Schnittstelle erreichbar? Ist das Internet erreichbar (eigene Adresse, 404 erwartet)?
+async function offDiagnose(code) {
+  const kurz = async (url, opt) => { const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 6000); try { const r = await fetch(url, Object.assign({ signal: ctrl.signal, cache: 'no-store' }, opt || {})); clearTimeout(to); return r; } catch (e) { clearTimeout(to); return null; } };
+  if (!code) { const r = await kurz(`https://world.openfoodfacts.org/api/v2/product/${OFF_PRUEF_BARCODE}.json?fields=code`); if (r && r.ok) return 'abgelehnt'; }
+  const n = await kurz(new URL('netzpruefung-' + Date.now() + '.txt', location.href).href); return n && n.status === 404 ? 'blockiert' : 'netz';
+}
+function offOnlineFehler(art, detail, key) {
+  offOnline.ctrl = null; offOnline.status = 'fehler'; offOnline.art = art; offOnline.fehler = detail || '';
+  const a = offCache(key, undefined, true); offOnline.alt = a && a.d && a.d.length ? a : null;   // älterer gespeicherter Stand als Ausweg
+  if (['abgelehnt', 'grenze', 'server'].includes(art)) { const typ = key.startsWith('c:') ? 'code' : 'suche'; offOnline.sperreBis[typ] = Date.now() + (typ === 'suche' ? 60000 : 20000); }
+  offOnlineZeichnen();
 }
 async function offOnlineAbfrage(qn, key, code, seq) {
-  const liste = offAufrufe[code ? 'code' : 'suche']; const jetzt = Date.now(); while (liste.length && jetzt - liste[0] > 60000) liste.shift();
-  /* unter der OFF-Grenze bleiben (Text 10/min, Barcode 15/min), auch wenn ein zweiter Server versucht wird */
-  if (liste.length >= (code ? 12 : 5)) { offOnline.status = 'limit'; offOnline.warte = Math.ceil((60000 - (jetzt - liste[0])) / 1000); offOnlineZeichnen(); return; }
+  const typ = code ? 'code' : 'suche'; const jetzt = Date.now();
+  if (offOnline.sperreBis[typ] > jetzt) { offOnline.status = 'pause'; offOnline.warte = Math.ceil((offOnline.sperreBis[typ] - jetzt) / 1000); offOnlineZeichnen(); return; }
+  const liste = offAufrufe[typ]; while (liste.length && jetzt - liste[0] > 60000) liste.shift();
+  if (liste.length >= (code ? 12 : 4)) { offOnline.status = 'limit'; offOnline.warte = Math.ceil((60000 - (jetzt - liste[0])) / 1000); offOnlineZeichnen(); return; }   // eigene Bremse, deutlich unter der OFF-Grenze
   liste.push(jetzt); offOnline.status = 'laedt'; offOnlineZeichnen();
-  const urls = code ? [`https://world.openfoodfacts.org/api/v2/product/${qn}.json?fields=${OFF_FELDER}`]
-    : [`https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`, `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`];
-  let fehler = ''; const start = Date.now();
-  for (let i = 0; i < urls.length; i++) {
-    if (i) { if (Date.now() - start > 6000) break; await new Promise(r => setTimeout(r, 2500)); if (seq !== offOnline.seq) return; }   // zweiter Server nur nach schnellem Fehlschlag
-    const ctrl = new AbortController(); offOnline.ctrl = ctrl; const to = setTimeout(() => ctrl.abort(), 12000);
-    try { const r = await fetch(urls[i], { signal: ctrl.signal }); clearTimeout(to); if (seq !== offOnline.seq) return;   // alte Antwort darf nichts überschreiben
-      if (code && r.status === 404) { offOnline.status = 'ok'; offOnline.treffer = []; offCache(key, []); offOnlineZeichnen(); return; }
-      if (!r.ok) throw new Error(r.status === 503 ? 'Open Food Facts ist gerade überlastet (503)' : r.status === 429 ? 'zu viele Anfragen (429)' : 'HTTP ' + r.status);
-      const j = await r.json(); if (seq !== offOnline.seq) return;
-      const roh = code ? (j.status === 1 && j.product ? [Object.assign({ code: qn }, j.product)] : []) : arr(j.products);
-      const gesehen = new Set(); const treffer = roh.map(offNormalisieren).filter(p => p.name && p.code && !gesehen.has(p.code) && gesehen.add(p.code))   // Dubletten nur über den Barcode
-        .map((p, i) => [p, i]).sort((a, b) => (b[0].de - a[0].de) || a[1] - b[1]).map(x => x[0]);   // in Deutschland verkaufte zuerst, sonst Reihenfolge von OFF
-      offOnline.ctrl = null; offOnline.status = 'ok'; offOnline.treffer = treffer; offOnline.cache = false; offCache(key, treffer); offOnlineZeichnen(); return;
-    } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return; fehler = e.name === 'AbortError' ? 'keine Antwort nach 12 s' : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'keine Verbindung – Open Food Facts ist gerade überlastet oder bremst kurz zu viele Suchen; meist klappt es nach 1–2 Minuten wieder' : e.message;
-      if (e.name === 'AbortError') break; }   // nach Zeitüberschreitung keinen zweiten Server probieren – Wartezeit bleibt begrenzt
-  }
-  offOnline.ctrl = null; offOnline.status = 'fehler'; offOnline.fehler = fehler; offOnlineZeichnen();
+  const host = ['de', 'world'][offOnline.host % 2];   // beim manuellen Wiederholen abwechselnd anderer Server – nie automatisch
+  const url = code ? `https://world.openfoodfacts.org/api/v2/product/${qn}.json?fields=${OFF_FELDER}` : `https://${host}.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(qn)}&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FELDER}`;
+  const ctrl = new AbortController(); offOnline.ctrl = ctrl; const to = setTimeout(() => ctrl.abort(), 12000);
+  try { const r = await fetch(url, { signal: ctrl.signal }); clearTimeout(to); if (seq !== offOnline.seq) return;   // alte Antwort darf nichts überschreiben
+    if (code && r.status === 404) { offOnline.status = 'ok'; offOnline.treffer = []; offCache(key, []); offOnlineZeichnen(); return; }
+    if (r.status === 429) { offOnlineFehler('grenze', '429', key); return; }
+    if (!r.ok) { offOnlineFehler('server', String(r.status), key); return; }
+    const j = await r.json(); if (seq !== offOnline.seq) return;
+    const roh = code ? (j.status === 1 && j.product ? [Object.assign({ code: qn }, j.product)] : []) : arr(j.products);
+    const gesehen = new Set(); const treffer = roh.map(offNormalisieren).filter(p => p.name && p.code && !gesehen.has(p.code) && gesehen.add(p.code))   // Dubletten nur über den Barcode
+      .map((p, i) => [p, i]).sort((a, b) => (b[0].de - a[0].de) || a[1] - b[1]).map(x => x[0]);   // in Deutschland verkaufte zuerst, sonst Reihenfolge von OFF
+    offOnline.ctrl = null; offOnline.status = 'ok'; offOnline.treffer = treffer; offOnline.cache = false; offCache(key, treffer); offOnlineZeichnen();
+  } catch (e) { clearTimeout(to); if (seq !== offOnline.seq) return;
+    if (e.name === 'AbortError') { offOnlineFehler('zeit', '', key); return; }
+    if (!navigator.onLine) { offOnlineFehler('offline', '', key); return; }
+    offOnline.status = 'laedt'; offOnlineZeichnen(); const art = await offDiagnose(code); if (seq !== offOnline.seq) return; offOnlineFehler(art, e.message, key); }
 }
+const OFF_FEHLER_TEXT = {
+  offline: ['Kein Internet', 'Dieses Gerät ist gerade offline.'],
+  netz: ['Keine Internetverbindung erkennbar', 'Auch die App-Adresse selbst ist gerade nicht erreichbar – Netz bzw. WLAN prüfen.'],
+  zeit: ['Keine Antwort nach 12 Sekunden', 'Open Food Facts hat zu langsam geantwortet – langsame Verbindung oder überlasteter Server.'],
+  abgelehnt: ['Open Food Facts lehnt die Namenssuche gerade ab', 'Die Barcode-Abfrage funktioniert, nur die Suche nach Namen nicht. Das passiert bei Überlastung oder wenn die Suchgrenze erreicht ist. Die Grenze gilt je Internetanschluss: Wer sich ein Netz teilt – gleiches WLAN, manche Mobilfunknetze, iCloud Privat-Relay –, teilt sie auch. Meist geht es nach 1–2 Minuten wieder.'],
+  grenze: ['Zu viele Anfragen', 'Open Food Facts meldet, dass gerade zu viele Anfragen von diesem Internetanschluss kommen (429). Meist geht es nach 1–2 Minuten wieder.'],
+  server: ['Serverfehler bei Open Food Facts', 'Open Food Facts hat einen Fehler gemeldet. Das liegt nicht an deinem Gerät.'],
+  blockiert: ['Open Food Facts ist von diesem Gerät aus nicht erreichbar', 'Das Internet funktioniert, aber Open Food Facts antwortet nicht. Mögliche Gründe: eine Störung oder Drosselung bei Open Food Facts, ein Inhalts- bzw. Werbeblocker oder ein Firmen-/Schul-WLAN, das die Seite sperrt.']
+};
 function offOnlineHtml() {
   const o = offOnline; if (o.status === 'leer') return '';
-  const kopf = `<h4 class="tg-titel">Online: Open Food Facts${o.cache ? ' <span class="leise">(zwischengespeichert)</span>' : ''}</h4>`;
+  const kopf = `<h4 class="tg-titel">Online: Open Food Facts${typeof o.cache === 'string' ? ` <span class="leise">(gespeicherter Stand vom ${esc(o.cache)} – kann veraltet sein)</span>` : o.cache ? ' <span class="leise">(zwischengespeichert)</span>' : ''}</h4>`;
   const fuss = `<p class="leise klein">Produktdaten aus <a href="https://de.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>), von Freiwilligen erfasst – kein garantiert aktuelles Etikett. Gesendet wird nur dein Suchbegriff.</p>`;
   // Zustände klar getrennt: wartet · lädt · Treffer · ohne Treffer · Fehler · offline · Grenze erreicht – nie „gibt es nicht“, solange gesucht wird
   const anlegen = `<p class="klein"><button class="klein" data-a="produkt-neu-vorbelegt">${istBarcode(o.q) ? `Produkt mit Barcode ${esc(o.q)} anlegen` : `Produkt „${esc(o.q)}“ selbst anlegen`}</button> <span class="leise">Werte vom Etikett, optional mit Foto als Beleg.</span></p>`;
-  if (o.status === 'wartet') return kopf + `<p class="leise klein" role="status">Online-Suche startet nach einer kurzen Tipp-Pause … <button class="klein still" data-a="off-jetzt">jetzt suchen</button></p>`;
-  if (o.status === 'laedt') return kopf + `<p class="leise klein" role="status"><span class="lade-punkt" aria-hidden="true"></span> Suche läuft bei Open Food Facts … (höchstens etwa ${istBarcode(o.q) ? 12 : 20} s)</p>`;
-  if (o.status === 'offline') return kopf + `<p class="hinweis klein" role="status"><b>Offline</b> – die Online-Suche braucht Internet. Gespeicherte eigene Produkte und die App-Datenbank funktionieren weiter (oben). <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>` + anlegen;
-  if (o.status === 'limit') return kopf + `<p class="hinweis klein" role="status"><b>Abfragegrenze erreicht</b> – Open Food Facts erlaubt nur wenige Suchen pro Minute. In etwa ${o.warte} s geht es wieder. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>`;
-  if (o.status === 'fehler') return kopf + `<p class="hinweis warn klein" role="status"><b>Online-Suche fehlgeschlagen:</b> ${esc(o.fehler)}. Das heißt nicht, dass es das Produkt nicht gibt. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>${istBarcode(o.q) ? '' : '<p class="leise klein">Die Barcode-Suche ist meist zuverlässiger – Nummer eingeben oder scannen.</p>'}` + anlegen;
+  if (o.status === 'bereit') return kopf + `<p class="klein" role="status"><button class="klein" data-a="off-jetzt">${ico('suche', 'klein')} „${esc(o.q)}“ bei Open Food Facts suchen</button></p><p class="leise klein">Online-Namenssuche nur auf Knopfdruck – Open Food Facts erlaubt nur wenige Suchen pro Minute. Barcodes werden automatisch gesucht und sind genauer.</p>`;
+  if (o.status === 'laedt') return kopf + `<p class="leise klein" role="status"><span class="lade-punkt" aria-hidden="true"></span> Suche läuft bei Open Food Facts … (höchstens etwa 15 s)</p>`;
+  const altHtml = o.alt ? `<div class="hinweis klein"><b>Gespeicherter Stand vom ${esc(new Date(o.alt.t).toLocaleDateString('de-DE'))}</b> (${o.alt.d.length} Treffer zu „${esc(o.q)}“) – kann veraltet sein. <button class="klein" data-a="off-alt">Anzeigen</button></div>` : '';
+  const auswege = `<p class="leise klein">Die Suche in der App-Datenbank und deinen Produkten oben funktioniert weiter.${istBarcode(o.q) ? '' : ' Genauer und weniger gebremst: Barcode eingeben oder 📷 scannen.'}</p>` + altHtml + anlegen;
+  if (o.status === 'limit' || o.status === 'pause') return kopf + `<p class="hinweis klein" role="status"><b>${o.status === 'limit' ? 'Kurz warten' : 'Kurze Pause nach der Ablehnung'}</b> – damit die Grenze von Open Food Facts nicht weiter überschritten wird, sucht die App erst in etwa ${o.warte} s wieder. <button class="klein" data-a="off-jetzt">Erneut versuchen</button></p>` + auswege;
+  if (o.status === 'fehler') { const [t, txt] = OFF_FEHLER_TEXT[o.art] || ['Online-Suche fehlgeschlagen', o.fehler]; const sperre = Math.max(0, Math.ceil((o.sperreBis[istBarcode(o.q) ? 'code' : 'suche'] - Date.now()) / 1000));
+    return kopf + `<div class="hinweis warn klein" role="status"><b>${esc(t)}.</b> ${esc(txt)}${o.art === 'server' && o.fehler ? ` (HTTP ${esc(o.fehler)})` : ''}<br>Das heißt nicht, dass es das Produkt nicht gibt. <button class="klein" data-a="off-jetzt">${sperre ? `Erneut versuchen (frühestens in ${sperre} s)` : 'Erneut versuchen'}</button></div>` + auswege; }
   const lokaleCodes = new Set([...(D.lebensmittel || []).map(l => l.gtin), ...(K.produkte || []).map(p => p.gtin)].filter(Boolean));
   const l = o.treffer.filter(p => !lokaleCodes.has(p.code)); const doppelt = o.treffer.length - l.length;
   if (!o.treffer.length) return kopf + `<p class="klein" role="status"><b>Online kein Treffer</b> zu „${esc(o.q)}“.${istBarcode(o.q) ? ' Diese Nummer ist bei Open Food Facts nicht erfasst.' : ' Tipp: Marke und Sorte kombinieren (z. B. „Milbona Skyr“) oder den Barcode verwenden.'}</p>` + anlegen + fuss;
@@ -512,7 +539,9 @@ document.addEventListener('click', ev => {
       else if (t === 'marke') { const p = PRODUKT(v); if (p) k = { name: markeName(p), menge: eingabe > 0 ? eingabe : 100, einheit: p.bezug === '100ml' ? 'ml' : 'g' }; }
       else { const l = (D.lebensmittel || []).find(x => x.id === v); if (l) k = { name: l.name, menge: eingabe > 0 ? eingabe : (l.portion || 100), einheit: l.bezug === '100ml' ? 'ml' : 'g' }; }
       if (!k) return; tbKorb.push(Object.assign({ typ: t, id: v }, k)); korbNeuZeichnen(); toast(`${k.name} auf der Sammelliste`); break; }
-    case 'off-jetzt': offOnlineSuche(tbSuche, true); break;
+    case 'off-jetzt': { if (offOnline.status === 'fehler' && !istBarcode(String(tbSuche || '').trim())) offOnline.host++;   // manuell: anderer Server
+      offOnlineSuche(tbSuche, true); break; }
+    case 'off-alt': { const a = offOnline.alt; if (!a) break; offOnline.status = 'ok'; offOnline.treffer = a.d; offOnline.cache = new Date(a.t).toLocaleDateString('de-DE'); offOnlineZeichnen(); break; }
     case 'tr-art-bestaetigen': { if (!['kraft', 'ausdauer'].includes(v)) break; const tr = trainingAngaben(D.einstellungen.person || {});
       aendere(v === 'kraft' ? 'Als Krafttraining gespeichert – Rückgängig möglich' : 'Als Ausdauer gespeichert – Rückgängig möglich', d => { const pp = Object.assign({}, d.einstellungen.person); pp.training_art = v; pp.training_einheiten = tr.n; pp.training_minuten = tr.min || 60; if (v === 'kraft') pp.kraft = true; d.einstellungen.person = pp; }, { mitUndo: true }); break; }
     case 'off-eintragen': case 'off-liste': case 'off-merken': { const p = offOnline.treffer.find(x => x.code === v); if (!p) return; const inp = $(`[data-gramm="off-${v}"]`); const menge = Number(String((inp || {}).value || '').replace(',', '.')) || p.portion || 100; let l;

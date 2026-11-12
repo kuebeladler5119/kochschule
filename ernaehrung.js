@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611121956 */
+/* Fitomat-Build 202611122028 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -492,7 +492,7 @@ function tbTreffer() {
     const tipp = verw.length ? [] : tippVorschlaege(qn);
     // Nur über den lokalen Bestand sprechen – ob es das Produkt online gibt, zeigt der Online-Bereich darunter
     const online = qn.length >= 3 || istBarcode(qn);
-    return `<div class="hinweis klein"><b>In der App-Datenbank und deinen Produkten nichts zu „${esc(tbSuche.trim())}“.</b>${online ? ' Die Online-Suche läuft darunter.' : ''}${tipp.length ? `<br>Meintest du: ${tipp.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
+    return `<div class="hinweis klein"><b>In der App-Datenbank und deinen Produkten nichts zu „${esc(tbSuche.trim())}“.</b>${online ? (istBarcode(qn) ? ' Die Barcode-Abfrage läuft darunter.' : ' Darunter kannst du bei Open Food Facts suchen.') : ''}${tipp.length ? `<br>Meintest du: ${tipp.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}${verw.length ? `<br>Ähnlich, aber nicht gleich (Werte weichen ab): ${verw.map(z => `<button class="klein still" data-a="tb-suche-setzen" data-v="${esc(z.name)}">${esc(z.name)}</button>`).join(' ')}` : ''}
       ${online ? '' : '<br>Für die Online-Suche mindestens 3 Zeichen oder einen Barcode eingeben. Oder <a href="#/produkte/neu">Produkt mit den Werten vom Etikett anlegen</a>.'}</div>`
       + (rz.length ? `<h4 class="tg-titel">Rezepte mit „${esc(tbSuche.trim())}“</h4><ul class="eintraege treffer">${rz.map(r => `<li><span class="tz-name"><b>${esc(r.titel)}</b><br><span class="leise klein">Rezept</span></span><span class="tz-aktion"><button class="haupt klein" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">${ico('plus', 'klein')} 1 Portion</button></span></li>`).join('')}</ul>` : '');
   }
@@ -545,7 +545,8 @@ function tbFormulare() {
    <p class="leise klein">Bleibt nur in deinem Profil auf diesem Gerät – nichts davon gelangt in den öffentlichen Katalog. Spätere Änderungen verändern bereits gebuchte Einträge nicht.</p><button class="haupt klein" type="submit">Speichern</button></form>`;
 }
 vTagebuch2.danach = () => {
-  const s = $('#tb-suche'); if (s) s.addEventListener('input', () => { tbSuche = s.value; $('#tb-treffer').innerHTML = tbTreffer(); offOnlineSuche(s.value); });
+  const s = $('#tb-suche'); if (s) { s.addEventListener('input', () => { tbSuche = s.value; $('#tb-treffer').innerHTML = tbTreffer(); offOnlineSuche(s.value); });
+    s.addEventListener('keydown', ev => { if (ev.key === 'Enter' && offOnline.status === 'bereit') { ev.preventDefault(); offOnlineSuche(s.value, true); } }); }   // Eingabetaste = online suchen
   if (tbSuche && offOnline.q !== tbSuche.trim()) offOnlineSuche(tbSuche);
   const fr = $('#tb-frei'); if (fr) fr.addEventListener('submit', ev => { ev.preventDefault(); const n = k => fr[k].value === '' ? null : Number(fr[k].value);
     aendere('Eingetragen', d => d.tagebuch.push({ id: uid('mz'), datum: tbDatum, zeit: new Date().toTimeString().slice(0, 5), quelle: 'frei', mahlzeit: neuerEintragSlot(), titel: fr.titel.value, portionen: 1, einheit: 'Portion', naehr: { kcal: n('kcal'), protein: n('protein'), kh: n('kh'), fett: n('fett'), ballaststoffe: null }, mikro: null, status: 'unvollstaendig' })); });
