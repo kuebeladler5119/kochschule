@@ -120,7 +120,7 @@ function trRoutineHtml(id) {
   ${r.beispiel ? '<p class="hinweis klein">Allgemeines Beispiel, kein persönlicher Trainingsplan. 3 Sätze à 8–12 Wiederholungen entsprechen der allgemeinen Empfehlung für Einsteiger (ACSM); Übungen, Sätze und Pausen bitte an Erfahrung, Geräte und Beschwerden anpassen.</p>' : ''}
   ${r.historisch ? '<p class="hinweis klein"><b>Historische Vorlage:</b> unverändert aus deinen früheren Angaben übernommen. Referenzgewichte sind alte Geräteangaben, keine aktuell geschafften Leistungen. Für Änderungen am besten den Plan als eigene Variante kopieren – die Vorlage bleibt dann erhalten.</p>' : ''}
   <ol class="tr-liste">${r.uebungen.map((x, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between"><b><a href="#/training/uebung/${esc(x.uebung)}">${esc(ueb(x.uebung).name)}</a>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}</b>
-      <span><button class="klein still" data-a="tr-r-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="klein still" data-a="tr-r-runter" data-v="${i}" ${i < r.uebungen.length - 1 ? '' : 'disabled'} aria-label="nach unten">↓</button><button class="klein still" data-a="tr-r-weg" data-v="${i}">entfernen</button></span></div>
+      <span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}<button class="klein still" data-a="tr-r-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="klein still" data-a="tr-r-runter" data-v="${i}" ${i < r.uebungen.length - 1 ? '' : 'disabled'} aria-label="nach unten">↓</button><button class="klein still" data-a="tr-r-weg" data-v="${i}">entfernen</button></span></div>
     <div class="zeile">${[['aufwaerm', 'Aufwärmsätze', 0, 5, 1], ['saetze', 'Arbeitssätze', 1, 10, 1], ['wdh_von', 'Wdh. von', 1, 50, 1], ['wdh_bis', 'Wdh. bis', 1, 50, 1], ['pause_s', 'Pause (Sek.)', 0, 600, 15], ['referenz_kg', 'Referenz kg', 0, 500, 0.25], ['schritt_kg', 'Gewichtsschritt kg', 0, 50, 0.25]].map(([k, n, mi, ma, st]) => `<label class="feld"><span>${n}</span><input type="number" inputmode="decimal" min="${mi}" max="${ma}" step="${st}" value="${esc(x[k] ?? '')}" placeholder="${k === 'saetze' && x.saetze_offen ? 'offen' : ''}" data-tr-r-feld="${k}" data-i="${i}" style="width:5.5em"></label>`).join('')}
       <label class="feld"><span>Ziel-RIR</span><input value="${esc(x.ziel_rir ?? '')}" data-tr-r-text="ziel_rir" data-i="${i}" placeholder="z. B. 1–2" style="width:6em"></label>
       <label class="feld" style="flex:1 1 160px"><span>Gerät/Variante</span><input value="${esc(x.variante ?? '')}" data-tr-r-text="variante" data-i="${i}" placeholder="z. B. Kabelturm 1. Stock"></label></div>
@@ -278,7 +278,7 @@ function trEinrichtungHtml() {
     return max >= 4 ? `<p class="hinweis klein"><b>${max} Tage am Stück:</b> möglich – die Vorschläge wechseln die Muskelgruppen von Tag zu Tag (z. B. Ober-/Unterkörper), damit derselbe Muskel nicht an zwei Tagen hintereinander schwer belastet wird. Nachteil: kaum ganze Ruhetage in diesem Block; bei ungewöhnlicher Ermüdung oder Beschwerden darf ein Tag ausfallen oder leichter sein – die nächste Einheit bleibt dann einfach die nächste.</p>` : ''; })()}
   ${n ? `<h2>Vorschläge für ${n} Tage</h2><p class="leise klein">Bei gleichem Wochenvolumen sind die Aufteilungen für Muskelaufbau etwa gleichwertig – entscheidend sind Tage, Zeit und was du durchhältst. Übungen nur aus der geprüften Bibliothek (${(K.uebungen || []).length} Übungen); eigene Übungen kannst du danach ergänzen.</p>
     ${opts.map((o, oi) => `<section class="karte"><h3 style="margin-top:0">${esc(o.name)}</h3><p class="klein">+ ${esc(o.plus)}<br>− ${esc(o.minus)}</p>
-      ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul>${e.uebungen.map(x => `<li>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${x.wdh_von ? x.wdh_von + '–' + x.wdh_bis : 'Zeit'} · Pause ${x.pause_s} s</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
+      ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul class="anl-liste">${e.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${x.wdh_von ? x.wdh_von + '–' + x.wdh_bis : 'Zeit'} · Pause ${x.pause_s} s</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
       <p class="leise klein">Arbeitssätze pro Woche (nur Hauptmuskeln): ${MUSKEL_GRUPPEN.filter(([k]) => o.wochensaetze[k]).map(([k, n2]) => `${n2} ${o.wochensaetze[k]}`).join(' · ') || '–'}</p>
       ${o.fehlend ? `<div class="hinweis warn klein"><b>${o.unbrauchbar ? 'So nicht sinnvoll erfüllbar:' : 'Lücken:'}</b> Mit deiner Ausstattung gibt es in der Bibliothek keine passende Übung für ${esc(o.luecken.map(s => PLATZ_NAME[s] || s).join(', '))}.${o.luecken.some(s => SLOT_GERAET[s]) ? ` Optional möglich mit: ${esc(o.luecken.filter(s => SLOT_GERAET[s]).map(s => SLOT_GERAET[s]).join('; '))} – kein Kauf nötig, nur als Hinweis.` : ''}${o.unbrauchbar ? ' Einzelne Einheiten hätten weniger als 3 Übungen; besser weniger Tage mit Ganzkörper wählen oder Ausstattung ergänzen.' : ''}</div>` : ''}
       ${arr(c.geraete).length && arr(c.geraete).every(g => g === 'koerpergewicht') && c.erfahrung !== 'einsteiger' ? '<p class="leise klein">Grenze reinen Körpergewichtstrainings: Für Fortgeschrittene steigt der Reiz vor allem über schwerere Varianten (einbeinig, langsamere Bewegung, größerer Bewegungsumfang) – nicht nur über immer mehr Wiederholungen. Für manche Muskeln (z. B. Rücken ohne Stange) fehlen dann gute Optionen.</p>' : ''}
@@ -349,20 +349,22 @@ function vMobility(teil, id) {
   <div class="chips-wrap">${chip('ziel', '', 'alle Ziele')}${Object.entries(MOB_ZIEL).map(([k, n]) => chip('ziel', k, n)).join('')}</div>
   <div class="chips-wrap" style="margin-top:6px">${chip('kontext', '', 'jederzeit')}${Object.entries(MOB_KONTEXT).map(([k, n]) => chip('kontext', k, n)).join('')}</div>
   <ul class="eintraege" style="margin-top:10px">${l.sort((a, b) => (fav.includes(b.id) ? 1 : 0) - (fav.includes(a.id) ? 1 : 0)).map(r => `<li><span><b><a href="#/mobility/routine/${esc(r.id)}">${esc(r.name)}</a></b>${fav.includes(r.id) ? ' ★' : ''}${r.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}<br><span class="leise klein">${esc(r.dauer_min)} Min. · ${esc(MOB_ZIEL[r.ziel] || '')} · ${esc(MOB_KONTEXT[r.kontext] || '')} · ${esc(arr(r.bereiche).map(b => MOB_BEREICH[b] || b).join(', '))}</span></span><span><button class="haupt klein" data-a="mob-start" data-v="${esc(r.id)}">Starten</button></span></li>`).join('') || '<li class="leise">Keine Routine für diese Auswahl.</li>'}</ul>
-  <p class="klein"><a href="#/mobility/plan">Eigene Routine nach deinen Angaben zusammenstellen</a></p>`;
+  <p class="klein"><a href="#/mobility/plan">Eigene Routine nach deinen Angaben zusammenstellen</a></p>
+  <details class="karte"><summary><b>Alle Übungen (${MOB().uebungen.length})</b> <span class="leise klein">– mit Anleitung</span></summary>
+    ${Object.entries(MOB_ART).map(([k, n]) => { const l2 = MOB().uebungen.filter(u => u.art === k); return l2.length ? `<h3>${esc(n)}</h3><ul class="anl-liste">${l2.map(u => `<li><span><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a> <span class="leise klein">· ${esc(u.dauer_vorschlag || '')}</span></span>${anleitungsKnopf('mob', u.id, '', true)}</li>`).join('')}</ul>` : ''; }).join('')}</details>`;
 }
 function mobRoutineHtml(id) {
   const r = mobRoutine(id); if (!r) return '<p class="leer">Routine nicht gefunden.</p>'; const fav = arr(mobDaten().favoriten).includes(r.id);
   return `<p class="klein"><a class="knopf still klein" href="#/mobility">${ico('zurueck', 'klein')} Mobility</a></p><h1>${esc(r.name)}</h1>
   <p class="leise klein">${esc(r.dauer_min)} Min. · ${esc(MOB_ZIEL[r.ziel] || '')} · ${esc(MOB_KONTEXT[r.kontext] || '')}</p>
   <div class="knopfreihe"><button class="haupt" data-a="mob-start" data-v="${esc(r.id)}">Routine starten</button><button data-a="mob-fav" data-v="${esc(r.id)}">${fav ? '★ Favorit' : '☆ Als Favorit merken'}</button>${r.quelle === 'eigen' ? `<button class="still" data-a="mob-eigen-weg" data-v="${esc(r.id)}">✕ Löschen</button>` : ''}</div>
-  <ol class="tr-liste">${arr(r.uebungen).map(e => { const [uid2, dauer] = String(e).split('|'); const u = mobUeb(uid2.trim()); return `<li class="karte"><b><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a></b> <span class="chip">${esc(MOB_ART[u.art] || u.art || '')}</span><br><span class="klein">${esc((dauer || u.dauer_vorschlag || '').trim())}</span>${u.intensitaet_hinweis ? `<br><span class="leise klein">${esc(u.intensitaet_hinweis)}</span>` : ''}</li>`; }).join('')}</ol>
+  <ol class="tr-liste">${arr(r.uebungen).map(e => { const [uid2, dauer] = String(e).split('|'); const u = mobUeb(uid2.trim()); return `<li class="karte"><div class="zeile" style="justify-content:space-between;align-items:flex-start"><span><b><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a></b> <span class="chip">${esc(MOB_ART[u.art] || u.art || '')}</span><br><span class="klein">${esc((dauer || u.dauer_vorschlag || '').trim())}</span></span>${anleitungsKnopf('mob', u.id, '', true)}</div>${u.intensitaet_hinweis ? `<span class="leise klein">${esc(u.intensitaet_hinweis)}</span>` : ''}</li>`; }).join('')}</ol>
   ${r.md ? `<details class="abschnitt-zu"><summary>Wofür, Hinweise und Grenzen</summary>${md(String(r.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
   <p class="hinweis klein">Deutliches Ziehen ist in Ordnung, Schmerz nicht. Bei Schmerz, Taubheit oder Kribbeln abbrechen. Bei akuten oder ungeklärten Beschwerden ärztlich oder physiotherapeutisch abklären lassen – eine allgemeine Routine ersetzt das nicht.</p>`;
 }
 function mobUebungHtml(id) {
   const u = mobUeb(id); const q = MOB().quellen || {};
-  return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><h1>${esc(u.name)}</h1>
+  return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div>
   <p class="leise klein">${esc(MOB_ART[u.art] || '')} · ${esc(arr(u.bereiche).map(b => MOB_BEREICH[b] || b).join(', '))} · ${esc(u.dauer_vorschlag || '')} · Hilfsmittel: ${esc(arr(u.hilfsmittel).join(', ') || 'keins')}</p>
   ${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''}
   ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}${u.demo_link_geprueft ? '; geprüft ' + esc(u.demo_link_geprueft) : ''})</span></p>` : ''}
@@ -375,9 +377,10 @@ function mobLaufHtml() {
   const l = arr(r.uebungen); const i = Math.min(mobLauf.i, l.length - 1); const [uid2, dauer] = String(l[i]).split('|'); const u = mobUeb(uid2.trim());
   const sek = (String(dauer || u.dauer_vorschlag).match(/(\d+)\s*(?:–\s*\d+\s*)?s\b/) || [])[1];
   return `<p class="leise klein">${esc(r.name)} · Übung ${i + 1} von ${l.length}</p><div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / l.length)}%"></i></div>
-  <h1>${esc(u.name)}</h1><p class="klein"><b>${esc((dauer || u.dauer_vorschlag || '').trim())}</b> · ${esc(MOB_ART[u.art] || '')}</p>
+  <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div><p class="klein"><b>${esc((dauer || u.dauer_vorschlag || '').trim())}</b> · ${esc(MOB_ART[u.art] || '')}</p>
   ${sek ? `<div class="knopfreihe"><button data-a="timer" data-min="${Number(sek) / 60}" data-name="${esc(u.name)}">⏱ ${sek} s</button></div>` : ''}
-  ${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''}
+  ${(() => { const b = arr(u.anleitung)[0]; return b ? `<section class="karte"><p><b>Start:</b> ${inline(String(b.start || ''))}</p><ol class="anl-schritte">${arr(b.schritte).map(x => `<li>${inline(String(x))}</li>`).join('')}</ol>${b.intensitaet ? `<p class="klein"><b>Intensität:</b> ${inline(String(b.intensitaet))}</p>` : ''}<p class="leise klein">Fehler, Kontrolle, Varianten und „Dehngefühl oder Schmerz?“ unter „ⓘ Anleitung“.</p></section>` : u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''; })()}
+  <p class="hinweis warn klein">Deutliches Ziehen ist in Ordnung, Schmerz nicht: bei Schmerz, Taubheit oder Kribbeln diese Übung beenden.</p>
   <div style="height:80px"></div>
   <div class="kochnav"><button data-a="mob-schritt" data-v="-1" ${i === 0 ? 'disabled' : ''}>← Zurück</button>${i === l.length - 1 ? '<button class="haupt" data-a="mob-fertig">Fertig ✓</button>' : '<button class="haupt" data-a="mob-schritt" data-v="1">Weiter →</button>'}</div>
   <p><button class="still klein" data-a="mob-abbruch">✕ Routine abbrechen</button></p>`;
@@ -414,7 +417,7 @@ function mobPlanHtml() {
     <label class="feld"><span>Einschränkungen oder Beschwerden (nur Notiz)</span><input name="beschwerden" value="${esc(c.beschwerden || '')}"></label>
     <button class="haupt" type="submit">Speichern und Vorschlag zeigen</button></form>
   ${c.beschwerden ? '<p class="hinweis warn klein">Du hast Beschwerden notiert: Die Routine ist allgemein und berücksichtigt sie nicht medizinisch. Bei akuten oder ungeklärten Beschwerden zuerst abklären lassen; Übungen, die schmerzen, weglassen.</p>' : ''}
-  ${v ? `<section class="karte"><h2 style="margin-top:0">Vorschlag · ca. ${v.minuten} Min.</h2>${v.uebungen.length ? `<ol>${v.uebungen.map(u => `<li><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a> <span class="leise klein">· ${esc(MOB_ART[u.art])} · ${esc(u.dauer_vorschlag || '')}</span></li>`).join('')}</ol>` : '<p>Mit diesen Angaben passt keine Übung – Bereiche oder Hilfsmittel erweitern.</p>'}
+  ${v ? `<section class="karte"><h2 style="margin-top:0">Vorschlag · ca. ${v.minuten} Min.</h2>${v.uebungen.length ? `<ol>${v.uebungen.map(u => `<li class="anl-zeile"><span><a href="#/mobility/uebung/${esc(u.id)}">${esc(u.name)}</a> <span class="leise klein">· ${esc(MOB_ART[u.art])} · ${esc(u.dauer_vorschlag || '')}</span></span>${anleitungsKnopf('mob', u.id, '', true)}</li>`).join('')}</ol>` : '<p>Mit diesen Angaben passt keine Übung – Bereiche oder Hilfsmittel erweitern.</p>'}
     ${v.fehlend.length ? `<p class="leise klein">Für ${esc(v.fehlend.map(b => MOB_BEREICH[b] || b).join(', '))} passte keine Übung zu Ziel/Hilfsmitteln.</p>` : ''}
     ${v.uebungen.length && v.minuten < (Number(c.minuten) || 10) * 0.7 ? `<p class="leise klein">Kürzer als gewünscht: Für diese Auswahl gibt es nicht mehr passende Übungen – weitere Bereiche oder Hilfsmittel wählen, oder Übungen in Ruhe zweimal durchgehen.</p>` : ''}
     ${v.uebungen.length ? '<button class="klein haupt" data-a="mob-eigen-speichern">Als meine Routine speichern</button>' : ''}</section>` : ''}`;
@@ -487,7 +490,8 @@ function trPlanHtml(id) {
   <h2>Einheiten</h2>
   ${p.einheiten.length ? `<ol class="tr-liste">${p.einheiten.map((pe, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between;align-items:center"><b><a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}</a></b>
       <span><button class="klein still" data-a="tr-pe-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="klein still" data-a="tr-pe-weg" data-v="${i}">entfernen</button></span></div>
-      <label class="feld"><span>Wochentag (optional)</span><select data-tr-pe-tag="${i}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n]) => `<option value="${k}" ${pe.tag === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></li>`).join('')}</ol>` : '<p class="leise">Noch keine Einheit im Plan.</p>'}
+      <label class="feld"><span>Wochentag (optional)</span><select data-tr-pe-tag="${i}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n]) => `<option value="${k}" ${pe.tag === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      ${(() => { const r = t.routinen.find(x => x.id === pe.routine); return r && r.uebungen.length ? `<details class="klein"><summary>Übungen (${r.uebungen.length}) mit Anleitung</summary><ul class="anl-liste">${r.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}${x.variante ? ` <span class="leise">· ${esc(x.variante)}</span>` : ''}</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul></details>` : ''; })()}</li>`).join('')}</ol>` : '<p class="leise">Noch keine Einheit im Plan.</p>'}
   <div class="zeile"><label class="feld" style="flex:1 1 200px"><span>Einheit hinzufügen</span><select id="tr-pe-neu"><option value="">– Routine wählen –</option>${t.routinen.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label><button data-a="tr-pe-add" data-v="${esc(p.id)}">hinzufügen</button><button class="still" data-a="tr-pe-neu" data-v="${esc(p.id)}">neue Einheit anlegen</button></div>
   <div class="knopfreihe">${p.aktiv ? `<button data-a="tr-plan-inaktiv" data-v="${esc(p.id)}">Deaktivieren</button>` : `<button class="haupt" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Als aktiven Plan verwenden</button>`}<button data-a="tr-plan-kopie" data-v="${esc(p.id)}">Duplizieren (eigene Variante)</button><button class="still" data-a="tr-plan-weg" data-v="${esc(p.id)}">✕ Plan löschen</button></div>
   <p class="leise klein">Die Kopie bekommt eigene Einheiten (Routinen); Änderungen daran lassen das Original und alle gespeicherten Trainings unverändert. Beim Löschen eines Plans bleiben Routinen und Trainingsverlauf erhalten.</p>`;
@@ -512,7 +516,7 @@ function trEinheitHtml() {
       <div id="tr-zeit-vorschau">${trZeitVorschlag ? trZeitVorschauHtml(e) : `<p class="leise klein">Geschätzt verbleibend: ca. ${Math.round(einheitRestSek(e) / 60)} Min. (je Satz ca. 45 s plus eingestellte Pause).</p>`}</div></details>
   </div>
   ${e.uebungen.map((u, ui) => { const info = ueb(u.uebung); const l = letzteLeistung(u.uebung, e.id, u.variante);
-    return `<section class="karte tr-uebung"><div class="zeile" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(info.name)}</h2><a class="klein" href="#/training/uebung/${esc(u.uebung)}">Anleitung</a></div>
+    return `<section class="karte tr-uebung"><div class="zeile" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(info.name)}</h2>${anleitungsKnopf('tr', u.uebung, u.variante)}</div>
       ${u.variante ? `<p class="klein" style="margin:.1em 0">${esc(u.variante)}</p>` : ''}
       <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(gewichtArt(info))}</b> · ${u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
       ${u.aufwaerm_schema && u.saetze.some(s => s.art === 'aufwaerm') ? `<p class="leise klein" style="margin:-.3em 0 .5em">Aufwärmen (deine Regel): ${esc(aufwaermText(u))} – Gewichte als Vorschlag im Feld, bezogen auf ${l && l.saetze.length ? 'den letzten Arbeitssatz' : u.referenz_kg ? 'das Referenzgewicht' : 'dein Arbeitsgewicht'}.</p>` : ''}
@@ -539,12 +543,73 @@ function trEinheitHtml() {
   <div class="knopfreihe"><button class="haupt" data-a="tr-ende">${ico('haken', 'klein')} Einheit beenden</button><button class="still" data-a="tr-verwerfen">Einheit verwerfen</button></div>`;
 }
 
+/* ---------- ⓘ Anleitung: Kurzanleitung je Übung und Variante als Fenster über der aktuellen Ansicht.
+   Das Fenster liegt außerhalb von #app – Eingaben, Sätze und Timer bleiben unberührt. Keine automatische Ton-/Videowiedergabe. ---------- */
+const DEHN_SCHMERZ = () => `<b>Dehngefühl:</b> gleichmäßiges, deutliches Ziehen im gedehnten Bereich – etwa 4–6 auf einer gefühlten Skala von 0 bis 10 –, das beim Lösen der Position rasch nachlässt. Bis zur Schmerzgrenze zu dehnen ist nicht nötig ${linkHtml('Mobility – Grundlagen#^mob-konrad-2024', 'Konrad 2024')} ${linkHtml('Mobility – Grundlagen#^mob-delphi-2025', 'Delphi 2025')}.<br><b>Schmerz – sofort beenden:</b> stechend, einschießend, ausstrahlend oder brennend; Taubheit oder Kribbeln; Beschwerden, die nach dem Lösen bleiben <i>(Abbruchregel der App; Beschreibung Vorschlag, ungeprüft)</i>.`;
+function anleitungsKnopf(art, id, variante, klein) { return `<button type="button" class="anl-knopf${klein ? ' anl-klein' : ''}" data-a="anleitung" data-art="${art}" data-id="${esc(id)}" data-var="${esc(variante || '')}" aria-haspopup="dialog"><span aria-hidden="true">ⓘ</span> Anleitung</button>`; }
+// Plan-Variante (freier Text) → passender Block. Stichwörter: „Passt zu“ plus Wörter des Blocknamens; Treffer am Wortanfang.
+// Gewicht = Wortlänge ÷ Zahl der Blöcke mit diesem Stichwort – unterscheidende Wörter (Seil, einarmig) schlagen gemeinsame (stehend, beidarmig).
+const ANL_STOPP = new Set(['oder', 'eine', 'einer', 'einem', 'einen', 'etwa', 'beim', 'dabei', 'sowie', 'grundform', 'variante', 'übung']);
+function anlStichwoerter(b) { return [...new Set([...arr(b.passt).map(w => String(w).toLowerCase().trim()), ...String(b.name || '').toLowerCase().split(/[^a-zäöüß0-9-]+/).filter(w => w.length >= 4 && !ANL_STOPP.has(w))].filter(Boolean))]; }
+function anlBlockWahl(bl, variante) {
+  const v = String(variante || '').toLowerCase(); if (!v || !bl.length) return { i: 0, treffer: !v };
+  const sw = bl.map(anlStichwoerter); const haeufig = {}; sw.forEach(l => l.forEach(w => { haeufig[w] = (haeufig[w] || 0) + 1; }));
+  const trifft = w => new RegExp('(^|[^a-zäöüß])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(v);
+  let best = -1, punkte = 0;
+  sw.forEach((l, i) => { const p = l.filter(trifft).reduce((s, w) => s + w.length / haeufig[w], 0); if (p > punkte + 1e-9) { punkte = p; best = i; } });
+  return best >= 0 ? { i: best, treffer: true } : { i: 0, treffer: false };
+}
+let anlZustand = null;
+function anleitungInhalt() {
+  const { art, id, variante, wahl } = anlZustand; const mob = art === 'mob'; const u = mob ? mobUeb(id) : ueb(id); const bl = arr(u.anleitung);
+  const w = wahl != null ? { i: wahl, treffer: true } : anlBlockWahl(bl, variante); const b = bl[w.i];
+  const li = l => arr(l).map(x => `<li>${inline(String(x))}</li>`).join('');
+  const zeile = (titel, text) => text ? `<p><b>${titel}:</b> ${inline(String(text))}</p>` : '';
+  const quellen = arr(u.quellen).map(x => { const k = String(x).replace(/^\^/, ''); if (mob) { const e = (MOB().quellen || {})[k]; return e ? (e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(String(e.titel).slice(0, 90))} ↗</a>` : esc(e.titel)) : esc(k); } const q = K.quellen && K.quellen[k]; return q ? linkHtml('Quellenverzeichnis#' + k, String(q.titel || k).slice(0, 90)) : esc(k); });
+  let kopf = `<div class="anl-kopf"><div><h2 id="anl-titel">${esc(u.name)}</h2>${b ? `<p class="anl-variante">${esc(b.name)}</p>` : ''}</div><button type="button" class="anl-zu" data-a="anleitung-zu" aria-label="Anleitung schließen">✕</button></div>`;
+  if (u.quelle === 'eigen') return kopf + `<div class="anl-inhalt"><p class="hinweis klein">Eigene Übung – dafür gibt es keine geprüfte Anleitung.</p>${u.notiz ? `<p>${esc(u.notiz)}</p>` : ''}${u.link ? `<p><a href="${esc(u.link)}" target="_blank" rel="noopener">Eigener Demonstrationslink ↗</a> <span class="leise klein">(von dir eingetragen, nicht geprüft)</span></p>` : ''}<p class="klein">Bei Schmerz Satz beenden und eine schmerzfreie Alternative wählen.</p></div>`;
+  if (!b) return kopf + `<div class="anl-inhalt"><p class="leise">Für diese Übung ist die Kurzanleitung noch nicht fertig.</p>${u.md ? `<details><summary>Ausführliche Beschreibung</summary>${md(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}</div>`;
+  const hinweisVar = variante && !w.treffer ? `<p class="hinweis klein">Für deine Variante „${esc(variante)}“ gibt es keine eigene Anleitung. Angezeigt wird „${esc(b.name)}“ – Griff, Gerät oder Position können abweichen.</p>` : variante && wahl == null ? `<p class="leise klein">Passend zu deiner Variante „${esc(variante)}“.</p>` : '';
+  const auswahl = bl.length > 1 ? `<div class="anl-wahl" role="group" aria-label="Variante wählen">${bl.map((x, i) => `<button type="button" class="filterchip" data-a="anleitung-var" data-v="${i}" aria-pressed="${i === w.i}">${esc(x.name)}</button>`).join('')}</div>` : '';
+  return kopf + `<div class="anl-inhalt">${hinweisVar}${auswahl}
+    ${mob && (b.dauer || b.intensitaet) ? `<div class="anl-dosis">${b.dauer ? `<div><span>Dauer</span><b>${inline(String(b.dauer))}</b></div>` : ''}${b.intensitaet ? `<div><span>Intensität</span><b>${inline(String(b.intensitaet))}</b></div>` : ''}</div>` : ''}
+    <h3>Ausgangsposition</h3><p>${inline(String(b.start || ''))}</p>${b.einstellung ? `<p><b>Einstellung:</b> ${inline(String(b.einstellung))}</p>` : ''}
+    <h3>Ausführung</h3><ol class="anl-schritte">${li(b.schritte)}</ol>
+    ${zeile('Atmung', b.atmung)}${arr(b.wichtig).length ? `<h3>Wichtig</h3><ul>${li(b.wichtig)}</ul>` : ''}
+    ${arr(b.fehler).length ? `<h3>Typische Fehler</h3><ul class="anl-fehler">${arr(b.fehler).map(f => `<li><span>${inline(String(f.f))}</span><span><b>Besser:</b> ${inline(String(f.k))}</span></li>`).join('')}</ul>` : ''}
+    ${arr(b.kontrolle).length ? `<h3>So prüfst du die Bewegung</h3><ul>${li(b.kontrolle)}</ul>` : ''}
+    ${mob ? `<h3>Dehngefühl oder Schmerz?</h3>${b.gefuehl ? `<p>${inline(String(b.gefuehl))}</p>` : ''}<p class="klein">${DEHN_SCHMERZ()}</p>` : ''}
+    <div class="hinweis warn klein"><b>Abbrechen:</b> ${arr(b.abbruch).map(x => inline(String(x))).join(' ')}</div>
+    ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(externe Seite: ${esc(u.demo_link_quelle || 'ohne Angabe')}; öffnet sich in einem neuen Tab, nichts startet automatisch)</span></p>` : ''}
+    ${u.md ? `<details class="anl-mehr"><summary>Vertiefung: Varianten, Hintergründe, Sicherheit</summary>${md(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
+    ${quellen.length ? `<details class="anl-mehr"><summary>Quellen (${quellen.length})</summary><ul class="klein anl-quellen">${quellen.map(q => `<li>${q}</li>`).join('')}</ul><p class="leise klein">Kennzeichnung: Quellenlink = belegt; <i>(abgeleitet)</i> = übertragen; <i>(Vorschlag, ungeprüft)</i> = eigener Vorschlag ohne direkte Quelle.</p></details>` : ''}
+    <p><button type="button" class="haupt anl-schliessen" data-a="anleitung-zu">Schließen</button></p></div>`;
+}
+function anleitungOeffnen(art, id, variante) {
+  let dlg = document.getElementById('anleitung');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'anleitung'; dlg.className = 'anl'; dlg.setAttribute('aria-labelledby', 'anl-titel'); document.body.appendChild(dlg);
+    dlg.addEventListener('click', ev => { if (ev.target === dlg) dlg.close(); });   // Tippen neben das Fenster schließt
+    dlg.addEventListener('close', () => { document.body.classList.remove('anl-offen'); const z = anlZustand && anlZustand.zurueck; anlZustand = null; if (z && document.contains(z)) z.focus(); }); }
+  anlZustand = { art, id, variante: variante || '', wahl: null, zurueck: document.activeElement };
+  dlg.innerHTML = anleitungInhalt(); document.body.classList.add('anl-offen');
+  if (!dlg.open) { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', ''); }
+  dlg.scrollTop = 0; const zu = dlg.querySelector('.anl-zu'); if (zu) zu.focus({ preventScroll: true });
+}
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-a="anleitung"],[data-a="anleitung-zu"],[data-a="anleitung-var"]'); if (!b) return;
+  ev.preventDefault(); ev.stopPropagation(); const dlg = document.getElementById('anleitung');
+  if (b.dataset.a === 'anleitung') anleitungOeffnen(b.dataset.art || 'tr', b.dataset.id, b.dataset.var);
+  else if (b.dataset.a === 'anleitung-zu') { if (dlg) { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); } }
+  else if (anlZustand && dlg) { anlZustand.wahl = Number(b.dataset.v); const y = dlg.scrollTop; dlg.innerHTML = anleitungInhalt(); dlg.scrollTop = y; const k = dlg.querySelector(`[data-a="anleitung-var"][data-v="${b.dataset.v}"]`); if (k) k.focus({ preventScroll: true }); }
+}, true);
+
 /* ---------- Übung: Anleitung und Verlauf ---------- */
 function trUebungHtml(id) {
   const u = ueb(id); const t = trDaten();
   const verlauf = t.einheiten.filter(e => e.ende && e.uebungen.some(x => x.uebung === id)).sort((a, b) => b.start.localeCompare(a.start));
   return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p>
-  <h1>${esc(u.name)}</h1>
+  <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('tr', id, '')}</div>
+  ${arr(u.anleitung).length ? `<p class="leise klein">Kurzanleitung für ${arr(u.anleitung).length > 1 ? arr(u.anleitung).length + ' Varianten' : 'die Grundform'} über „ⓘ Anleitung“; darunter die ausführliche Beschreibung.</p>` : ''}
   ${u.quelle === 'eigen' ? `<p class="leise klein">Eigene Übung${u.geraet ? ' · ' + esc(u.geraet) : ''}${u.schritt_kg ? ' · kleinster Gewichtsschritt ' + esc(zahlDE(u.schritt_kg, 2)) + ' kg' : ''}</p>${u.notiz ? `<p>${esc(u.notiz)}</p>` : ''}${u.link ? `<p><a href="${esc(u.link)}" target="_blank" rel="noopener">Eigener Demonstrationslink</a> <span class="leise klein">(von dir eingetragen, nicht geprüft)</span></p>` : ''}`
     : `${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : '<p class="leise">Anleitung folgt.</p>'}${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}; geprüft: ${esc(u.demo_link_geprueft || 'nicht angegeben')})</span></p>` : ''}`}
   <h2>Verlauf</h2>${verlaufSvg(verlauf.slice(0, 12).reverse().map(e => ({ kg: Math.max(0, ...e.uebungen.filter(x => x.uebung === id).flatMap(x => x.saetze.filter(y => y.art === 'arbeit' && y.erledigt).map(y => Number(y.kg) || 0))) })))}
@@ -554,7 +619,7 @@ function trUebungHtml(id) {
 function trUebungenHtml() {
   const l = alleUebungen();
   return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Übungen</h1>
-  ${l.length ? `<ul class="eintraege">${l.map(u => `<li><span><b><a href="#/training/uebung/${esc(u.id)}">${esc(u.name)}</a></b>${u.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="leise">Die geprüfte Übungsbibliothek wird gerade aufgebaut – bis dahin kannst du eigene Übungen anlegen.</p>'}
+  ${l.length ? `<ul class="eintraege">${l.map(u => `<li><span><b><a href="#/training/uebung/${esc(u.id)}">${esc(u.name)}</a></b>${u.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}</span><span>${anleitungsKnopf('tr', u.id, '', true)}</span></li>`).join('')}</ul>` : '<p class="leise">Die geprüfte Übungsbibliothek wird gerade aufgebaut – bis dahin kannst du eigene Übungen anlegen.</p>'}
   <form id="tr-ueb-neu" class="karte"><h3 style="margin-top:0">Eigene Übung anlegen</h3><div class="zeile">
     <label class="feld" style="flex:2 1 180px"><span>Name</span><input name="name" required></label>
     <label class="feld"><span>Gerät</span><input name="geraet" placeholder="z. B. Kurzhantel"></label>

@@ -409,3 +409,39 @@ table.mikro { display: block; max-width: 100%; overflow-x: auto; }
 .fertig-wenn b { display: block; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--salbei); }
 .hinweis.warn { background: var(--bernstein-hell); }
 .bildrahmen.foto-offline::after { content: "Foto offline nicht gespeichert"; position: absolute; inset: 0; display: grid; place-items: center; font-size: .78rem; color: var(--leise); text-align: center; padding: 8px; }
+
+/* ⓘ Anleitung: einheitliche Schaltfläche und Fenster */
+.anl-knopf { min-height: 44px; padding: 8px 14px; border-color: var(--akzent); color: var(--akzent); background: var(--flaeche); font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+.anl-knopf span { font-size: 1.15em; line-height: 1; }
+.anl-knopf.anl-klein { min-height: 44px; padding: 6px 12px; font-size: .88rem; }
+.anl-liste { list-style: none; padding: 0; margin: 6px 0; }
+.anl-liste li, li.anl-zeile { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--linie); min-width: 0; }
+.anl-liste li > span:first-child, li.anl-zeile > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+body.anl-offen { overflow: hidden; }
+dialog.anl { border: 0; padding: 0; margin: auto; width: min(640px, 100%); max-width: 100%; max-height: 100%; height: auto; background: var(--papier); color: var(--tinte); border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.25); overflow-y: auto; overscroll-behavior: contain; }
+dialog.anl::backdrop { background: rgba(20, 16, 13, .55); }
+dialog.anl[open] { display: block; }
+.anl-kopf { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 14px 16px 10px; background: var(--papier); border-bottom: 1px solid var(--linie); }
+.anl-kopf h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.anl-variante { margin: 2px 0 0; color: var(--leise); font-size: .9rem; overflow-wrap: anywhere; }
+.anl-zu { min-width: 48px; min-height: 48px; padding: 0; font-size: 1.3rem; border-radius: 999px; flex: 0 0 auto; }
+.anl-inhalt { padding: 6px 16px calc(18px + env(safe-area-inset-bottom)); overflow-wrap: anywhere; }
+.anl-inhalt h3 { margin: 16px 0 6px; font-size: 1rem; }
+.anl-inhalt p, .anl-inhalt li { line-height: 1.5; }
+.anl-inhalt .q { font-size: .72em; color: var(--leise); white-space: nowrap; }
+.anl-inhalt i { color: var(--leise); font-size: .9em; }
+.anl-inhalt .anl-quellen .q { white-space: normal; font-size: inherit; color: var(--akzent); }
+.anl-wahl { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.anl-wahl .filterchip { min-height: 44px; text-align: left; white-space: normal; }
+.anl-schritte { padding-left: 1.4em; margin: 0; } .anl-schritte li { margin: 0 0 6px; }
+.anl-fehler { list-style: none; padding: 0; margin: 0; } .anl-fehler li { display: grid; gap: 2px; padding: 8px 10px; margin: 0 0 6px; background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--r); }
+.anl-dosis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0 4px; }
+.anl-dosis div { background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--r); padding: 8px 10px; }
+.anl-dosis span { display: block; font-size: .78rem; color: var(--leise); }
+.anl-mehr { margin: 12px 0; border-top: 1px solid var(--linie); padding-top: 8px; }
+.anl-mehr summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+.anl-schliessen { width: 100%; }
+@media (max-width: 640px) { dialog.anl { width: 100%; max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; } }
+/* Auswahllisten mit langen Einträgen nicht breiter als die Karte */
+select { max-width: 100%; }
+.knopfreihe > details { flex: 1 1 100%; min-width: 0; }
