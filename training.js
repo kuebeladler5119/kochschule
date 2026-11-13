@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611122256 */
+/* Fitomat-Build 202611131038 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -36,13 +36,18 @@ const satzTeil = (w, kg) => `${w || '?'} × ${kgText(kg)}`;
 // Zeitübungen: Haltezeit in Sekunden (s.sek), Zusatzgewicht optional
 const sekTeil = s => `${s.sek} s${s.kg !== '' && s.kg != null && Number(s.kg) ? ' + ' + kgText(s.kg) : ''}`;
 // Einseitige Übungen: beide Seiten bilden EINEN Satz; s.kg/s.wdh enthalten die schwächere Seite (Grundlage für Vorschläge)
-const satzText = s => s.sek != null && s.sek !== '' ? sekTeil(s) + (s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') : `${s.seiten ?`L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
+/* Satzmethoden (optional, Grundlagen in „60 Training/Satzmethoden – Dropsätze und Teilwiederholungen“). Ein Dropsatz zählt als EIN Satz. */
+const METHODEN = [['', 'normal'], ['drop', 'Dropsatz'], ['voll_plus_teil', 'volle Wdh. + Teilwdh. (gedehnt)'], ['lang_teil', 'nur Teilwdh. in gedehnter Position']];
+const methodeZusatz = s => s.methode === 'drop' ? ' + Drop ' + arr(s.stufen).filter(x => x && (x.kg !== '' || x.wdh !== '')).map(x => `${x.wdh || '?'} × ${kgText(x.kg)}`).join(', ')
+  : s.methode === 'voll_plus_teil' ? ` + ${s.teil_wdh || '?'} Teilwdh. gedehnt` : s.methode === 'lang_teil' ? ' (nur Teilwdh., gedehnt)' : '';
+const satzText = s => satzTextBasis(s) + methodeZusatz(s);
+const satzTextBasis = s => s.sek != null && s.sek !== '' ?sekTeil(s) + (s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') : `${s.seiten ?`L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
 
 /* ---------- Muskelgruppen, Gewichtsangabe, Auswahl ---------- */
 const MUSKEL_GRUPPEN = [['brust', 'Brust', ['brust']], ['ruecken', 'Rücken', ['latissimus', 'oberer_ruecken', 'rueckenstrecker']], ['schultern', 'Schultern', ['vordere_schulter', 'seitliche_schulter', 'hintere_schulter']], ['arme', 'Arme', ['bizeps', 'trizeps']], ['beine', 'Beine', ['quadrizeps', 'beinbeuger', 'waden']], ['gesaess', 'Gesäß', ['gesaess']], ['rumpf', 'Rumpf', ['rumpf']]];
 function uebGruppen(u) { const m = [...arr(u.muskeln_haupt)]; return MUSKEL_GRUPPEN.filter(([, , l]) => l.some(x => m.includes(x))).map(g => g[0]); }
 /* Was die kg-Zahl bedeutet – verhindert Verwechslung von Gesamtgewicht, Gewicht je Hantel und Geräteanzeige */
-function gewichtArt(u) { const g = arr(u.geraet).map(String); if (g.includes('langhantel')) return 'kg gesamt (mit Stange)'; if (g.includes('kurzhantel')) return 'kg je Hantel'; if (g.includes('maschine') || g.includes('kabel')) return 'kg laut Gerät'; if (g.includes('koerpergewicht') || g.includes('klimmzugstange')) return 'Zusatz-kg'; return 'kg'; }
+function gewichtArt(u) { if (u.gewicht_bezug === 'je_seite') return 'kg je Hantel bzw. je Seite'; if (u.gewicht_bezug === 'gesamt') return 'kg gesamt'; const g = arr(u.geraet).map(String); if (g.includes('langhantel')) return 'kg gesamt (mit Stange)'; if (g.includes('kurzhantel')) return 'kg je Hantel'; if (g.includes('maschine') || g.includes('kabel')) return 'kg laut Gerät'; if (g.includes('koerpergewicht') || g.includes('klimmzugstange')) return 'Zusatz-kg'; return 'kg'; }
 let trWahl = { q: '', gruppe: '' };
 function uebungsWahlListe(ziel) {
   const q = trWahl.q.trim().toLowerCase();
@@ -151,7 +156,8 @@ const tageZwischen = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(
 function vergleichbareEinheiten(uebungId, variante, ausser) {
   const passt = u => u.uebung === uebungId && (u.variante || '') === (variante || '');
   return trDaten().einheiten.filter(e => e.ende && e.id !== ausser && e.uebungen.some(passt)).sort((a, b) => b.start.localeCompare(a.start))
-    .map(e => { const u = e.uebungen.find(passt); const ar = u.saetze.filter(s => s.art === 'arbeit'); const fertig = ar.filter(s => s.erledigt);
+    // Reine Teilwiederholungs-Sätze sind mit vollen Wiederholungen nicht vergleichbar; bei Dropsatz und „voll + Teilwdh.“ zählt der volle Hauptteil (s.kg/s.wdh)
+    .map(e => { const u = e.uebungen.find(passt); const ar = u.saetze.filter(s => s.art === 'arbeit' && s.methode !== 'lang_teil'); const fertig = ar.filter(s => s.erledigt);
       const top = Math.max(0, ...fertig.map(s => Number(s.kg) || 0));
       return { datum: e.start.slice(0, 10), saetze: fertig, geplant: ar.length, top, beschwerde: !!u.beschwerde, qualitaet: u.qualitaet || '', pause_s: u.pause_s, vorschlag: u.vorschlag || null }; });
 }
@@ -209,7 +215,14 @@ function vorschlagHtml(u, ui, e) {
 
 /* ---------- Trainingseinrichtung und begründete Planvorschläge (regelbasiert; Regeln 13–18 in „Trainingswissenschaft – Grundlagen“) ----------
    Alles optional; nichts wird automatisch ersetzt – ein Vorschlag wird erst nach Vorschau als neuer, inaktiver Plan angelegt. */
-const TR_GERAETE = [['langhantel', 'Langhantel + Rack'], ['kurzhantel', 'Kurzhanteln'], ['kabel', 'Kabelzug'], ['maschine', 'Maschinen'], ['klimmzugstange', 'Klimmzugstange'], ['bank', 'Bank'], ['band', 'Widerstandsband'], ['kettlebell', 'Kettlebell'], ['koerpergewicht', 'nur Körpergewicht']];
+const TR_GERAETE = [['langhantel', 'Langhantel + Rack'], ['kurzhantel', 'Kurzhanteln'], ['kabel', 'Kabelzug'], ['maschine', 'Maschinen'], ['klimmzugstange', 'Klimmzugstange'], ['bank', 'Hantelbank'], ['band', 'Widerstandsband'], ['kettlebell', 'Kettlebell'], ['koerpergewicht', 'Körpergewicht (ohne Geräte)']];
+/* Voraussetzungen ohne „Gerät“ im engeren Sinn – aus dem Feld `voraussetzung` der Übungsnotizen (Vault, 60 Training/Übungen).
+   Eine Voraussetzung „a|b“ ist erfüllt, wenn a oder b vorhanden ist; eine Hantelbank ersetzt Stuhl und Stufe. */
+const TR_VORAUS = [['stuhl', 'stabiler Stuhl oder Box (rutschfest)'], ['stufe', 'stabile Stufe oder Treppe'], ['stab', 'Stab oder Besenstiel'], ['fussfixierung', 'sichere Fußfixierung (Partner oder schweres Möbel)'], ['abroller', 'Bauchroller'], ['gleitflaeche', 'glatter Boden + Handtuch zum Gleiten']];
+const VORAUS_ERSATZ = { stuhl: ['stuhl', 'bank'], stufe: ['stufe', 'bank'] };
+const vorausErfuellt = (req, ger) => String(req).split('|').some(x => (VORAUS_ERSATZ[x] || [x]).some(y => ger.includes(y)));
+const vorausName = req => String(req).split('|').map(x => (TR_VORAUS.find(v => v[0] === x) || TR_GERAETE.find(v => v[0] === x) || [x, x])[1]).join(' oder ');
+const istTechnik = u => (u && u.rolle) === 'technik';
 const SPLITS = {
   gk: { name: 'Ganzkörper', tage: ['Ganzkörper A', 'Ganzkörper B', 'Ganzkörper C'], slots: { 'Ganzkörper A': ['kniebeuge', 'horizontal_druecken', 'vertikal_ziehen', 'hueftbeuge', 'iso:arme', 'rumpf'], 'Ganzkörper B': ['hueftbeuge', 'vertikal_druecken', 'horizontal_ziehen', 'kniebeuge', 'iso:schultern', 'iso:arme'], 'Ganzkörper C': ['kniebeuge', 'horizontal_druecken', 'horizontal_ziehen', 'hueftbeuge', 'iso:arme', 'rumpf'] },
     plus: 'Jeder Muskel an jedem Trainingstag; ein ausgefallener Tag fällt weniger ins Gewicht.', minus: 'Einheiten werden bei viel Volumen lang; wenig Platz für viele Armübungen.' },
@@ -224,9 +237,9 @@ function splitOptionen(n) {
   return o[Math.min(7, Math.max(1, n || 3))] || o[3];
 }
 // Welche Plätze eine Einheit zusätzlich füllen darf (gleiche Körperregion, damit z. B. ein Pull-Tag nie mit Fremdübungen „aufgefüllt“ wird)
-const TAG_FUELL = { 'Ganzkörper': ['kniebeuge', 'horizontal_druecken', 'horizontal_ziehen', 'hueftbeuge', 'vertikal_druecken', 'vertikal_ziehen', 'iso:gesaess', 'rumpf'], 'Oberkörper': ['horizontal_druecken', 'vertikal_druecken', 'horizontal_ziehen', 'vertikal_ziehen', 'iso:schultern', 'iso:arme'], 'Unterkörper': ['kniebeuge', 'hueftbeuge', 'iso:gesaess', 'rumpf'], Push: ['horizontal_druecken', 'vertikal_druecken', 'iso:trizeps', 'iso:schultern'], Pull: ['vertikal_ziehen', 'horizontal_ziehen', 'iso:bizeps', 'iso:hintere'], Beine: ['kniebeuge', 'hueftbeuge', 'iso:gesaess', 'rumpf'] };
+const TAG_FUELL = { 'Ganzkörper': ['kniebeuge', 'horizontal_druecken', 'horizontal_ziehen', 'hueftbeuge', 'vertikal_druecken', 'vertikal_ziehen', 'iso:gesaess', 'rumpf'], 'Oberkörper': ['horizontal_druecken', 'vertikal_druecken', 'horizontal_ziehen', 'vertikal_ziehen', 'iso:schultern', 'iso:arme'], 'Unterkörper': ['kniebeuge', 'hueftbeuge', 'iso:gesaess', 'iso:beinbeuger', 'rumpf'], Push: ['horizontal_druecken', 'vertikal_druecken', 'iso:trizeps', 'iso:schultern'], Pull: ['vertikal_ziehen', 'horizontal_ziehen', 'iso:bizeps', 'iso:hintere'], Beine: ['kniebeuge', 'hueftbeuge', 'iso:gesaess', 'iso:beinbeuger', 'rumpf'] };
 const TAG_GRUPPEN = { 'Ganzkörper': ['brust', 'ruecken', 'schultern', 'arme', 'beine', 'gesaess', 'rumpf'], 'Oberkörper': ['brust', 'ruecken', 'schultern', 'arme'], 'Unterkörper': ['beine', 'gesaess', 'rumpf'], Push: ['brust', 'schultern', 'arme'], Pull: ['ruecken', 'arme'], Beine: ['beine', 'gesaess', 'rumpf'] };
-const FOKUS_SLOT = { gesaess: ['hueftbeuge', 'iso:gesaess', 'kniebeuge'], brust: ['horizontal_druecken'], ruecken: ['horizontal_ziehen', 'vertikal_ziehen'], schultern: ['iso:schultern', 'vertikal_druecken'], arme: ['iso:arme'], beine: ['kniebeuge', 'hueftbeuge'], rumpf: ['rumpf'] };
+const FOKUS_SLOT = { gesaess: ['hueftbeuge', 'iso:gesaess', 'kniebeuge'], brust: ['horizontal_druecken'], ruecken: ['horizontal_ziehen', 'vertikal_ziehen'], schultern: ['iso:schultern', 'vertikal_druecken'], arme: ['iso:arme'], beine: ['kniebeuge', 'hueftbeuge', 'iso:beinbeuger'], rumpf: ['rumpf'] };
 const tagTyp = name => Object.keys(TAG_FUELL).find(k => String(name).startsWith(k)) || 'Ganzkörper';
 // Zeitübungen (Haltezeit statt Wiederholungen); die Quellen nennen keine Haltezeiten – die Sekunden wählst du selbst
 const ZEIT_UEBUNGEN = ['ueb-plank', 'ueb-seitstuetz'];
@@ -235,7 +248,7 @@ const istZeit = x => !!x && (x.messung ? x.messung === 'zeit' : ZEIT_UEBUNGEN.in
 // Neuer Routineneintrag mit passender Messart (Wiederholungen oder Sekunden aus der Bibliothek)
 function neuerEintrag(id, extra) {
   const u = ueb(id); const zb = zeitBereich(id); const zeit = ZEIT_UEBUNGEN.includes(id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
-  return Object.assign({ uebung: id, aufwaerm: 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zb ? zb.von : null, sek_bis: zb ? zb.bis : null, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, extra || {});
+  return Object.assign({ uebung: id, aufwaerm: 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zb ? zb.von : null, sek_bis: zb ? zb.bis : null, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, u.einseitig === true ? { je_seite: true } : {}, extra || {});
 }
 // Sekundenziel: eigene Angabe, sonst die Spanne aus der Bibliothek (z. B. „20–45 s“), sonst offen
 function sekZiel(x) { if (x.sek_von || x.sek_bis) return { von: x.sek_von, bis: x.sek_bis }; const z = zeitBereich(x.uebung); return z || { von: null, bis: null }; }
@@ -258,14 +271,16 @@ function tageVerteilen(verf, m) {
 // Die Geräteliste einer Übung sind Alternativen; „koerpergewicht“ genügt allein, außer die Übung braucht eine Klimmzugstange
 // Spezialgeräte (Stange, Rack, Maschine/Barren, Kabel) neben „koerpergewicht“ sind Voraussetzung, keine Alternative
 function uebVerfuegbar(u, ger) {
+  if (!arr(u.voraussetzung).every(req => vorausErfuellt(req, ger))) return false;   // notwendige Ausstattung (z. B. Stuhl für Bankdips)
   const roh = arr(u.geraet); const spezial = roh.filter(x => ['klimmzugstange', 'rack', 'maschine', 'kabel'].includes(x));
   if (spezial.length) return spezial.some(x => x === 'rack' ? ger.includes('langhantel') : ger.includes(x));   // Spezialgeräte sind untereinander Alternativen
   const frei = roh.filter(x => x !== 'bank'); return !frei.length || frei.includes('koerpergewicht') || frei.some(x => ger.includes(x));
 }
-function slotUebung(slot, ger, nein, schon, versatz) {
-  const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'], 'iso:hintere': ['hintere_schulter'], 'iso:gesaess': ['gesaess'] }[slot];
+function slotUebung(slot, ger, nein, schon, versatz, ohneTechnik) {
+  const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'], 'iso:hintere': ['hintere_schulter'], 'iso:gesaess': ['gesaess'], 'iso:beinbeuger': ['beinbeuger'] }[slot];
   const muster = slot === 'kniebeuge' ? ['kniebeuge', 'ausfallschritt'] : [slot];
-  const passt = u => uebVerfuegbar(u, ger) && !nein.includes(u.id) && (iso ? u.bewegungsmuster === 'isolation' && arr(u.muskeln_haupt).some(m => iso.includes(m)) : muster.includes(u.bewegungsmuster));
+  // Technik-/Lernübungen (z. B. Hüftbeugen mit Stab) sind für Fortgeschrittene kein vollwertiger Arbeitssatz
+  const passt = u => uebVerfuegbar(u, ger) && !nein.includes(u.id) && !(ohneTechnik && istTechnik(u)) && (iso ? u.bewegungsmuster === 'isolation' && arr(u.muskeln_haupt).some(m => iso.includes(m)) : muster.includes(u.bewegungsmuster));
   // Mit vorhandenen Geräten belastbare Varianten zuerst (Körpergewicht nur, wenn sonst nichts passt oder nur Körpergewicht gewählt ist)
   const nurKg = ger.every(g => g === 'koerpergewicht'); const rang = u => nurKg ? 0 : (arr(u.geraet).some(g => g !== 'koerpergewicht' && g !== 'bank' && ger.includes(g === 'rack' ? 'langhantel' : g)) ? 0 : 1);
   const alle = (K.uebungen || []).filter(passt).sort((a, b) => rang(a) - rang(b)); const kand = alle.filter(u => !schon.includes(u.id));
@@ -275,30 +290,54 @@ function slotUebung(slot, ger, nein, schon, versatz) {
 function uebEintrag(u, basis, erste, prio) {
   const iso = u.bewegungsmuster === 'isolation' || u.bewegungsmuster === 'rumpf'; const nurKg = arr(u.geraet).every(g => g === 'koerpergewicht' || g === 'bank');
   const zb = zeitBereich(u.id); const zeit = ZEIT_UEBUNGEN.includes(u.id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
-  const x = { uebung: u.id, aufwaerm: erste ? 2 : 0, saetze: basis, wdh_von: zeit ? null : (von ? Number(von[1]) : 8), wdh_bis: zeit ? null : (von ? Number(von[2]) : nurKg ? 15 : 12), pause_s: iso ? 90 : nurKg ? 120 : 150, ziel_rir: '1–3', _iso: iso, _fokus: uebGruppen(u).some(g => prio.includes(g)), _bonus: 0 };
+  const x = { uebung: u.id, aufwaerm: erste ? 2 : 0, saetze: basis, wdh_von: zeit ? null : (von ? Number(von[1]) : 8), wdh_bis: zeit ? null : (von ? Number(von[2]) : nurKg ? 15 : 12), pause_s: iso ? 90 : nurKg ? 120 : 150, ziel_rir: zeit ? null : '1–3', _iso: iso, _fokus: uebGruppen(u).some(g => prio.includes(g)), _bonus: 0 };
   if (zeit) { x.messung = 'zeit'; x.sek_von = zb ? zb.von : null; x.sek_bis = zb ? zb.bis : null; }
   return x;
 }
 const planDauer = x => (x.saetze + (x.aufwaerm || 0)) * 45 + x.saetze * (x.pause_s || 0) + (x.aufwaerm || 0) * 60;
 const einheitSek = ue => ue.reduce((s, x) => s + planDauer(x), 0) + 300;
-const FOKUS_MAX = 20; // Planungsgrenze je Gruppe und Woche: Zusatznutzen flacht bei ca. 18–20 Wochensätzen ab (ACSM 2026, Regel in „Trainingswissenschaft – Grundlagen“)
+/* Wochenvolumen je Muskel: direkt (Hauptmuskel der Übung) = 1 Satz, indirekt (mitbeteiligt) = 0,5 Satz.
+   Regel 9 in „Trainingswissenschaft – Grundlagen“ (Ableitung aus Pelland 2025/2026, ACSM 2026); die Zuordnung Haupt/Neben stammt aus den Übungsnotizen.
+   Orientierungswert = KEINE Grenze: Studien zeigen abnehmenden Zusatznutzen etwa ab 18–20 Wochensätzen (trainierte Personen);
+   für Einsteiger nennt die Vault-Regel grob 6–10. Er steuert nur, wie viele Schwerpunkt-Zusatzsätze der Vorschlag selbst einplant. */
+const VOL_ORIENT = { einsteiger: 10, fortgeschritten: 16, erfahren: 20, '': 16 };
+const volOrient = erf => VOL_ORIENT[erf || ''] || 16;
+const GRUPPE_MUSKELN = g => (MUSKEL_GRUPPEN.find(x => x[0] === g) || [, , []])[2];
+function planVolumen(einheiten) {
+  const v = {}; const neu = m => v[m] || (v[m] = { d: 0, i: 0, q: {} });
+  einheiten.forEach(e => e.uebungen.forEach(x => { const u = ueb(x.uebung); const s = Number(x.saetze) || 0; if (!s) return;
+    arr(u.muskeln_haupt).forEach(m => { const o = neu(m); o.d += s; o.q[u.name] = (o.q[u.name] || 0) + s; });
+    arr(u.muskeln_neben).forEach(m => { neu(m).i += s * 0.5; }); }));
+  return v;
+}
+// Direkte Wochensätze einer Gruppe = Maximum über ihre Muskeln (sonst würden z. B. Bizeps und Trizeps zu „Arme“ addiert)
+const gruppeDirekt = (v, g) => Math.max(0, ...GRUPPE_MUSKELN(g).map(m => (v[m] || {}).d || 0));
+function volumenHtml(v, erf, kurz) {
+  const ms = Object.keys(MUSKEL_NAME).filter(m => v[m] && (v[m].d || v[m].i)); if (!ms.length) return '<p class="leise klein">Noch keine Sätze.</p>';
+  const o = volOrient(erf); const z = n => zahlDE(n, n % 1 ? 1 : 0);
+  const zeile = ms.filter(m => v[m].d).map(m => `${esc(MUSKEL_NAME[m])} ${z(v[m].d)}${v[m].i ? ` (+${z(v[m].i)})` : ''}`).join(' · ');
+  const hoch = ms.filter(m => v[m].d > o);
+  return `<p class="klein" style="margin:.3em 0"><b>Wochensätze je Muskel:</b> ${zeile}</p>
+    ${hoch.length ? `<p class="hinweis klein" style="margin:.3em 0">${esc(hoch.map(m => MUSKEL_NAME[m]).join(', '))}: mehr als ${o} direkte Wochensätze. In Studien wird der Zusatznutzen oberhalb von etwa 18–20 Sätzen kleiner, die Erholung wichtiger – das ist keine feste Grenze. Prüfe, ob du hier Sätze streichen möchtest.</p>` : ''}
+    ${kurz ? '' : `<details class="klein"><summary>Rechenweg</summary><p class="leise">Direkt = Sätze von Übungen, bei denen der Muskel Hauptmuskel ist; in Klammern mitbeteiligte Sätze × 0,5. Orientierungswert für deine Erfahrung: ca. ${o} direkte Sätze pro Woche (keine Grenze).</p><ul>${ms.map(m => `<li><b>${esc(MUSKEL_NAME[m])}</b>: ${Object.entries(v[m].q).map(([n, s]) => `${esc(n)} ${s}`).join(' + ') || '0'} = ${z(v[m].d)} direkt${v[m].i ? ` · mitbeteiligt ${z(v[m].i * 2)} Sätze × 0,5 = ${z(v[m].i)}` : ''}</li>`).join('')}</ul></details>`}`;
+}
 function planVorschlag(cfg, splitKey, m) {
   const sp = SPLITS[splitKey]; const ger = cfg.geraete && cfg.geraete.length ? cfg.geraete : ['langhantel', 'kurzhantel', 'kabel', 'maschine', 'klimmzugstange', 'koerpergewicht'];
-  const nein = arr(cfg.unerwuenscht); const prio = arr(cfg.schwerpunkte); const basis = cfg.erfahrung === 'einsteiger' ? 2 : 3;
+  const nein = arr(cfg.unerwuenscht); const prio = arr(cfg.schwerpunkte); const basis = cfg.erfahrung === 'einsteiger' ? 2 : 3; const ohneTechnik = cfg.erfahrung !== 'einsteiger';
   const verf = arr(cfg.tage); const tagKeys = tageVerteilen(verf, m); const ziel = (Number(cfg.minuten) || 0) * 60;
   const namen = []; for (let i = 0; i < m; i++) namen.push(sp.tage[i % sp.tage.length]);
   const zaehl = {}; const luecken = new Set();
   const einheiten = namen.map((tn, ti) => {
     const schon = []; const ue = []; const typ = tagTyp(tn); const gekuerzt = [];
-    const nimm = (slot, vers) => { const u = slotUebung(slot, ger, nein, schon, vers); if (!u || u === 'doppelt') return u; schon.push(u.id); const x = uebEintrag(u, basis, !ue.length, prio); ue.push(x); return x; };
+    const nimm = (slot, vers) => { const u = slotUebung(slot, ger, nein, schon, vers, ohneTechnik);if (!u || u === 'doppelt') return u; schon.push(u.id); const x = uebEintrag(u, basis, !ue.length, prio); ue.push(x); return x; };
     sp.slots[tn].forEach((slot, si) => { if (nimm(slot, Math.floor(ti / sp.tage.length) + si) === null) luecken.add(slot); });
     // Auffüllen auf 4 Übungen nur aus derselben Körperregion und nur, wenn es in die Zeit passt
-    for (const slot of TAG_FUELL[typ]) { if (ue.length >= 4) break; const u = slotUebung(slot, ger, nein, schon, ti); if (!u || u === 'doppelt') continue;
+    for (const slot of TAG_FUELL[typ]) { if (ue.length >= 4) break; const u = slotUebung(slot, ger, nein, schon, ti, ohneTechnik); if (!u || u === 'doppelt') continue;
       const x = uebEintrag(u, basis, !ue.length, prio); if (ziel && ue.length >= 3 && einheitSek(ue) + planDauer(x) > ziel) break; schon.push(u.id); x._fuell = true; ue.push(x); }
     // Schwerpunkt: zuerst +1 Satz auf bis zu zwei passende Übungen, sonst eine Zusatzübung – bis zur Planungsgrenze
     prio.filter(g => TAG_GRUPPEN[typ].includes(g)).forEach(g => {
       const passend = ue.filter(x => uebGruppen(ueb(x.uebung)).includes(g));
-      if (passend.length < 2) { for (const slot of FOKUS_SLOT[g] || []) { const u = slotUebung(slot, ger, nein, schon, ti); if (!u || u === 'doppelt' || !uebGruppen(u).includes(g)) continue; schon.push(u.id); const x = uebEintrag(u, basis, false, prio); x._extra = true; ue.push(x); passend.push(x); break; } }
+      if (passend.length < 2) { for (const slot of FOKUS_SLOT[g] || []) { const u = slotUebung(slot, ger, nein, schon, ti, ohneTechnik); if (!u || u === 'doppelt' || !uebGruppen(u).includes(g)) continue; schon.push(u.id); const x = uebEintrag(u, basis, false, prio); x._extra = true; ue.push(x); passend.push(x); break; } }
       passend.slice(0, 2).forEach(x => { if (x.saetze < 4) { x.saetze++; x._bonus++; } });
     });
     // Zeitrahmen (Pausen werden nie gekürzt): 1. Isolation ohne Schwerpunkt, 2. Mehrgelenk ohne Schwerpunkt über 2 Sätze, 3. Auffüllübungen, 4. Schwerpunkt-Zusatzsätze, 5. hintere Übungen ohne Schwerpunkt
@@ -310,9 +349,13 @@ function planVorschlag(cfg, splitKey, m) {
     if (ue.length && !ue.some(x => x.aufwaerm)) ue[0].aufwaerm = 2;
     return { name: tn, tag: tagKeys[ti] || '', uebungen: ue, minuten: Math.round(einheitSek(ue) / 60), zuLang: ziel > 0 && einheitSek(ue) > ziel + 120, gekuerzt, bonusWeg };
   });
-  // Planungsgrenze für Schwerpunkt-Zusatzsätze über die Woche (Grundsätze bleiben unberührt)
-  einheiten.forEach(e => e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { zaehl[g] = (zaehl[g] || 0) + x.saetze; })));
-  let gekappt = 0; prio.forEach(g => { for (let ei = einheiten.length - 1; ei >= 0 && zaehl[g] > FOKUS_MAX; ei--) einheiten[ei].uebungen.forEach(x => { if (x._bonus && zaehl[g] > FOKUS_MAX && uebGruppen(ueb(x.uebung)).includes(g)) { x.saetze--; x._bonus--; gekappt++; uebGruppen(ueb(x.uebung)).forEach(g2 => { zaehl[g2]--; }); } }); });
+  // Schwerpunkt-Zusatzsätze nur, solange die Gruppe unter dem Orientierungswert der Erfahrungsstufe liegt (im Entwurf frei erhöhbar)
+  const orient = volOrient(cfg.erfahrung); let gekappt = 0;
+  prio.forEach(g => { let v = planVolumen(einheiten); for (let ei = einheiten.length - 1; ei >= 0 && gruppeDirekt(v, g) > orient; ei--) for (const x of einheiten[ei].uebungen) { if (x._bonus && gruppeDirekt(v, g) > orient && uebGruppen(ueb(x.uebung)).includes(g)) { x.saetze--; x._bonus--; gekappt++; v = planVolumen(einheiten); } } });
+  // Isolationsübungen kürzen, wenn ein Muskel (ohne Schwerpunkt) deutlich über dem Orientierungswert liegt – nie unter 2 Sätze
+  let gestrichen = 0; for (let runde = 0; runde < 3; runde++) { const v = planVolumen(einheiten); const hoch = Object.keys(v).filter(m => v[m].d > orient + 4 && !prio.some(g => GRUPPE_MUSKELN(g).includes(m))); if (!hoch.length) break;
+    einheiten.forEach(e => e.uebungen.forEach(x => { const u = ueb(x.uebung); if (x._iso && x.saetze > 2 && arr(u.muskeln_haupt).some(m => hoch.includes(m))) { x.saetze--; gestrichen++; } })); }
+  const vol = planVolumen(einheiten); Object.keys(MUSKEL_NAME).forEach(m => { if (vol[m]) zaehl[m] = vol[m].d; });
   const bonusSaetze = einheiten.reduce((s, e) => s + e.uebungen.reduce((a, x) => a + (x._bonus || 0), 0), 0); const extra = einheiten.reduce((s, e) => s + e.uebungen.filter(x => x._extra).length, 0);
   einheiten.forEach(e => { e.minuten = Math.round(einheitSek(e.uebungen) / 60); e.uebungen.forEach(x => { delete x._bonus; delete x._iso; delete x._fokus; delete x._fuell; delete x._extra; }); });
   // Ehrlich prüfen: leere oder zu dünne Einheiten machen den Vorschlag unbrauchbar; Erholung zwischen gleichen Einheiten
@@ -325,7 +368,7 @@ function planVorschlag(cfg, splitKey, m) {
   const haeufig = {}; einheiten.forEach(e => { const gs = new Set(); e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => gs.add(g))); gs.forEach(g => { haeufig[g] = (haeufig[g] || 0) + 1; }); });
   const rest = verf.length - m;
   return { key: splitKey, m, tage: tagKeys, name: `${sp.name} an ${m} Tag${m === 1 ? '' : 'en'}`, untertitel: rest > 0 ? `${m} Krafttage von ${verf.length} verfügbaren; ${rest} Tag${rest === 1 ? '' : 'e'} frei für Erholung oder Mobility` : `alle ${m} verfügbaren Tage`,
-    plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, haeufigkeit: haeufig, luecken: [...luecken], fehler, hinweise, bonusSaetze, extra, gekappt, bonusWeg: einheiten.reduce((s, e) => s + e.bonusWeg, 0) };
+    plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, vol, orient, gestrichen, haeufigkeit: haeufig, luecken: [...luecken], fehler, hinweise, bonusSaetze, extra, gekappt, bonusWeg: einheiten.reduce((s, e) => s + e.bonusWeg, 0) };
 }
 const PLATZ_NAME = { kniebeuge: 'Kniebeuge/Ausfallschritt', hueftbeuge: 'Hüftstreckung (Gesäß/Beinbeuger)', horizontal_druecken: 'Drücken horizontal (Brust)', vertikal_druecken: 'Drücken über Kopf (Schulter)', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben (Latissimus)', rumpf: 'Rumpf', 'iso:arme': 'Arme (Isolation)', 'iso:bizeps': 'Bizeps', 'iso:trizeps': 'Trizeps', 'iso:schultern': 'Schultern (Isolation)', 'iso:hintere': 'hintere Schulter', 'iso:gesaess': 'Gesäß (Isolation)' };
 const SLOT_GERAET = { vertikal_ziehen: 'Klimmzugstange oder Kabelzug/Latzug', horizontal_ziehen: 'Widerstandsband, Kurzhanteln, Kabelzug oder Langhantel im Rack (umgekehrtes Rudern)', vertikal_druecken: 'Kurzhanteln oder Langhantel', 'iso:arme': 'Kurzhanteln, Kabel oder Band', 'iso:bizeps': 'Kurzhanteln, Kabel oder Band', 'iso:trizeps': 'Kabel, Kurzhanteln oder Dips am Stuhl', 'iso:schultern': 'Kurzhanteln, Kabel oder Band', 'iso:hintere': 'Kurzhanteln, Kabel oder Maschine', hueftbeuge: 'Kurzhanteln/Langhantel oder eine Bank für Hip Thrusts' };
@@ -340,13 +383,14 @@ function vorschlagsOptionen(c) {
 /* ---------- Entwurf: Vorschau vor dem Speichern bearbeiten (Übung tauschen, Sätze, Tag, entfernen, hinzufügen) ---------- */
 let trPlanEntwurf = null;
 function entwurfGeraete() { const c = trDaten().einrichtung || {}; return { ger: arr(c.geraete).length ? c.geraete : ['langhantel', 'kurzhantel', 'kabel', 'maschine', 'klimmzugstange', 'koerpergewicht'], nein: arr(c.unerwuenscht) }; }
-function entwurfAlternativen(id) {
+function entwurfAlternativen(id, imTag) {
   const u = ueb(id); const { ger, nein } = entwurfGeraete(); const gr = uebGruppen(u);
-  const kand = alleUebungen().filter(x => x.id !== id && !nein.includes(x.id) && (x.quelle === 'eigen' || uebVerfuegbar(x, ger)));
+  const kand = alleUebungen().filter(x => x.id !== id && !arr(imTag).includes(x.id) && !nein.includes(x.id) && (x.quelle === 'eigen' || uebVerfuegbar(x, ger)));
   const gleich = kand.filter(x => x.quelle !== 'eigen' && x.bewegungsmuster && x.bewegungsmuster === u.bewegungsmuster && (u.bewegungsmuster !== 'isolation' || uebGruppen(x).some(g => gr.includes(g))));
   const muskel = kand.filter(x => !gleich.includes(x) && x.quelle !== 'eigen' && uebGruppen(x).some(g => gr.includes(g)));
   const eigen = kand.filter(x => x.quelle === 'eigen');
-  const n = a => a.sort((p, q) => p.name.localeCompare(q.name, 'de'));
+  // Arbeitsübungen vor Technikübungen, dann alphabetisch
+  const n = a => a.sort((p, q) => (istTechnik(p) ? 1 : 0) - (istTechnik(q) ? 1 : 0) || p.name.localeCompare(q.name, 'de'));
   return { gleich: n(gleich), muskel: n(muskel), eigen: n(eigen) };
 }
 function entwurfPruefen(ew) {
@@ -356,16 +400,19 @@ function entwurfPruefen(ew) {
   if (doppelt.length) p.push(`Zwei Einheiten am selben Tag (${[...new Set(doppelt)].map(k => (WOCHENTAGE.find(w => w[0] === k) || [])[1]).join(', ')}) – Tag ändern oder „flexibel“ wählen.`);
   return p;
 }
-function entwurfWocheHtml(ew) {
-  const z = {}; ew.einheiten.forEach(e => e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => { z[g] = (z[g] || 0) + (Number(x.saetze) || 0); })));
-  return 'Arbeitssätze pro Woche (nur Hauptmuskeln): ' + (MUSKEL_GRUPPEN.filter(([k]) => z[k]).map(([k, n2]) => `${n2} ${z[k]}`).join(' · ') || '–');
+function entwurfWocheHtml(ew) { return volumenHtml(planVolumen(ew.einheiten), (trDaten().einrichtung || {}).erfahrung); }
+// Zusammenfassung oben: Zeit je Einheit und Wochensätze – immer aus dem aktuellen Entwurf berechnet
+function entwurfSummeHtml(ew) {
+  const c = trDaten().einrichtung || {}; const tn = k => (WOCHENTAGE.find(w => w[0] === k) || [])[1] || 'flexibel';
+  return `<p class="klein" style="margin:.2em 0"><b>Aktueller Stand:</b> ${ew.einheiten.map(e => { const min = Math.round(einheitSek(e.uebungen) / 60); return `${esc(tn(e.tag))} ${esc(e.name)} ca. ${min} Min.${c.minuten && min * 60 > c.minuten * 60 + 120 ? ' (zu lang)' : ''}`; }).join(' · ') || 'keine Einheit'}</p>${volumenHtml(planVolumen(ew.einheiten), c.erfahrung, true)}`;
 }
 function entwurfHtml() {
   const ew = trPlanEntwurf; if (!ew) return ''; const c = trDaten().einrichtung || {}; const { ger, nein } = entwurfGeraete(); const probleme = entwurfPruefen(ew);
-  const opt = (l, sel) => l.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  const opt = (l, sel) => l.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}${istTechnik(x) ? ' (Technikübung)' : ''}</option>`).join('');
   const zahl = (te, ei, ui, wert, ext) => `<input type="number" inputmode="numeric" data-te="${te}" data-e="${ei}" data-u="${ui}" value="${wert == null ? '' : esc(wert)}" ${ext}>`;
   return `<section class="karte entwurf" id="tr-entwurf"><h2 style="margin-top:0">Vorschau bearbeiten</h2>
     <p class="leise klein">Noch nichts ist gespeichert. Tausche Übungen, ändere Sätze, Tage und Pausen – erst „Als neuen Plan anlegen“ speichert. Bestehende Pläne bleiben unverändert.</p>
+    <div id="te-summe" class="flaeche" aria-live="polite">${entwurfSummeHtml(ew)}</div>
     <label class="feld"><span>Planname</span><input data-te="name" value="${esc(ew.name)}" maxlength="60"></label>
     ${ew.einheiten.map((e, ei) => { const typ = tagTyp(e.name); const imTag = e.uebungen.map(x => x.uebung);
       const dazu = alleUebungen().filter(x => !imTag.includes(x.id) && !nein.includes(x.id) && (x.quelle === 'eigen' || (uebVerfuegbar(x, ger) && uebGruppen(x).some(g => TAG_GRUPPEN[typ].includes(g))))).sort((p, q) => p.name.localeCompare(q.name, 'de'));
@@ -373,28 +420,44 @@ function entwurfHtml() {
       <div class="zeile"><label class="feld"><span>Name</span><input data-te="e-name" data-e="${ei}" value="${esc(e.name)}" maxlength="40"></label>
         <label class="feld"><span>Tag</span><select data-te="e-tag" data-e="${ei}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n2]) => `<option value="${k}" ${e.tag === k ? 'selected' : ''}>${n2}${arr(c.tage).includes(k) ? '' : ' (nicht verfügbar)'}</option>`).join('')}</select></label></div>
       <p class="leise klein" data-te-min="${ei}">ca. ${Math.round(einheitSek(e.uebungen) / 60)} Min. · ${e.uebungen.length} Übung${e.uebungen.length === 1 ? '' : 'en'}${c.minuten && einheitSek(e.uebungen) > c.minuten * 60 + 120 ? ` · <b>länger als ${esc(c.minuten)} Min.</b>` : ''}</p>
-      <ol class="te-liste">${e.uebungen.map((x, ui) => { const alt = entwurfAlternativen(x.uebung); const zeit = istZeit(x);
+      <ol class="te-liste">${e.uebungen.map((x, ui) => { const alt = entwurfAlternativen(x.uebung, imTag); const zeit = istZeit(x);
         return `<li class="te-ueb"><div class="te-kopf"><b>${esc(ueb(x.uebung).name)}</b>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</div>
+        ${istTechnik(ueb(x.uebung)) ? '<p class="hinweis klein" style="margin:.2em 0">Technikübung: gut zum Lernen und Aufwärmen, für Geübte kaum Muskelaufbaureiz.</p>' : ''}${arr(ueb(x.uebung).voraussetzung).length ? `<p class="leise klein" style="margin:.2em 0">Braucht: ${esc(arr(ueb(x.uebung).voraussetzung).map(vorausName).join(', '))}</p>` : ''}
+        ${x._getauscht ? `<p class="leise klein" style="margin:.2em 0">${esc(tauschUnterschied(x._getauscht, x.uebung))}</p>` : ''}
         <div class="te-felder"><label class="feld"><span>Sätze</span>${zahl('saetze', ei, ui, x.saetze, 'min="1" max="10" step="1"')}</label>
         ${zeit ? `<label class="feld"><span>Sek. von</span>${zahl('sek_von', ei, ui, x.sek_von, 'min="5" max="600" step="5" placeholder="selbst"')}</label><label class="feld"><span>bis</span>${zahl('sek_bis', ei, ui, x.sek_bis, 'min="5" max="600" step="5" placeholder="selbst"')}</label>`
           : `<label class="feld"><span>Wdh. von</span>${zahl('wdh_von', ei, ui, x.wdh_von, 'min="1" max="50"')}</label><label class="feld"><span>bis</span>${zahl('wdh_bis', ei, ui, x.wdh_bis, 'min="1" max="50"')}</label>`}
         <label class="feld"><span>Pause (s)</span>${zahl('pause_s', ei, ui, x.pause_s, 'min="0" max="600" step="15"')}</label></div>
-        <div class="te-aktion"><label class="feld"><span>Tauschen gegen</span><select data-te="tausch" data-e="${ei}" data-u="${ui}"><option value="">– Alternative wählen –</option>${alt.gleich.length ? `<optgroup label="Gleiches Bewegungsmuster">${opt(alt.gleich)}</optgroup>` : ''}${alt.muskel.length ? `<optgroup label="Gleiche Muskelgruppe">${opt(alt.muskel)}</optgroup>` : ''}${alt.eigen.length ? `<optgroup label="Eigene Übungen">${opt(alt.eigen)}</optgroup>` : ''}</select></label>
+        <div class="te-aktion"><label class="feld"><span>Tauschen gegen</span><select data-te="tausch" data-e="${ei}" data-u="${ui}"><option value="">${alt.gleich.length + alt.muskel.length + alt.eigen.length ? '– Alternative wählen –' : 'keine weitere Alternative mit deiner Ausstattung'}</option>${alt.gleich.length ? `<optgroup label="Gleiches Bewegungsmuster">${opt(alt.gleich)}</optgroup>` : ''}${alt.muskel.length ? `<optgroup label="Gleiche Muskelgruppe – anderer Schwerpunkt">${opt(alt.muskel)}</optgroup>` : ''}${alt.eigen.length ? `<optgroup label="Eigene Übungen">${opt(alt.eigen)}</optgroup>` : ''}</select></label>
           <label class="wahl-chip"><input type="checkbox" data-te="zeit" data-e="${ei}" data-u="${ui}" ${zeit ? 'checked' : ''}> nach Zeit</label>
           <button class="klein still" data-a="tr-te-weg" data-v="${ei}:${ui}">Entfernen</button></div></li>`; }).join('')}</ol>
       ${e.uebungen.length ? '' : '<p class="hinweis warn klein">Diese Einheit ist leer.</p>'}
       <div class="te-aktion"><label class="feld"><span>Übung hinzufügen</span><select data-te="dazu" data-e="${ei}"><option value="">– wählen –</option>${opt(dazu)}</select></label>
         <button class="klein still" data-a="tr-te-einheit-weg" data-v="${ei}">Einheit entfernen</button></div></fieldset>`; }).join('')}
-    <p class="leise klein" id="te-woche">${entwurfWocheHtml(ew)}</p>
+    <div id="te-woche">${entwurfWocheHtml(ew)}</div>
     ${ew.hinweise && ew.hinweise.length ? `<p class="hinweis klein">${ew.hinweise.map(esc).join('<br>')}</p>` : ''}
     <div id="te-probleme">${probleme.length ? `<div class="hinweis warn klein"><b>Noch nicht speicherbar:</b><br>${probleme.map(esc).join('<br>')}</div>` : ''}</div>
     <div class="knopfreihe"><button class="haupt" data-a="tr-te-anlegen" ${probleme.length ? 'disabled' : ''}>Als neuen Plan anlegen (inaktiv)</button><button data-a="tr-te-verwerfen">Entwurf verwerfen</button></div></section>`;
+}
+// Zahlenfelder: schon beim Tippen nachrechnen (ohne die Felder neu zu zeichnen) und beim Verlassen noch einmal
+const ENTWURF_ZAHLEN = ['saetze', 'wdh_von', 'wdh_bis', 'sek_von', 'sek_bis', 'pause_s'];
+function entwurfZahlUebernehmen(el, x, te, ei) { const roh = String(el.value).replace(',', '.').trim(); const v = roh === '' || isNaN(Number(roh)) ? null : Math.max(0, Math.round(Number(roh))); x[te] = te === 'saetze' ? (v || 0) : v; entwurfZahlAktualisieren(ei); }
+document.addEventListener('input', ev => { const el = ev.target; const te = el && el.dataset && el.dataset.te; if (!te || !trPlanEntwurf || !ENTWURF_ZAHLEN.includes(te)) return;
+  const ei = Number(el.dataset.e); const e = trPlanEntwurf.einheiten[ei]; const x = e && e.uebungen[Number(el.dataset.u)]; if (x) entwurfZahlUebernehmen(el, x, te, ei); });
+// Was sich beim Tausch ändert: Bewegungsmuster und Hauptmuskeln aus den Übungsnotizen – „gleichwertig“ ist ein Tausch nur bei gleichem Muster
+function tauschUnterschied(vonId, nachId) {
+  const a = ueb(vonId), b = ueb(nachId); const mn = l => arr(l).map(m => MUSKEL_NAME[m] || m).join(', ') || '–'; const t = [];
+  const muster = { horizontal_druecken: 'Drücken nach vorn', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben', kniebeuge: 'Kniebeuge', ausfallschritt: 'Ausfallschritt', hueftbeuge: 'Hüftstreckung', isolation: 'Isolation', rumpf: 'Rumpf' };
+  if (a.bewegungsmuster !== b.bewegungsmuster) t.push(`anderes Bewegungsmuster (${muster[b.bewegungsmuster] || b.bewegungsmuster || '?'} statt ${muster[a.bewegungsmuster] || a.bewegungsmuster || '?'})`);
+  if (mn(a.muskeln_haupt) !== mn(b.muskeln_haupt)) t.push(`Hauptmuskeln jetzt ${mn(b.muskeln_haupt)} statt ${mn(a.muskeln_haupt)}`);
+  if (istTechnik(b)) t.push('Technikübung – kaum Muskelaufbaureiz für Geübte');
+  return t.length ? `Getauscht: ${a.name} → ${b.name}. Nicht gleichwertig: ${t.join('; ')}. Das Wochenvolumen oben ist schon angepasst.` : `Getauscht: ${a.name} → ${b.name} (gleiches Muster, gleiche Hauptmuskeln).`;
 }
 function entwurfNeuZeichnen() { const el = $('#tr-entwurf'); if (!el) { route(); return; } el.outerHTML = entwurfHtml(); }
 function entwurfZahlAktualisieren(ei) {
   const ew = trPlanEntwurf; const c = trDaten().einrichtung || {}; const e = ew.einheiten[ei]; const m = $(`[data-te-min="${ei}"]`);
   if (m && e) m.innerHTML = `ca. ${Math.round(einheitSek(e.uebungen) / 60)} Min. · ${e.uebungen.length} Übung${e.uebungen.length === 1 ? '' : 'en'}${c.minuten && einheitSek(e.uebungen) > c.minuten * 60 + 120 ? ` · <b>länger als ${esc(c.minuten)} Min.</b>` : ''}`;
-  const w = $('#te-woche'); if (w) w.textContent = entwurfWocheHtml(ew);
+  const w = $('#te-woche'); if (w) w.innerHTML = entwurfWocheHtml(ew); const su = $('#te-summe'); if (su) su.innerHTML = entwurfSummeHtml(ew);
   const p = entwurfPruefen(ew); const pe = $('#te-probleme'); if (pe) pe.innerHTML = p.length ? `<div class="hinweis warn klein"><b>Noch nicht speicherbar:</b><br>${p.map(esc).join('<br>')}</div>` : '';
   const k = $('[data-a="tr-te-anlegen"]'); if (k) k.disabled = p.length > 0;
 }
@@ -404,9 +467,9 @@ document.addEventListener('change', ev => {
   if (te === 'name') { ew.name = el.value.trim().slice(0, 60) || ew.name; return; }
   if (te === 'e-name' && e) { e.name = el.value.trim().slice(0, 40) || e.name; return; }
   if (te === 'e-tag' && e) { e.tag = el.value; entwurfZahlAktualisieren(ei); return; }
-  if (['saetze', 'wdh_von', 'wdh_bis', 'sek_von', 'sek_bis', 'pause_s'].includes(te) && x) { const v = el.value === '' ? null : Math.max(0, Math.round(Number(el.value))); x[te] = te === 'saetze' ? (v || 0) : v; entwurfZahlAktualisieren(ei); return; }
+  if (ENTWURF_ZAHLEN.includes(te) && x) { entwurfZahlUebernehmen(el, x, te, ei); return; }
   if (te === 'zeit' && x) { if (el.checked) { x.messung = 'zeit'; x.sek_von = x.sek_von || null; x.sek_bis = x.sek_bis || null; } else { x.messung = 'wdh'; if (!x.wdh_von) { x.wdh_von = 8; x.wdh_bis = 12; } } entwurfNeuZeichnen(); return; }
-  if (te === 'tausch' && x && el.value) { const u = ueb(el.value); const neu = uebEintrag(u, x.saetze, !!x.aufwaerm, []); neu.saetze = x.saetze; neu.aufwaerm = x.aufwaerm; delete neu._iso; delete neu._fokus; delete neu._bonus; e.uebungen[ui] = neu; entwurfNeuZeichnen(); return; }
+  if (te === 'tausch' && x && el.value) { const u = ueb(el.value); const neu = uebEintrag(u, x.saetze, !!x.aufwaerm, []); neu.saetze = x.saetze; neu.aufwaerm = x.aufwaerm; if (x.pause_s != null) neu.pause_s = x.pause_s; delete neu._iso; delete neu._fokus; delete neu._bonus; neu._getauscht = x._getauscht || x.uebung; e.uebungen[ui] = neu; entwurfNeuZeichnen(); return; }
   if (te === 'dazu' && e && el.value) { const neu = uebEintrag(ueb(el.value), (trDaten().einrichtung || {}).erfahrung === 'einsteiger' ? 2 : 3, !e.uebungen.length, []); delete neu._iso; delete neu._fokus; delete neu._bonus; e.uebungen.push(neu); entwurfNeuZeichnen(); return; }
 });
 function trEinrichtungHtml() {
@@ -423,7 +486,11 @@ function trEinrichtungHtml() {
       <label class="feld"><span>Minuten pro Einheit</span><input name="minuten" type="number" min="20" max="180" step="5" inputmode="numeric" value="${esc(c.minuten || '')}" style="width:6em"></label></div>
     <fieldset><legend>Trainingstage</legend><div class="chips-wrap">${WOCHENTAGE.map(([k, n2]) => chk('tage', k, tage.includes(k), n2)).join('')}</div></fieldset>
     <fieldset><legend>Ort und Geräte</legend><div class="zeile"><label class="feld"><span>Ort</span><select name="ort">${[['', '–'], ['studio', 'Studio'], ['zuhause', 'Zuhause'], ['beides', 'beides']].map(([v, t2]) => `<option value="${v}" ${c.ort === v ? 'selected' : ''}>${t2}</option>`).join('')}</select></label></div>
-      <div class="chips-wrap">${TR_GERAETE.map(([k, n2]) => chk('geraete', k, arr(c.geraete).includes(k), n2)).join('')}</div></fieldset>
+      <div class="chips-wrap">${TR_GERAETE.map(([k, n2]) => chk('geraete', k, arr(c.geraete).includes(k), n2)).join('')}</div>
+      <p class="klein" style="margin:.6em 0 .2em"><b>Außerdem vorhanden?</b> <span class="leise">Manche Körpergewichtsübungen brauchen etwas Sicheres zum Abstützen oder Fixieren.</span></p>
+      <div class="chips-wrap">${TR_VORAUS.map(([k, n2]) => chk('geraete', k, arr(c.geraete).includes(k), n2)).join('')}</div>
+      ${(() => { const ger = arr(c.geraete); if (!ger.length) return ''; const fehlt = {}; (K.uebungen || []).forEach(u => arr(u.voraussetzung).forEach(req => { if (!vorausErfuellt(req, ger)) (fehlt[req] = fehlt[req] || []).push(u.name); }));
+        const z = Object.entries(fehlt).map(([req, l]) => `${vorausName(req)}: ${l.join(', ')}`); return z.length ? `<p class="leise klein">Damit kämen dazu – ${esc(z.join(' · '))}.</p>` : ''; })()}</fieldset>
     <fieldset><legend>Schwerpunkte (optisch/Vorliebe)</legend><div class="chips-wrap">${MUSKEL_GRUPPEN.map(([k, n2]) => chk('schwerpunkte', k, arr(c.schwerpunkte).includes(k), n2)).join('')}</div>
       <p class="leise klein">Ein Schwerpunkt bedeutet etwas mehr Volumen für diese Gruppe – das ist etwas anderes als stagnierende Leistung oder Beschwerden.</p></fieldset>
     <label class="feld"><span>Unerwünschte Übungen</span><select name="unerwuenscht" multiple size="4">${(K.uebungen || []).map(u => `<option value="${esc(u.id)}" ${arr(c.unerwuenscht).includes(u.id) ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
@@ -447,8 +514,8 @@ function trEinrichtungHtml() {
       <p class="klein">+ ${esc(o.plus)}<br>− ${esc(o.minus)}</p>
       <p class="leise klein">Pro Woche trainiert: ${MUSKEL_GRUPPEN.filter(([k]) => o.haeufigkeit[k]).map(([k, n2]) => `${n2} ${o.haeufigkeit[k]}×`).join(' · ') || '–'}</p>
       ${o.einheiten.map(e => `<details class="klein"><summary><b>${esc(e.name)}</b> · ca. ${e.minuten} Min. · ${e.uebungen.length} Übungen</summary><ul class="anl-liste">${e.uebungen.map(x => `<li><span>${esc(ueb(x.uebung).name)}: ${x.saetze} × ${istZeit(x) ? 'Haltezeit (Sek. selbst wählen)' : x.wdh_von + '–' + x.wdh_bis} · Pause ${x.pause_s} s</span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`).join('')}</ul>${e.gekuerzt.length ? `<p class="leise">Wegen der Zeitvorgabe: ${esc(e.gekuerzt.join(', '))}</p>` : ''}</details>`).join('')}
-      <p class="leise klein">Arbeitssätze pro Woche (nur Hauptmuskeln): ${MUSKEL_GRUPPEN.filter(([k]) => o.wochensaetze[k]).map(([k, n2]) => `${n2} ${o.wochensaetze[k]}`).join(' · ') || '–'}</p>
-      ${prio.length ? `<p class="leise klein">Schwerpunkt ${esc(prio.map(gn).join(', '))}: ${o.bonusSaetze} Zusatzsätze${o.extra ? ` und ${o.extra} Zusatzübung${o.extra === 1 ? '' : 'en'}` : ''} pro Woche, zusammen ${esc(prio.map(g => `${gn(g)} ${o.wochensaetze[g] || 0}`).join(', '))} Wochensätze.${o.bonusWeg ? ` ${o.bonusWeg} weitere passten nicht in ${esc(c.minuten)} Min.` : ''}${o.gekappt ? ` ${o.gekappt} weggelassen: Planungsgrenze ${FOKUS_MAX} Sätze pro Woche, weil der Zusatznutzen darüber abflacht.` : ''}${prio.some(g => !o.haeufigkeit[g]) ? ' Für ' + esc(prio.filter(g => !o.haeufigkeit[g]).map(gn).join(', ')) + ' gibt es mit deiner Ausstattung keine passende Übung.' : ''} Andere Gruppen behalten ihre Grundsätze.</p>` : ''}
+      ${volumenHtml(o.vol, c.erfahrung)}
+      ${prio.length ? `<p class="leise klein">Schwerpunkt ${esc(prio.map(gn).join(', '))}: ${o.bonusSaetze} Zusatzsätze${o.extra ? ` und ${o.extra} Zusatzübung${o.extra === 1 ? '' : 'en'}` : ''} pro Woche; direkt jetzt ${esc(prio.map(g => `${gn(g)} ${gruppeDirekt(o.vol, g)}`).join(', '))} Wochensätze.${o.bonusWeg ? ` ${o.bonusWeg} weitere passten nicht in ${esc(c.minuten)} Min.` : ''}${o.gekappt ? ` ${o.gekappt} weitere nicht eingeplant: Die Gruppe liegt schon über dem Orientierungswert von ca. ${o.orient} direkten Sätzen für deine Erfahrung – darüber bringt mehr in Studien abnehmend Zusatznutzen. Keine feste Grenze, im Entwurf erhöhbar.` : ''}${o.gestrichen ? ` ${o.gestrichen} Isolationssätze gekürzt, weil ein Muskel ohnehin viele Sätze hatte.` : ''}${prio.some(g => !o.haeufigkeit[g]) ? ' Für ' + esc(prio.filter(g => !o.haeufigkeit[g]).map(gn).join(', ')) + ' gibt es mit deiner Ausstattung keine passende Übung.' : ''}</p>` : ''}
       ${o.hinweise.length ? `<p class="hinweis klein">${o.hinweise.map(esc).join('<br>')}</p>` : ''}
       <button class="klein haupt" data-a="tr-vorschlag-entwurf" data-v="${oi}">Ansehen und anpassen</button></section>`).join('')}
     ${opts.nicht.length ? `<details class="karte klein"><summary>Nicht angeboten (${opts.nicht.length})</summary><ul>${opts.nicht.map(o => `<li><b>${esc(o.name)}</b>: ${esc(o.fehler.join('; '))}</li>`).join('')}</ul><p class="leise">Solche Vorschläge hätten leere oder zu dünne Einheiten und werden deshalb nicht als Plan angeboten.</p></details>` : ''}
@@ -630,6 +697,9 @@ function uebungVerlaufHtml(id) {
   return `<h2>Verlauf</h2>
   ${vars.length > 1 ? `<p class="klein" style="margin:0">Variante/Gerät (getrennt geführt, nicht vergleichbar):</p><div class="fz-chips">${vars.map(x => `<button class="filterchip" data-a="tr-vz-var" data-u="${esc(id)}" data-v="${esc(x)}" aria-pressed="${x === v}">${esc(x || 'ohne Angabe')}</button>`).join('')}</div>` : v ? `<p class="leise klein">Variante: ${esc(v)}</p>` : ''}
   ${zeitChips()}<p class="klein">${esc(zus)}</p>
+  ${(() => { const e = trDaten().einheiten.filter(x => x.ende && x.uebungen.some(u => u.uebung === id && (u.variante || '') === v && u.saetze.some(s => s.seiten && s.erledigt))).sort((a, b) => b.start.localeCompare(a.start))[0]; if (!e) return '';
+    const ss = e.uebungen.find(u => u.uebung === id && (u.variante || '') === v).saetze.filter(s => s.seiten && s.erledigt); const sum = k => ss.reduce((a, s) => a + (Number(s.seiten[k].wdh) || 0) * (Number(s.seiten[k].kg) || 0), 0);
+    return `<p class="klein">Links/rechts zuletzt (${esc(datumDE(e.start.slice(0, 10)))}): ${ss.map(s => `L ${esc(satzTeil(s.seiten.l.wdh, s.seiten.l.kg))} / R ${esc(satzTeil(s.seiten.r.wdh, s.seiten.r.kg))}`).join(' · ')}${sum('l') && sum('r') ? ` – Volumen L ${zahlDE(sum('l'))} kg, R ${zahlDE(sum('r'))} kg` : ''}. <span class="leise">Kleine Seitenunterschiede sind häufig und allein kein Befund; bei Schmerzen ärztlich abklären lassen.</span></p>`; })()}
   ${l.length ? `${linienSvg(l.map(s => ({ datum: s.datum, y: Number(s.top.kg) || 0, hohl: s.rirFehlt })), 'Gewicht des schwersten Arbeitssatzes (kg)', 'kg')}
     ${linienSvg(l.map(s => ({ datum: s.datum, y: Number(s.top.wdh) || 0 })), 'Wiederholungen in diesem Satz', 'Wdh.')}
     <details class="klein"><summary>Volumen und geschätzte Maximalkraft</summary>
@@ -753,7 +823,7 @@ function mobVerlaufHtml() {
 /* Persönliche Routine: aus geprüften Übungen nach Ziel, Bereichen, Zeit, Hilfsmitteln; unerwünschte Übungen ausgeschlossen.
    „Matte“ und „Wand“ sind keine Anschaffung: Boden (Matte, Teppich oder Handtuch) und eine freie Wand gelten als vorhanden, solange du sie nicht abwählst. */
 function mobUmgebung(c) { return Array.isArray(c.umgebung) ? c.umgebung : (c.kontext === 'buero' ? ['wand'] : ['matte', 'wand']); }
-function mobHmVerfuegbar(c) { return ['keins', ...arr(c.hilfsmittel), ...mobUmgebung(c)]; }
+function mobHmVerfuegbar(c) { return ['keins', ...arr(c.hilfsmittel), ...mobUmgebung(c), ...(c.kontext === 'buero' ? ['stuhl'] : [])]; }   // im Büro ist ein Stuhl da
 // Dauer realistisch schätzen: Sätze, Seiten, Richtungen, Haltezeit oder Wiederholungen mit Tempo; plus Wechselzeit
 function mobSekunden(u, dauer) {
   const t = String(dauer || u.dauer_vorschlag || ''); const ohneKlammer = t.replace(/\([^)]*\)/g, '');
@@ -953,7 +1023,7 @@ function trEinheitHtml() {
   ${e.uebungen.map((u, ui) => { const info = ueb(u.uebung); const l = letzteLeistung(u.uebung, e.id, u.variante);
     return `<section class="karte tr-uebung"><div class="zeile" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(info.name)}</h2>${anleitungsKnopf('tr', u.uebung, u.variante)}</div>
       ${u.variante ? `<p class="klein" style="margin:.1em 0">${esc(u.variante)}</p>` : ''}
-      <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(istZeit(u) ? 'Haltezeit in Sekunden; Zusatz-kg nur bei Gewicht' : gewichtArt(info))}</b> · ${istZeit(u) ? `${zielKurz(u) === 'Haltezeit' ? 'Haltezeit selbst wählen' : 'Ziel ' + esc(zielKurz(u))}${u.je_seite ? ' je Seite' : ''} · ` : u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
+      <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(istZeit(u) ? 'Haltezeit in Sekunden; Zusatz-kg nur bei Gewicht' : gewichtArt(info))}</b> · ${istZeit(u) ? `${zielKurz(u) === 'Haltezeit' ? 'Haltezeit selbst wählen' : 'Ziel ' + esc(zielKurz(u))}${u.je_seite ? ' je Seite' : ''} · ` : u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir && !istZeit(u) ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
       ${u.aufwaerm_schema && u.saetze.some(s => s.art === 'aufwaerm') ? `<p class="leise klein" style="margin:-.3em 0 .5em">Aufwärmen (deine Regel): ${esc(aufwaermText(u))} – Gewichte als Vorschlag im Feld, bezogen auf ${l && l.saetze.length ? 'den letzten Arbeitssatz' : u.referenz_kg ? 'das Referenzgewicht' : 'dein Arbeitsgewicht'}.</p>` : ''}
       ${!u.saetze.some(s => s.art === 'arbeit') ? '<p class="hinweis klein">Satzanzahl offen – Arbeitssätze mit „+ Satz“ hinzufügen.</p>' : ''}
       ${vorschlagHtml(u, ui, e)}
@@ -962,9 +1032,20 @@ function trEinheitHtml() {
         <td class="vorher">${(() => { const idx = u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length - 1; const vs = s.art === 'arbeit' && l ? l.saetze[idx] : null; return vs ? esc(vs.sek != null && vs.sek !== '' ? vs.sek + ' s' : (vs.kg !== '' && vs.kg != null ? zahlDE(Number(vs.kg), 2) : '–') + '×' + (vs.wdh || '?')) : '–'; })()}</td>
         <td><input type="number" inputmode="decimal" step="0.25" min="0" value="${esc(s.kg ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'kg') : trVorher(u, l, si, 'kg'))}" data-tr-satz="kg" data-u="${ui}" data-s="${si}" aria-label="Gewicht kg"></td>
         <td>${istZeit(u) ? `<input type="number" inputmode="numeric" step="5" min="0" value="${esc(s.sek ?? '')}" placeholder="${esc(trVorher(u, l, si, 'sek') || sekZiel(u).bis || sekZiel(u).von || '')}" data-tr-satz="sek" data-u="${ui}" data-s="${si}" aria-label="Haltezeit in Sekunden">` : `<input type="number" inputmode="numeric" step="1" min="0" value="${esc(s.wdh ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'wdh') : trVorher(u, l, si, 'wdh'))}" data-tr-satz="wdh" data-u="${ui}" data-s="${si}" aria-label="Wiederholungen">`}</td>
-        <td><select data-tr-satz="rir" data-u="${ui}" data-s="${si}" aria-label="RIR"><option value=""></option>${[0, 1, 2, 3, 4, '5+'].map(x => `<option ${String(s.rir) === String(x) ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
+        <td>${istZeit(u) ? '<span class="leise" title="Bei Halteübungen keine RIR-Angabe">–</span>' : `<select data-tr-satz="rir" data-u="${ui}" data-s="${si}" aria-label="RIR"><option value=""></option>${[0, 1, 2, 3, 4, '5+'].map(x => `<option ${String(s.rir) === String(x) ? 'selected' : ''}>${x}</option>`).join('')}</select>`}</td>
         <td><button class="klein ${s.erledigt ? '' : 'haupt'}" data-a="tr-satz-ok" data-u="${ui}" data-s="${si}" aria-label="Satz ${s.erledigt ? 'wieder öffnen' : 'abschließen'}">${s.erledigt ? ico('haken', 'klein') : '<span class="tr-ok-text">fertig</span>'}</button></td></tr>`).join('')}
       </tbody></table>
+      ${!istZeit(u) && u.saetze.some(s => s.art === 'arbeit') ? `<details class="klein tr-methoden"${u.saetze.some(s => s.methode) ? ' open' : ''}><summary>Satzmethoden (optional): Dropsatz, Teilwiederholungen</summary>
+        <p class="leise" style="margin:.3em 0">Normal ist Standard. Sondersätze werden getrennt gespeichert: Vorschläge vergleichen nur die vollen Wiederholungen, reine Teilwiederholungs-Sätze gar nicht. Ein Dropsatz zählt im Wochenvolumen als ein Satz.</p>
+        ${u.saetze.map((s, si) => s.art !== 'arbeit' ? '' : `<div class="tr-methode-zeile"><span class="tr-methode-satz">W${u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length}</span>
+          <select data-tr-methode="1" data-u="${ui}" data-s="${si}" aria-label="Satzmethode">${METHODEN.map(([k, n]) => `<option value="${k}" ${(s.methode || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          ${s.methode === 'drop' ? [0, 1].map(i => { const st = arr(s.stufen)[i] || {}; return `<span class="tr-stufe">Stufe ${i + 2}: <input type="number" inputmode="decimal" step="0.25" min="0" placeholder="kg" value="${esc(st.kg ?? '')}" data-tr-stufe="${i}:kg" data-u="${ui}" data-s="${si}" aria-label="Drop-Stufe ${i + 2} kg"> × <input type="number" inputmode="numeric" min="0" placeholder="Wdh." value="${esc(st.wdh ?? '')}" data-tr-stufe="${i}:wdh" data-u="${ui}" data-s="${si}" aria-label="Drop-Stufe ${i + 2} Wiederholungen"></span>`; }).join('') : ''}
+          ${s.methode === 'voll_plus_teil' ? `<span class="tr-stufe">danach <input type="number" inputmode="numeric" min="0" placeholder="Teilwdh." value="${esc(s.teil_wdh ?? '')}" data-tr-teil="1" data-u="${ui}" data-s="${si}" aria-label="Teilwiederholungen"> Teilwdh.</span>` : ''}
+          ${s.methode === 'lang_teil' ? '<span class="leise">Wdh.-Feld oben = Teilwiederholungen</span>' : ''}</div>`).join('')}
+        <details><summary>Was ist was?</summary><ul class="leise">
+          <li><b>Dropsatz:</b> bis nahe ans Versagen, Gewicht sofort reduzieren, ohne Pause weiter. Eine Übersichtsarbeit (6 Studien) fand ähnliches Muskelwachstum wie mit normalen Sätzen, bei teils weniger Zeit – nicht mehr.</li>
+          <li><b>Teilwiederholungen gedehnt (Long-Length Partials):</b> nur der Teil der Bewegung, in dem der Muskel lang ist. Wenige, kleine Studien (oft Wade, oft Untrainierte) – Ergebnisse uneinheitlich, kein gesicherter Vorteil.</li>
+          <li><b>Volle Wdh. + Teilwdh.:</b> nach den vollen Wiederholungen noch Teilwiederholungen in gedehnter Position anhängen. Eine Studie sah mehr Wachstum, die Zusatzarbeit war aber nicht gleich – ob es an der Methode liegt, ist offen.</li></ul></details></details>` : ''}
       <p class="leise klein" style="margin:.4em 0">A = Aufwärmsatz, W = Arbeitssatz (Kürzel antippen zum Wechseln). Pause: ${u.pause_s ? zahlDE(u.pause_s / 60, 1) + ' Min.' : 'frei'}${trDaten().einstellungen.auto_pause !== false ? ' – startet nach einem fertigen Arbeitssatz' : ''}. <button class="klein still" data-a="tr-pause-start" data-u="${ui}">Pause jetzt starten</button></p>
       <div class="knopfreihe"><button class="klein" data-a="tr-satz-add" data-u="${ui}">${ico('plus', 'klein')} Satz</button><button class="klein still" data-a="tr-satz-weg" data-u="${ui}" ${u.saetze.length ? '' : 'disabled'}>letzten Satz entfernen</button>
         <details class="klein"><summary>Gerät besetzt / Übung tauschen</summary>${tauschHtml(u, ui, info)}</details></div>
@@ -1023,7 +1104,7 @@ function trSoll(e, ui, si) {
   const idx = u.saetze.slice(0, si + 1).filter(x => x.art === s.art).length - 1;
   const letzter = s.art === 'arbeit' && l ? l.saetze[idx] || null : null;
   if (istZeit(u)) { const z = sekZiel(u); ziel = zielKurz(u); wdh = (letzter && Number(letzter.sek)) || Number(z.bis || z.von) || ''; }
-  return { kg: kg == null || isNaN(kg) ? '' : kg, wdh, ziel, rir: s.art === 'arbeit' ? (u.ziel_rir || '') : '', herkunft: s.art === 'arbeit' ? herkunft : zusatz, letzte: l, letzter, vs, einheit: gewichtArt(info) };
+  return { kg: kg == null || isNaN(kg) ? '' : kg, wdh, ziel, rir: s.art === 'arbeit' && !istZeit(u) ? (u.ziel_rir || '') : '', herkunft: s.art === 'arbeit' ? herkunft : zusatz, letzte: l, letzter, vs, einheit: gewichtArt(info) };
 }
 function trEntwurf(e, f) {
   const key = f.ui + '-' + f.si; if (f.entwurf && f.entwurf.key === key) return f.entwurf;
@@ -1044,7 +1125,7 @@ function trStartHtml(rid) {
   return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><h1>${esc(r.name)}</h1>
   <p class="leise klein">${r.uebungen.length} Übungen · ca. ${min} Min. (grob geschätzt)</p>
   ${pruefen.length ? `<div class="hinweis klein"><b>Vor dem ersten Start prüfen</b><ul>${pruefen.join('')}</ul></div>` : ''}
-  <ol class="fz-vorschau">${r.uebungen.map(x => { const n = Number(x.saetze) || 0; const kg = x.start_kg || x.referenz_kg; return `<li><span><b>${esc(ueb(x.uebung).name)}</b>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}${x.optional ? ' <span class="chip">optional</span>' : ''}<br><span class="klein">${x.aufwaerm ? x.aufwaerm + ' Aufwärm + ' : ''}${n ? n + ' × ' : 'Sätze offen × '}${esc(zielKurz(x))}${x.je_seite ? ' je Seite' : ''}${kg ? ` · Start ${esc(kgText(kg))}` : ''}${x.ziel_rir ? ` · Ziel-RIR ${esc(x.ziel_rir)}` : ''}</span></span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`; }).join('')}</ol>
+  <ol class="fz-vorschau">${r.uebungen.map(x => { const n = Number(x.saetze) || 0; const kg = x.start_kg || x.referenz_kg; return `<li><span><b>${esc(ueb(x.uebung).name)}</b>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}${x.optional ? ' <span class="chip">optional</span>' : ''}<br><span class="klein">${x.aufwaerm ? x.aufwaerm + ' Aufwärm + ' : ''}${n ? n + ' × ' : 'Sätze offen × '}${esc(zielKurz(x))}${x.je_seite ? ' je Seite' : ''}${kg ? ` · Start ${esc(kgText(kg))}` : ''}${x.ziel_rir && !istZeit(x) ? ` · Ziel-RIR ${esc(x.ziel_rir)}` : ''}</span></span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`; }).join('')}</ol>
   <button class="haupt fz-ok" data-a="tr-f-start" data-v="${esc(r.id)}">▶ Training starten</button>
   <div class="knopfreihe"><a class="knopf still klein" href="#/training/routine/${esc(r.id)}">Übungen und Startwerte bearbeiten</a><button class="still klein" data-a="tr-start-tabelle" data-v="${esc(r.id)}">Ohne Führung (Tabelle)</button></div>`;
 }
@@ -1100,10 +1181,17 @@ function trFuehrungHtml() {
     <p class="leise klein fz-herkunft">${esc(so.herkunft || (istZeit(u) ? 'Haltezeit selbst wählen – nur so lange die Ausführung sauber bleibt; Zusatzgewicht nur, wenn du eins nutzt' : so.kg === '' ? 'Kein Startwert – Gewicht selbst wählen' : ''))}${so.letzter ? ` · Letztes Mal dieser Satz: ${esc(satzText(so.letzter))}` : so.letzte ? ` · Zuletzt ${esc(datumDE(so.letzte.datum))}: ${esc(so.letzte.saetze.map(satzText).join(', '))}` : ''}</p>
     ${hinw.length ? `<p class="hinweis klein">${hinw.map(esc).join('<br>')}</p>` : ''}${vsKurz}
     <div class="fz-eingabe"><p class="fz-ist">Tatsächlich – bestätigen oder ändern:</p>
-      ${u.je_seite ? `<label class="klein"><input type="checkbox" data-a="tr-f-getrennt" ${ent.getrennt ? 'checked' : ''}> Seiten unterschiedlich</label>` : ''}
+      ${u.je_seite ? `<div class="zeile" style="align-items:center"><label class="klein"><input type="checkbox" data-a="tr-f-getrennt" ${ent.getrennt ? 'checked' : ''}> Seiten unterschiedlich (sonst gilt der Wert für beide Seiten)</label><button class="klein still" data-a="timer" data-quelle="seite" data-min="0.5" data-name="Seitenwechsel">⏱ 30 s Seitenwechsel</button></div><p class="leise klein">Ein Satz = beide Seiten; er zählt im Volumen einmal.</p>` : ''}
       ${u.je_seite && ent.getrennt ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-kgL', 'Gewicht', ent.kgL, schritt)}${stepperHtml('fz-wdhL', 'Wdh.', ent.wdhL, 1)}</div><div><b>Rechts</b>${stepperHtml('fz-kgR', 'Gewicht', ent.kgR, schritt)}${stepperHtml('fz-wdhR', 'Wdh.', ent.wdhR, 1)}</div></div>`
         : `<div class="fz-paar">${stepperHtml('fz-kg', 'Gewicht', ent.kg, schritt, so.einheit)}${istZeit(u) ? stepperHtml('fz-wdh', u.je_seite ? 'Sekunden je Seite' : 'Sekunden gehalten', ent.wdh, 5) : stepperHtml('fz-wdh', u.je_seite ? 'Wdh. je Seite' : 'Wiederholungen', ent.wdh, 1)}</div>`}
-      ${s.art === 'arbeit' ? `<p class="klein fz-label"><b>RIR</b> – Wiederholungen in Reserve (freiwillig; leer = unbekannt)</p>${chipsHtml('rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), ent.rir, 'unbekannt')}` : ''}
+      ${istZeit(u) ? '<p class="leise klein fz-label">Bei Halteübungen gibt es keine RIR-Angabe: Halte nur so lange, wie die Ausführung sauber bleibt. Variante und Zusatzgewicht werden getrennt gespeichert.</p>' : ''}
+      ${s.art === 'arbeit' && !istZeit(u) ? `<p class="klein fz-label"><b>RIR</b> – Wiederholungen in Reserve (freiwillig; leer = unbekannt)</p>${chipsHtml('rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), ent.rir, 'unbekannt')}` : ''}
+      ${s.art === 'arbeit' && !istZeit(u) ? `<details class="fz-optional"${ent.methode ? ' open' : ''}><summary>Satzmethode <span class="leise">(optional: Dropsatz, Teilwiederholungen)</span></summary>
+        <label class="feld"><span>Methode</span><select id="fz-methode">${METHODEN.map(([k, n]) => `<option value="${k}" ${(ent.methode || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        ${ent.methode === 'drop' ? `<div class="fz-seiten"><div><b>Stufe 2</b>${stepperHtml('fz-d0kg', 'Gewicht', ent.d0kg ?? '', schritt)}${stepperHtml('fz-d0wdh', 'Wdh.', ent.d0wdh ?? '', 1)}</div><div><b>Stufe 3 (optional)</b>${stepperHtml('fz-d1kg', 'Gewicht', ent.d1kg ?? '', schritt)}${stepperHtml('fz-d1wdh', 'Wdh.', ent.d1wdh ?? '', 1)}</div></div>` : ''}
+        ${ent.methode === 'voll_plus_teil' ? stepperHtml('fz-teil', 'Teilwdh. danach (gedehnt)', ent.teil ?? '', 1) : ''}
+        ${ent.methode === 'lang_teil' ? '<p class="leise klein">Das Feld „Wiederholungen“ oben zählt dann die Teilwiederholungen. Dieser Satz wird nicht mit vollen Wiederholungen verglichen.</p>' : ''}
+        <p class="leise klein">Sondersätze werden getrennt gespeichert; ein Dropsatz zählt als ein Satz.</p></details>` : ''}
       <details class="fz-optional"><summary>Ausführung, Zielmuskel, Beschwerden <span class="leise">(freiwillig)</span></summary>
         <p class="klein fz-label"><b>Ausführung</b></p>${chipsHtml('technik', TECHNIK, ent.technik, '–')}
         <p class="klein fz-label"><b>Zielmuskel gespürt</b> <span class="leise">(subjektiv, kein Wachstumsmaß)</span></p>${chipsHtml('gefuehl', GEFUEHL, ent.gefuehl, '–')}
@@ -1115,7 +1203,8 @@ function trFuehrungHtml() {
 }
 function trFEntwurfLesen(f) {
   const v = id => { const el = document.getElementById(id); if (!el) return null; const x = String(el.value).replace(',', '.').trim(); return x === '' ? '' : Number(x); };
-  const ent = Object.assign({}, f.entwurf || {}); ['kg', 'wdh', 'kgL', 'wdhL', 'kgR', 'wdhR'].forEach(k => { const x = v('fz-' + k); if (x !== null) ent[k] = x; });
+  const ent = Object.assign({}, f.entwurf || {}); const me = document.getElementById('fz-methode'); if (me) ent.methode = me.value;
+  ['kg', 'wdh', 'kgL', 'wdhL', 'kgR', 'wdhR', 'd0kg', 'd0wdh', 'd1kg', 'd1wdh', 'teil'].forEach(k => { const x = v('fz-' + k); if (x !== null) ent[k] = x; });
   const bt = document.querySelector('[data-tr-f-feld="beschwerde_text"]'); if (bt) ent.beschwerde_text = bt.value; return ent;
 }
 // Pause starten bzw. ersetzen – Aufwärmsätze kurz, Arbeitssätze laut Routine; nie ein Eintrag durch Timerablauf
@@ -1149,6 +1238,10 @@ document.addEventListener('click', ev => {
         Object.assign(s2, { soll: { kg: so.kg, wdh: so.wdh, ziel: so.ziel, rir: so.rir }, kg: kg === '' ? '' : Number(kg), wdh: Number(wdh), rir: ent.rir == null ? '' : ent.rir, erledigt: true, zeit: new Date().toISOString() });
         if (seiten) s2.seiten = seiten; else delete s2.seiten;
         if (istZeit(u2)) { s2.sek = Number(wdh); s2.wdh = ''; s2.soll.sek = so.wdh; s2.soll.wdh = ''; }
+        delete s2.methode; delete s2.stufen; delete s2.teil_wdh;
+        if (ent.methode && !istZeit(u2)) { s2.methode = ent.methode;
+          if (ent.methode === 'drop') s2.stufen = [[ent.d0kg, ent.d0wdh], [ent.d1kg, ent.d1wdh]].filter(([k, w]) => (k !== '' && k != null) || (w !== '' && w != null)).map(([k, w]) => ({ kg: k === '' || k == null ? '' : Number(k), wdh: w === '' || w == null ? '' : Number(w) }));
+          if (ent.methode === 'voll_plus_teil') s2.teil_wdh = ent.teil === '' || ent.teil == null ? '' : Number(ent.teil); }
         if (ent.technik) s2.technik = ent.technik; if (ent.gefuehl) s2.gefuehl = ent.gefuehl;
         if (ent.beschwerde) { s2.beschwerde = true; s2.beschwerde_text = ent.beschwerde_text || ''; u2.beschwerde = true; u2.beschwerde_text = [u2.beschwerde_text, ent.beschwerde_text].filter(Boolean).join('; '); }
         if (ent.technik === 'unsauber') u2.qualitaet = 'unsauber'; else if (ent.technik && !u2.qualitaet) u2.qualitaet = ent.technik;
@@ -1183,6 +1276,8 @@ document.addEventListener('change', async ev => { const el = ev.target; if (el.i
 document.addEventListener('change', ev => { const el = ev.target; if (el.dataset && el.dataset.trFTausch != null && el.value) { const e = trEinheit(); const f = e && trFuehrung(e); if (!f) return; const v = el.value;
   aendere(`Ersetzt durch ${ueb(v).name} – Gewichte nicht übernommen`, d => { const geteilt = e.uebungen[f.ui].saetze.some(s => s.erledigt); trTausche(d, f.ui, v); const e2 = trEinheit(); const i = geteilt ? f.ui + 1 : f.ui; e2.fuehrung.ui = i; e2.fuehrung.si = e2.uebungen[i].saetze.findIndex(trOffen); e2.fuehrung.phase = 'satz'; e2.fuehrung.entwurf = null; }); } });
 // Eingaben im aktuellen Satz sofort als Entwurf sichern (nicht als Leistung) – überstehen Neuladen und App-Wechsel
+document.addEventListener('change', ev => { if (ev.target.id !== 'fz-methode') return; const e = trEinheit(); if (!e || !e.fuehrung) return; const f = e.fuehrung;
+  trSpeichernStill(() => { f.entwurf = Object.assign(trEntwurf(e, f), trFEntwurfLesen(f), { methode: ev.target.value }); }); route(); });
 document.addEventListener('input', ev => { const el = ev.target; const k = el.dataset && el.dataset.trFFeld; if (!k || /^fz-k-/.test(k)) return; const e = trEinheit(); if (!e || !e.fuehrung) return; const f = e.fuehrung;
   trSpeichernStill(() => { const ent = Object.assign(trEntwurf(e, f), trFEntwurfLesen(f)); f.entwurf = ent; }); });
 // Sekundentakt: Countdown aktualisieren; nach Ablauf (wenn eingestellt) zur Ansicht des nächsten Satzes – ohne etwas zu buchen
@@ -1297,14 +1392,32 @@ function trUebungHtml(id) {
   ${trEinheit() ? `<p class="hinweis klein">Training läuft – <a href="#/training/${trEinheit().fuehrung ? 'fuehrung' : 'einheit'}">zurück zum aktuellen Satz</a> (Eingaben und Timer bleiben erhalten).</p>` : ''}
   ${uebungVerlaufHtml(id)}`;
 }
+/* Bibliothek: Suche + Filter (Muskelgruppe, Bewegungsmuster, Ausstattung, einseitig). Einseitig = Feld `einseitig` oder am Namen erkennbar. */
+const MUSTER_NAME = { horizontal_druecken: 'Drücken nach vorn', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben', kniebeuge: 'Kniebeuge', ausfallschritt: 'Ausfallschritt', hueftbeuge: 'Hüftstreckung', isolation: 'Isolation', rumpf: 'Rumpf' };
+const istEinseitig = u => u.einseitig === true || /einarmig|einbeinig|einseitig|ausfallschritt|step-up|pistol|seitstütz|kickback|konzentrationscurl|split squat/i.test(String(u.name) + ' ' + arr(u.alias).join(' '));
+let trBib = { q: '', gruppe: '', muster: '', ger: '', seite: '' };
+function trBibListe() {
+  const q = suchNorm(trBib.q).trim(); const ger = arr((trDaten().einrichtung || {}).geraete);
+  const l = alleUebungen().filter(u => (!q || suchNorm(u.name + ' ' + arr(u.alias).join(' ')).includes(q)) && (!trBib.gruppe || uebGruppen(u).includes(trBib.gruppe)) && (!trBib.muster || u.bewegungsmuster === trBib.muster)
+    && (trBib.ger !== 'meine' || u.quelle === 'eigen' || (ger.length && uebVerfuegbar(u, ger))) && (!trBib.seite || (trBib.seite === 'ein') === istEinseitig(u)));
+  return `<p class="leise klein">${l.length} von ${alleUebungen().length} Übungen</p>${l.length ? `<ul class="eintraege">${l.slice(0, 80).map(u => `<li><span><b><a href="#/training/uebung/${esc(u.id)}">${esc(u.name)}</a></b>${u.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}${istTechnik(u) ? ' <span class="chip">Technik</span>' : ''}${istEinseitig(u) ? ' <span class="chip">einseitig</span>' : ''}<br><span class="leise klein">${esc([MUSTER_NAME[u.bewegungsmuster] || '', arr(u.muskeln_haupt).map(m => MUSKEL_NAME[m] || m).join(', '), arr(u.geraet).map(g => (TR_GERAETE.find(x => x[0] === g) || [g, g])[1]).join(' / '), arr(u.voraussetzung).length ? 'braucht ' + arr(u.voraussetzung).map(vorausName).join(', ') : ''].filter(Boolean).join(' · '))}</span></span><span>${anleitungsKnopf('tr', u.id, '', true)}</span></li>`).join('')}</ul>` : '<p class="leise">Keine Übung passt zu diesen Filtern.</p>'}`;
+}
 function trUebungenHtml() {
-  const l = alleUebungen();
+  const sel = (k, titel, opts) => `<label class="feld"><span>${titel}</span><select data-tr-bib="${k}">${opts.map(([v, t]) => `<option value="${v}" ${trBib[k] === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
   return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p><h1>Übungen</h1>
-  ${l.length ? `<ul class="eintraege">${l.map(u => `<li><span><b><a href="#/training/uebung/${esc(u.id)}">${esc(u.name)}</a></b>${u.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}</span><span>${anleitungsKnopf('tr', u.id, '', true)}</span></li>`).join('')}</ul>` : '<p class="leise">Die geprüfte Übungsbibliothek wird gerade aufgebaut – bis dahin kannst du eigene Übungen anlegen.</p>'}
-  <form id="tr-ueb-neu" class="karte"><h3 style="margin-top:0">Eigene Übung anlegen</h3><div class="zeile">
+  <div class="karte"><label class="feld"><span>Suchen</span><input data-tr-bib="q" value="${esc(trBib.q)}" placeholder="z. B. Rudern, Curl, Wade" autocomplete="off"></label>
+    <div class="zeile">${sel('gruppe', 'Muskelgruppe', [['', 'alle'], ...MUSKEL_GRUPPEN.map(([k, n]) => [k, n])])}${sel('muster', 'Bewegung', [['', 'alle'], ...Object.entries(MUSTER_NAME)])}${sel('ger', 'Ausstattung', [['', 'alle'], ['meine', 'nur mit meiner Ausstattung']])}${sel('seite', 'Seiten', [['', 'alle'], ['ein', 'einseitig'], ['beid', 'beidseitig']])}</div></div>
+  <div id="tr-bib-liste">${trBibListe()}</div>
+  <form id="tr-ueb-neu" class="karte"><h3 style="margin-top:0">Eigene Übung oder Variante anlegen</h3>
+    <p class="leise klein">Zum Beispiel „Preacher Curl einarmig, Maschine 2“. Eine eigene Variante wird getrennt protokolliert – Gewichte werden nie mit der Basisübung vermischt.</p><div class="zeile">
     <label class="feld" style="flex:2 1 180px"><span>Name</span><input name="name" required></label>
+    <label class="feld"><span>Basiert auf (optional)</span><select name="basis"><option value="">–</option>${(K.uebungen || []).map(u => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select></label>
     <label class="feld"><span>Gerät</span><input name="geraet" placeholder="z. B. Kurzhantel"></label>
     <label class="feld"><span>kleinster Gewichtsschritt (kg)</span><input name="schritt_kg" type="number" step="0.25" min="0" inputmode="decimal" style="width:6em"></label></div>
+    <div class="zeile"><label class="feld"><span>Bewegung</span><select name="muster"><option value="">–</option>${Object.entries(MUSTER_NAME).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+      <label class="feld"><span>Gewicht gilt</span><select name="gewicht_bezug"><option value="">wie Gerät anzeigt</option><option value="je_seite">je Hantel / je Seite</option><option value="gesamt">gesamt</option></select></label></div>
+    <fieldset><legend>Hauptmuskeln</legend><div class="chips-wrap">${Object.entries(MUSKEL_NAME).map(([k, n]) => `<label class="wahl-chip"><input type="checkbox" name="muskeln" value="${k}"> ${n}</label>`).join('')}</div></fieldset>
+    <label><input type="checkbox" name="einseitig"> einseitig (links und rechts getrennt erfassen; ein Satz = beide Seiten)</label>
     <label class="feld"><span>Demonstrationslink (optional)</span><input name="link" type="url" placeholder="https://…"></label>
     <label class="feld"><span>Notiz / Ausführungshinweise</span><input name="notiz"></label>
     <button class="haupt klein" type="submit">Speichern</button></form>`;
@@ -1448,6 +1561,9 @@ document.addEventListener('click', ev => {
 });
 document.addEventListener('input', ev => {
   const el = ev.target; const d = el.dataset || {};
+  if (d.trStufe) { const [i, feld] = d.trStufe.split(':'); trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s.stufen = arr(s.stufen); while (s.stufen.length <= Number(i)) s.stufen.push({ kg: '', wdh: '' }); s.stufen[Number(i)][feld] = el.value === '' ? '' : Number(String(el.value).replace(',', '.')); }); return; }
+  if (d.trTeil) { trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s.teil_wdh = el.value === '' ? '' : Number(el.value); }); return; }
+  if (d.trBib === 'q') { trBib.q = el.value; const li = $('#tr-bib-liste'); if (li) li.innerHTML = trBibListe(); return; }
   if (d.trWahlQ) { trWahl.q = el.value; const li = $('#tr-wahl-liste'); if (li) li.innerHTML = uebungsWahlListe(d.trWahlQ); return; }
   if (d.trSatz) trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s[d.trSatz] = el.value === '' ? '' : (d.trSatz === 'rir' ? el.value : Number(el.value)); });
   else if (d.trUFeld) trSpeichernStill(() => { trEinheit().uebungen[Number(d.u)][d.trUFeld] = el.value; });
@@ -1459,6 +1575,8 @@ document.addEventListener('input', ev => {
 });
 document.addEventListener('change', ev => {
   const el = ev.target; const d = el.dataset || {};
+  if (d.trBib && d.trBib !== 'q') { trBib[d.trBib] = el.value; const li = $('#tr-bib-liste'); if (li) li.innerHTML = trBibListe(); return; }
+  if (d.trMethode) { aendere(null, () => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; if (el.value) s.methode = el.value; else { delete s.methode; delete s.stufen; delete s.teil_wdh; } }); return; }
   if (d.trRCheck === 'zeit') { const rid = location.hash.split('/')[3]; aendere(null, () => { const x = trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)]; x.messung = el.checked ? 'zeit' : 'wdh'; }); return; }
   if (d.trRCheck) { const rid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)][d.trRCheck] = el.checked; }); return; }
   if (d.trPeTag != null) { const pid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().plaene.find(x => x.id === pid).einheiten[Number(d.trPeTag)].tag = el.value; }); return; }
@@ -1471,7 +1589,10 @@ document.addEventListener('change', ev => {
 document.addEventListener('submit', ev => {
   const f = ev.target;
   if (f.id === 'tr-ueb-neu') { ev.preventDefault(); const name = f.name.value.trim(); if (!name) return;
-    aendere('Eigene Übung gespeichert', d => { trDaten(); d.training.uebungen.push({ id: uid('uebe'), name, geraet: f.geraet.value.trim() || null, schritt_kg: f.schritt_kg.value === '' ? null : Number(f.schritt_kg.value), link: /^https:\/\//.test(f.link.value) ? f.link.value : null, notiz: f.notiz.value.trim() || null }); }); }
+    const basis = f.basis.value ? ueb(f.basis.value) : null; const muskeln = [...f.querySelectorAll('input[name="muskeln"]:checked')].map(x => x.value);
+    aendere('Eigene Übung gespeichert – eigener Verlauf, getrennt von der Basisübung', d => { trDaten(); d.training.uebungen.push({ id: uid('uebe'), name, geraet: f.geraet.value.trim() || null, schritt_kg: f.schritt_kg.value === '' ? null : Number(f.schritt_kg.value), link: /^https:\/\//.test(f.link.value) ? f.link.value : null, notiz: f.notiz.value.trim() || null,
+      basis: basis ? basis.id : null, bewegungsmuster: f.muster.value || (basis && basis.bewegungsmuster) || null, muskeln_haupt: muskeln.length ? muskeln : basis ? arr(basis.muskeln_haupt) : [], muskeln_neben: muskeln.length ? [] : basis ? arr(basis.muskeln_neben) : [],
+      einseitig: !!f.einseitig.checked, gewicht_bezug: f.gewicht_bezug.value || null }); }); }
   if (f.id === 'tr-einr') { ev.preventDefault(); trPlanEntwurf = null; const werte = n => [...f.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
     aendere('Einrichtung gespeichert', d => { trDaten(); d.training.einrichtung = { ziel: f.ziel.value, erfahrung: f.erfahrung.value, minuten: f.minuten.value === '' ? '' : Number(f.minuten.value), tage: werte('tage'), ort: f.ort.value, geraete: werte('geraete'), schwerpunkte: werte('schwerpunkte'), unerwuenscht: [...f.unerwuenscht.selectedOptions].map(o => o.value), cardio: f.cardio.value, cardio_art: f.cardio_art.value.trim(), cardio_min: f.cardio_min.value === '' ? '' : Number(f.cardio_min.value), einschraenkungen: f.einschraenkungen.value.trim(), geaendert: heute() }; }); return; }
   if (f.id === 'tr-cardio') { ev.preventDefault(); const m = Number(f.minuten.value); if (!(m > 0)) return;

@@ -1,15 +1,15 @@
-/* Fitomat-Build 202611122256 */
+/* Fitomat-Build 202611131038 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
 
 /* ---------- Küchen ---------- */
 const KUECHEN_GRUPPEN = [
-  ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch']]],
+  ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch'], ['pakistanisch', 'Pakistanisch']]],
   ['orient', 'Türkei, Nahost & Nordafrika', [['tuerkisch', 'Türkisch'], ['levantinisch', 'Levantinisch'], ['persisch', 'Persisch'], ['nordafrikanisch', 'Nordafrikanisch']]],
   ['europaeisch', 'Europäisch', [['italienisch', 'Italienisch'], ['griechisch', 'Griechisch'], ['spanisch', 'Spanisch'], ['franzoesisch', 'Französisch'], ['deutsch', 'Deutsch'], ['oesterreichisch', 'Österreichisch'], ['britisch', 'Britisch']]],
-  ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch'], ['peruanisch', 'Peruanisch'], ['karibisch', 'Karibisch'], ['brasilianisch', 'Brasilianisch']]],
-  ['afrika', 'Afrika (südlich der Sahara)', [['aethiopisch', 'Äthiopisch'], ['westafrikanisch', 'Westafrikanisch']]]
+  ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch'], ['peruanisch', 'Peruanisch'], ['kolumbianisch', 'Kolumbianisch'], ['karibisch', 'Karibisch'], ['brasilianisch', 'Brasilianisch']]],
+  ['afrika', 'Afrika (südlich der Sahara)', [['aethiopisch', 'Äthiopisch'], ['westafrikanisch', 'Westafrikanisch'], ['suedafrikanisch', 'Südafrikanisch']]]
 ];
 const KUECHE_NAME = {}; const KUECHE_GRUPPE = {};
 KUECHEN_GRUPPEN.forEach(([g, gn, subs]) => { KUECHE_NAME[g] = gn; subs.forEach(([k, n]) => { KUECHE_NAME[k] = n; KUECHE_GRUPPE[k] = g; }); });
@@ -332,6 +332,9 @@ function anpassungHinweise(r0, rNeu) {
   if (rNeu.zutaten.some(z => z.zutat === 'zut-reis' && (z._m || 1) > 1) && arr(m.geraete).includes('reiskocher')) h.push('Mehr Reis: Füllgrenze und Wassermenge laut Anleitung deines Reiskochers prüfen; ein Topf geht auch.');
   if (maxF > 1.25) h.push('Mehr Menge braucht länger zum Aufkochen und Erhitzen; Garzeiten und Temperaturen nicht hochrechnen, sondern nach den Erkennungsmerkmalen in den Schritten garen. Topfgröße prüfen.');
   if (Number(rNeu.meta.portionen) > P0 && rNeu.zutaten.some(z => ['beilage', 'gemuese'].includes(z.komponente) && (z._m || 1) === 1)) h.push('Beilage und Gemüse bleiben unverändert – bei mehr Portionen verteilen sie sich auf mehr Teller.');
+  // Salz, Sojasauce, Chili & Co. wirken nicht linear: hochgerechnet steht die Menge in der Liste, gewürzt wird schrittweise
+  const wuerz = rNeu.zutaten.filter(z => (z._m || 1) > 1.2 && z.zutat && Z[z.zutat] && (['gewuerz_kraut', 'wuerzmittel', 'sauce'].includes(Z[z.zutat].kategorie) || /salz|sojasauce|fischsauce|chili|pfeffer|brühe/i.test(Z[z.zutat].name)));
+  if (wuerz.length) h.push(`Würzen nicht blind hochrechnen (${wuerz.slice(0, 4).map(z => Z[z.zutat].name).join(', ')}): zuerst etwa die ursprüngliche Menge nehmen, dann abschmecken und nachwürzen.`);
   return h;
 }
 
@@ -797,7 +800,13 @@ document.addEventListener('click', ev => {
 });
 /* ---------- Date-Ansicht: Menü für zwei aus Rezepten mit date_gang; Vorbereitung, Ablauf, gemeinsamer Einkauf ---------- */
 const DATE_GAENGE = [['vorspeise', 'Vorspeise'], ['haupt', 'Hauptgang'], ['dessert', 'Dessert']];
-function dateZustand() { D.date = D.date || {}; const d = D.date; d.einst = Object.assign({ anspruch: 'egal', budget: 'egal', veg: false, zeit: 'egal' }, d.einst || {}); d.gaenge = Object.assign({ vorspeise: true, haupt: true, dessert: true }, d.gaenge || {}); d.wahl = d.wahl || {}; return d; }
+/* Menüportion als Zahl: Anteil einer Rezeptportion je Person im Mehrgangmenü (Feld `date_menue_faktor` im Rezept; Text in `date_menue_portion`).
+   Fehlt die Zahl, rechnet die App mit der vollen Portion und sagt das. Mengen, Einkauf und Nährwerte folgen daraus. */
+const dateFaktor = r => { const f = Number(r && r.meta.date_menue_faktor); return f > 0 && f <= 2 ? f : null; };
+const datePortionen = (r, personen) => Math.max(0.5, Math.round(personen * (dateFaktor(r) || 1) * 2) / 2);
+// Servier-Abstände im Menü (Vorschlag): Hauptgang 30 Min. nach der Vorspeise, Dessert 45 Min. nach dem Hauptgang
+const DATE_ABSTAND = { vorspeise: 0, haupt: 30, dessert: 45 };
+function dateZustand() { D.date = D.date || {}; const d = D.date; d.einst = Object.assign({ anspruch: 'egal', budget: 'egal', veg: false, zeit: 'egal', personen: 2, servieren: '' }, d.einst || {}); d.gaenge = Object.assign({ vorspeise: true, haupt: true, dessert: true }, d.gaenge || {}); d.wahl = d.wahl || {}; return d; }
 function dateKandidaten(gang, e, locker) {
   return K.rezepte.map(x => R[x.id]).filter(r => r.meta.date_gang === gang && !ausgeschlossen(r).length && !(geraeteFehlen(r) || []).length).filter(r => { const i = rezeptInfo(r);
     if (e.veg && !i.veg) return false; if (locker) return true;
@@ -820,33 +829,49 @@ function vDate() {
     const r = x.r, i = rezeptInfo(r), np = r.naehrwerte.pro_portion;
     return `<div class="karte date-gang"><div class="zeile" style="justify-content:space-between"><b>${gn}</b><span>${x.anzahl > 1 ? `<button class="klein" data-a="date-anders" data-v="${g}">anderes (${x.anzahl})</button>` : ''}<button class="klein still" data-a="date-gang" data-v="${g}">weglassen</button></span></div>
       <a class="date-rezept" href="#/rezept/${esc(r.id)}">${bildHtml(r)}<span><b>${esc(r.titel)}</b><br><span class="leise klein">aktiv ${i.aktiv || '?'} Min. · gesamt ${i.gesamt || '?'} Min. · Schwierigkeit ${i.schwierigkeit || '?'}/5${i.veg ? ' · vegetarisch' : ''}${r.meta.kosten_klasse ? ' · Kosten ' + esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[r.meta.kosten_klasse] || '') + ' (Schätzung)' : ''}</span></span></a>
-      ${r.meta.date_menue_portion ? `<p class="klein"><b>Menüportion:</b> ${esc(r.meta.date_menue_portion)}</p>` : ''}
-      <p class="leise klein">Volle Rezeptportion: ${np.kcal != null ? zahlDE(np.kcal) + ' kcal · ' + zahlDE(np.protein) + ' g Eiweiß' : 'Nährwerte unvollständig'} – im Menü meist weniger (siehe Menüportion).</p></div>`; };
+      ${x.anzahl > 1 ? `<label class="feld"><span>Gericht wählen</span><select data-date-wahl="${g}">${x.kandidaten.map(k => `<option value="${esc(k.id)}" ${k.id === r.id ? 'selected' : ''}>${esc(kurztitel(k.titel))}</option>`).join('')}</select></label>` : ''}
+      ${(() => { const f = dateFaktor(r); const port = datePortionen(r, P); const pp = f || 1;
+        return `<p class="klein"><b>Menüportion:</b> ${f ? `${zahlDE(Math.round(f * 100))} % einer Rezeptportion je Person` : 'nicht beziffert – gerechnet wird mit der vollen Portion'} → für ${P} ${P === 1 ? 'Person' : 'Personen'} <b>${zahlDE(port, 1)} Rezeptportion${port === 1 ? '' : 'en'}</b> kochen (Rezept ist für ${esc(r.meta.portionen)}).</p>
+        <p class="leise klein">Je Person im Menü: ${np.kcal != null ? `ca. ${zahlDE(Math.round(np.kcal * pp))} kcal · ${zahlDE(Math.round((np.protein || 0) * pp))} g Eiweiß` : 'Nährwerte unvollständig'} (volle Rezeptportion: ${np.kcal != null ? zahlDE(np.kcal) + ' kcal' : '?'}).</p>
+        ${r.meta.date_menue_portion ? `<details class="klein"><summary>Wie portionieren?</summary><p>${esc(r.meta.date_menue_portion)}</p></details>` : ''}`; })()}</div>`; };
   const vorab = rs.filter(r => r.meta.date_vorab).map(r => [r, String(r.meta.date_vorab)]).sort((a, b) => vorabRang(a[1]) - vorabRang(b[1]));
   const getr = rs.flatMap(r => arr(r.meta.getraenke).map(s => String(s).split('|').map(x => (x || '').trim())).filter(([, art]) => art !== 'alkohol').map(([n, , grund]) => [r, n, grund]));
-  const kcalVoll = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.kcal || 0), 0); const unbek = rs.some(r => r.naehrwerte.pro_portion.kcal == null);
-  return `<div class="seitenkopf"><h1>Date: Menü für zwei</h1><a class="knopf klein still" href="#/entdecken">${ico('zurueck', 'klein')} Kochbuch</a></div>
+  const P = Math.max(1, Math.min(8, Number(e.personen) || 2));
+  const kcalMenue = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.kcal || 0) * (dateFaktor(r) || 1), 0); const protMenue = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.protein || 0) * (dateFaktor(r) || 1), 0);
+  const unbek = rs.some(r => r.naehrwerte.pro_portion.kcal == null); const ohneFaktor = rs.filter(r => !dateFaktor(r));
+  // Zeitplan rückwärts vom Servierzeitpunkt: je Gang „spätestens beginnen“ = Servierzeit des Gangs − Gesamtzeit laut Rezept
+  const zeitplan = (() => { const m0 = /^(\d{1,2}):(\d{2})$/.exec(e.servieren || ''); if (!m0) return null; let t = Number(m0[1]) * 60 + Number(m0[2]); const fmt = x => { const y = ((x % 1440) + 1440) % 1440; return String(Math.floor(y / 60)).padStart(2, '0') + ':' + String(y % 60).padStart(2, '0'); };
+    let erster = true; return DATE_GAENGE.filter(([g]) => m[g] && m[g].r).map(([g, gn]) => { if (!erster) t += DATE_ABSTAND[g] || 30; erster = false; const r = m[g].r; const i = rezeptInfo(r); return { gn, r, servieren: fmt(t), start: i.gesamt != null ? fmt(t - i.gesamt) : null, vorab: r.meta.date_vorab }; }); })();
+  return `<div class="seitenkopf"><h1>Date: Menü für ${P === 2 ? 'zwei' : P}</h1><a class="knopf klein still" href="#/entdecken">${ico('zurueck', 'klein')} Kochbuch</a></div>
   <p class="unterzeile">Vorspeise, Hauptgang und Dessert aus Rezepten mit Date-Angaben (${K.rezepte.filter(r => r.meta.date_gang).length} Rezepte). Ohne KI zusammengestellt – du tauschst oder lässt Gänge weg.</p>
   <div class="karte"><div class="zeile">${sel('anspruch', 'Aufwand', [['egal', 'egal'], ['einfach', 'unkompliziert'], ['anspruchsvoll', 'anspruchsvoller']])}${sel('zeit', 'Arbeit pro Gang', [['egal', 'egal'], ['kurz', 'höchstens 30 Min.']])}${sel('budget', 'Budget', [['egal', 'egal'], ['guenstig', 'eher günstig']])}
-    <label class="feld"><span>Vegetarisch</span><select data-date-einst="veg"><option value="false" ${!e.veg ? 'selected' : ''}>egal</option><option value="true" ${e.veg ? 'selected' : ''}>nur vegetarisch</option></select></label></div>
+    <label class="feld"><span>Vegetarisch</span><select data-date-einst="veg"><option value="false" ${!e.veg ? 'selected' : ''}>egal</option><option value="true" ${e.veg ? 'selected' : ''}>nur vegetarisch</option></select></label>
+    <label class="feld"><span>Personen</span><select data-date-einst="personen">${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === P ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <label class="feld"><span>Servieren um</span><input type="time" data-date-einst="servieren" value="${esc(e.servieren || '')}"></label></div>
     ${gelockert.length ? `<p class="hinweis warn klein">Für ${gelockert.map(g => DATE_GAENGE.find(x => x[0] === g)[1]).join(', ')} passt nichts zu allen Vorgaben – gezeigt wird die nächstbeste Wahl ohne Aufwand-/Zeit-/Budgetgrenze (persönliche Ausschlüsse gelten weiter).</p>` : ''}
     <p class="leise klein">Budget: nur grobe Kostenklasse je Rezept, keine geprüften Preise.</p></div>
   ${DATE_GAENGE.map(gangKarte).join('')}
   ${rs.length ? `<div class="karte"><h2 style="margin-top:0">Vorher vorbereiten</h2>${vorab.length ? `<ol class="klein">${vorab.map(([r, t]) => `<li><b>${esc(kurztitel(r.titel))}:</b> ${esc(t)}</li>`).join('')}</ol>` : '<p class="leise klein">Keine Vorbereitungsangaben hinterlegt.</p>'}
-    <h2>Am Abend</h2><p class="klein">Den gemeinsamen Ablauf mit Reihenfolge, Geräten und „kurz vor dem Servieren“ findest du hier: <a class="knopf klein" href="#/ablauf/${esc(rs.map(r => r.id).join(','))}">Gemeinsamer Ablauf</a></p>
+    <h2>Am Abend</h2>${zeitplan ? `<ol class="klein">${zeitplan.map(z => `<li><b>${esc(z.gn)} ${esc(z.servieren)}</b> – ${esc(kurztitel(z.r.titel))}: ${z.start ? `spätestens um ${esc(z.start)} beginnen` : 'Gesamtzeit unbekannt'}${z.vorab ? ' (Teile davon vorher, siehe oben)' : ''}</li>`).join('')}</ol>
+      <p class="leise klein">Rückwärts gerechnet aus den Gesamtzeiten der Rezepte (für Anfänger geschätzt) und Abständen von 30 Min. vor dem Hauptgang und 45 Min. vor dem Dessert (Vorschlag). Überschneiden sich Zeiten, bereite einen Gang vorher vor.</p>` : '<p class="leise klein">Trag oben eine Servierzeit ein, dann rechnet die App zurück, wann du mit jedem Gang beginnen solltest.</p>'}
+    <p class="klein">Den gemeinsamen Ablauf mit Reihenfolge, Geräten und „kurz vor dem Servieren“ findest du hier: <a class="knopf klein" href="#/ablauf/${esc(rs.map(r => r.id).join(','))}">Gemeinsamer Ablauf</a></p>
     ${getr.length ? `<h2>Alkoholfreie Getränke</h2><ul class="klein">${getr.map(([r, n, g]) => `<li><b>${esc(n)}</b> – ${esc(g)} <span class="leise">(zu ${esc(kurztitel(r.titel))})</span></li>`).join('')}</ul>` : ''}
-    <h2>Einkauf</h2><p class="klein">Volle Rezeptportionen zusammen: ${unbek ? 'mind. ' : ''}${zahlDE(kcalVoll)} kcal pro Person – das ist eine Obergrenze. Mit den Menüportionen oben isst man weniger; die genaue Menge hängt davon ab, wie du portionierst.</p>
-    <div class="knopfreihe"><button class="haupt" data-a="date-einkauf">${ico('plus', 'klein')} Menü für 2 in die Einkaufsauswahl</button></div>
+    <h2>Nährwerte und Einkauf</h2><p class="klein">Ganzes Menü je Person mit Menüportionen: ${unbek ? 'mind. ' : 'ca. '}${zahlDE(Math.round(kcalMenue))} kcal · ${zahlDE(Math.round(protMenue))} g Eiweiß${ohneFaktor.length ? ` – für ${esc(ohneFaktor.map(r => kurztitel(r.titel)).join(', '))} ist keine Menüportion beziffert, dort ist die volle Portion gerechnet` : ''}.</p>
+    <p class="leise klein">Eingekauft wird für ${rs.map(r => `${esc(kurztitel(r.titel))} ${zahlDE(datePortionen(r, P), 1)} Port.`).join(' · ')} – Getränke und Brot extra sind nicht eingerechnet.</p>
+    <div class="knopfreihe"><button class="haupt" data-a="date-einkauf">${ico('plus', 'klein')} Menü für ${P} in die Einkaufsauswahl</button></div>
     <p class="leise klein">Gemeinsame Zutaten werden in der Einkaufsliste zusammengefasst. Ausgewählt heißt noch nicht gekauft oder gegessen.</p></div>` : ''}`;
 }
-document.addEventListener('change', ev => { const s = ev.target.closest('[data-date-einst]'); if (!s) return; const k = s.dataset.dateEinst; const v = k === 'veg' ? s.value === 'true' : s.value;
-  aendere('', dd => { dateZustand(); dd.date.einst[k] = v; dd.date.wahl = {}; }); });
+document.addEventListener('change', ev => { const s = ev.target.closest('[data-date-einst]'); if (!s) return; const k = s.dataset.dateEinst; const v = k === 'veg' ? s.value === 'true' : k === 'personen' ? Number(s.value) || 2 : s.value;
+  aendere('', dd => { dateZustand(); dd.date.einst[k] = v; if (!['personen', 'servieren'].includes(k)) dd.date.wahl = {}; }); });
+document.addEventListener('change', ev => { const s = ev.target.closest('[data-date-wahl]'); if (!s) return; aendere('', dd => { dateZustand(); dd.date.wahl[s.dataset.dateWahl] = s.value; }); });
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
   if (a === 'date-anders') { const { m } = dateMenue(); const x = m[v]; const ix = x.kandidaten.indexOf(x.r); const n = x.kandidaten[(ix + 1) % x.kandidaten.length]; aendere('', dd => { dateZustand(); dd.date.wahl[v] = n.id; }); }
   else if (a === 'date-gang') aendere('', dd => { dateZustand(); dd.date.gaenge[v] = !dd.date.gaenge[v]; });
   else if (a === 'date-einkauf') { const { m } = dateMenue(); const rs = DATE_GAENGE.map(([g]) => m[g] && m[g].r).filter(Boolean); const haupt = (m.haupt && m.haupt.r) || rs[0];
-    aendere(`Menü (${rs.length} Gänge) in der Einkaufsauswahl – Portionen dort anpassen`, dd => { rs.forEach(r => { if (!dd.auswahl.some(x => x.rezept === r.id)) dd.auswahl.push({ rezept: r.id, jetzt: 2, vorkochen: 0, zu: r.id === haupt.id ? undefined : haupt.id, date: true }); }); }, { neuZeichnen: false }); location.hash = '#/auswahl'; }
+    const P = Math.max(1, Math.min(8, Number(dateZustand().einst.personen) || 2));
+    aendere(`Menü (${rs.length} Gänge, ${P} Pers.) in der Einkaufsauswahl – Mengen nach Menüportion`, dd => { rs.forEach(r => { const port = datePortionen(r, P); const vorh = dd.auswahl.find(x => x.rezept === r.id);
+      if (vorh) { if (vorh.date) vorh.jetzt = port; } else dd.auswahl.push({ rezept: r.id, jetzt: port, vorkochen: 0, zu: r.id === haupt.id ? undefined : haupt.id, date: true }); }); }, { neuZeichnen: false }); location.hash = '#/auswahl'; }
 });
 
 /* ---------- Gemeinsamer Kochablauf für mehrere Gerichte: Reihenfolge nach Rezeptzeiten, keine erfundene Minutenplanung ---------- */

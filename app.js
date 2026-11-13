@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.21.0';
-const APP_BUILD = '202611122256';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.23.0';
+const APP_BUILD = '202611131038';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -296,19 +296,20 @@ function weitermachenHtml() {
 function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/planung" aria-selected="${akt === 'planung'}">Mehrere Tage planen</a><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a><a role="tab" href="#/preise" aria-selected="${akt === 'preise'}">Preise</a></div>`; }
 /* ---------- Drei Hauptbereiche: Food · Training · Mobility – mit Unterreitern und Fortsetzen-Anzeige ---------- */
 const FOOD_SEITEN = ['entdecken', 'jetzt', 'meinkochbuch', 'date', 'ablauf', 'preise', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'planung', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
-function hauptBereich(seite) { return FOOD_SEITEN.includes(seite) ? 'food' : seite === 'training' ? 'training' : seite === 'mobility' ? 'mobility' : ''; }
+function hauptBereich(seite) { return FOOD_SEITEN.includes(seite) ? 'food' : seite === 'training' ? 'training' : seite === 'mobility' ? 'mobility' : seite === 'mentality' ? 'mentality' : ''; }
 const UNTERREITER = {
   food: [['entdecken', '#/entdecken', 'Kochbuch'], ['tagebuch', '#/tagebuch', 'Tagebuch'], ['einkauf', '#/auswahl', 'Einkauf'], ['vorrat', '#/vorrat', 'Vorrat']],
   training: [['', '#/training', 'Übersicht'], ['plaene', '#/training/plaene', 'Pläne'], ['uebungen', '#/training/uebungen', 'Übungen'], ['verlauf', '#/training/verlauf', 'Verlauf'], ['cardio', '#/training/cardio', 'Cardio']],
-  mobility: [['', '#/mobility', 'Routinen'], ['plan', '#/mobility/plan', 'Mein Plan'], ['verlauf', '#/mobility/verlauf', 'Verlauf']]
+  mobility: [['', '#/mobility', 'Routinen'], ['plan', '#/mobility/plan', 'Mein Plan'], ['verlauf', '#/mobility/verlauf', 'Verlauf']],
+  mentality: [['', '#/mentality', 'Start'], ['werkzeuge', '#/mentality/werkzeuge', 'Werkzeuge'], ['journal', '#/mentality/journal', 'Journal'], ['verlauf', '#/mentality/verlauf', 'Verlauf']]
 };
 function kopfLeiste(seite, a) {
   const haupt = hauptBereich(seite);
-  const zeigeReiter = (haupt === 'food' && ['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'planung', 'vorrat'].includes(seite)) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a)));
+  const zeigeReiter = (haupt === 'food' && ['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'planung', 'vorrat'].includes(seite)) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a))) || (haupt === 'mentality' && (!a || ['werkzeuge', 'journal', 'verlauf'].includes(a)));
   if (!zeigeReiter) return '';
   const akt = haupt === 'food' ? (seite === 'auswahl' || seite === 'planung' ? 'einkauf' : seite) : (a || '');
   const nAusw = D.auswahl.length;
-  return `${seite === 'kochen' ? '' : weitermachenHtml()}<nav class="unterreiter" aria-label="${haupt === 'food' ? 'Food' : haupt === 'training' ? 'Training' : 'Mobility'}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
+  return `${seite === 'kochen' ? '' : weitermachenHtml()}<nav class="unterreiter" aria-label="${{ food: 'Food', training: 'Training', mobility: 'Mobility', mentality: 'Mentality' }[haupt]}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
 }
 /* Darstellung Hell/Dunkel/Wie Gerät – je Gerät (reine Anzeige-Vorliebe, keine persönlichen Daten); früh gesetzt im Kopf von index.html */
 const FARBE_SPEICHER = 'kochschule.farbe.v1';
@@ -391,7 +392,7 @@ function route() {
   if (route.letzte && location.hash !== route.letzte) { scrollPos[route.letzte] = window.scrollY; if (typeof tbEdit !== 'undefined') tbEdit = null; if (typeof anpassDialog !== 'undefined' && anpassDialog && !location.hash.includes(anpassDialog.rid)) anpassDialog = null; }
   if (seite === 'entdecken') { try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(filterZustand)); } catch (e) { /* */ } }
   const app = $('#app');
-  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, planung: vPlanung, meinkochbuch: vMeinKochbuch, date: vDate, ablauf: vAblauf, preise: vPreise, jetzt: vJetzt };
+  const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, mentality: vMentality, planung: vPlanung, meinkochbuch: vMeinKochbuch, date: vDate, ablauf: vAblauf, preise: vPreise, jetzt: vJetzt };
   const fn = views[seite] || vEntdecken;
   app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
   if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
@@ -695,7 +696,7 @@ function vAuswahl() {
     const np = r.naehrwerte.pro_portion;
     return `<div class="karte"><div class="zeile" style="justify-content:space-between"><a href="#/rezept/${esc(r.id)}"><strong>${esc(r.titel)}</strong></a><button class="klein" data-a="auswahl-weg" data-v="${ix}">entfernen</button></div>
       ${a.zu && R[a.zu] ? `<p class="leise klein" style="margin:0">Ergänzung zu <a href="#/rezept/${esc(a.zu)}">${esc(kurztitel(R[a.zu].titel))}</a></p>` : ''}${r.angepasst ? `<p class="klein" style="margin:0"><span class="chip akzent">angepasst</span> ${esc(r.angepasst.beschreibung || '')}</p>` : ''}
-      <div class="zeile"><span class="stepper">jetzt <button data-a="aw" data-ix="${ix}" data-k="jetzt" data-v="-1">−</button><output>${a.jetzt}</output><button data-a="aw" data-ix="${ix}" data-k="jetzt" data-v="1">+</button></span>
+      <div class="zeile"><span class="stepper">jetzt <button data-a="aw" data-ix="${ix}" data-k="jetzt" data-v="-1">−</button><output>${zahlDE(a.jetzt, 1)}</output><button data-a="aw" data-ix="${ix}" data-k="jetzt" data-v="1">+</button></span>
       <span class="stepper">vorkochen <button data-a="aw" data-ix="${ix}" data-k="vorkochen" data-v="-1">−</button><output>${a.vorkochen}</output><button data-a="aw" data-ix="${ix}" data-k="vorkochen" data-v="1">+</button></span></div>
       <p class="leise klein">aktiv ${info.aktiv || '?'} Min. · gesamt ${info.gesamt || '?'} Min. · ${np.kcal != null ? `≈ ${zahlDE(np.kcal)} kcal, ${zahlDE(np.protein)} g Eiweiß pro Portion` : 'Nährwerte unvollständig'} · Vorkochen: ${m.vorkochen_kuehlschrank === 'ja' ? `Kühlschrank ${m.kuehl_max_tage || 2} Tage` : m.vorkochen_kuehlschrank === 'nein' ? 'nein' : 'nicht belegt'}</p></div>`;
   }).join('');
