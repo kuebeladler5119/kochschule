@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.23.0';
-const APP_BUILD = '202611131038';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.24.0';
+const APP_BUILD = '202611131313';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -33,7 +33,7 @@ const arr = v => Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]);
 const BEREICHE = [['fruehstueck', 'Frühstück'], ['vorspeise', 'Vorspeise & Kleines'], ['suppe', 'Suppe & Eintopf'], ['salat', 'Salat & Bowl'], ['hauptgericht', 'Hauptgericht'], ['beilage', 'Beilage'], ['sauce', 'Sauce, Dip & Dressing'], ['snack', 'Snack'], ['dessert', 'Dessert'], ['backen', 'Backen']];
 const BEREICH_NAME = Object.fromEntries(BEREICHE);
 const RICHTUNGEN = [['schnell', 'schnell (≤ 30 Min.)'], ['wenig', 'wenig Aufwand'], ['fitness', 'fitnessgeeignet'], ['lernen', 'Neues lernen'], ['anspruchsvoll', 'anspruchsvoll']];
-const GERAETE = { kochfeld: 'Kochfeld', backofen: 'Backofen', backblech: 'Backblech', auflaufform: 'Auflaufform', pfanne: 'Pfanne', deckel: 'Deckel (passend)', topf: 'Topf', reiskocher: 'Reiskocher', kochmesser: 'Kochmesser', schneidebrett: 'Schneidebrett', kuechenwaage: 'Küchenwaage', reibe: 'Reibe', sieb: 'Sieb', schneebesen: 'Schneebesen', kartoffelstampfer: 'Kartoffelstampfer/-presse', puerierstab: 'Pürierstab', kernthermometer: 'Kernthermometer', glaeser: 'Gläser/Förmchen', schuessel: 'Rührschüssel' };
+const GERAETE = { kochfeld: 'Kochfeld', backofen: 'Backofen', backblech: 'Backblech', auflaufform: 'Auflaufform', pfanne: 'Pfanne', deckel: 'Deckel (passend)', topf: 'Topf', reiskocher: 'Reiskocher', kochmesser: 'Kochmesser', schneidebrett: 'Schneidebrett', kuechenwaage: 'Küchenwaage', reibe: 'Reibe', sieb: 'Sieb', schneebesen: 'Schneebesen', kartoffelstampfer: 'Kartoffelstampfer/-presse', puerierstab: 'Pürierstab', kernthermometer: 'Kernthermometer', glaeser: 'Gläser/Förmchen', schuessel: 'Rührschüssel', backpapier: 'Backpapier', moerser: 'Mörser', sparschaeler: 'Sparschäler', nudelholz: 'Nudelholz', kelle: 'Schöpfkelle', pfannenwender: 'Pfannenwender', kochloeffel: 'Kochlöffel', gabel: 'Gabel' };
 const LADEN = ['Obst & Gemüse', 'Brot & Backwaren', 'Kühlregal: Milch, Eier, Käse', 'Fleisch & Fisch', 'Tiefkühl', 'Trockenware: Getreide, Nudeln, Hülsenfrüchte', 'Konserven & Gläser', 'Öl, Essig, Würzsaucen', 'Gewürze', 'Backzutaten & Süßes', 'Sonstiges'];
 const LADEN_ID = { 'zut-dosentomaten': 6, 'zut-tomatenmark': 6, 'zut-kidneybohne': 6, 'zut-kapern': 6, 'zut-gemuesebruehe': 6, 'zut-petersilie': 0, 'zut-basilikum': 0, 'zut-himbeeren': 4, 'zut-weissbrot': 1, 'zut-butter': 2, 'zut-sahne': 2, 'zut-joghurt': 2, 'zut-griechischer-joghurt': 2, 'zut-parmesan': 2, 'zut-milch': 2, 'zut-sojasauce': 7, 'zut-apfelessig': 7, 'zut-rapsoel': 7, 'zut-olivenoel': 7, 'zut-honig': 9, 'zut-zucker': 9, 'zut-weizenmehl': 9, 'zut-speisestaerke': 9, 'zut-agar-agar': 9, 'zut-vanille': 9, 'zut-sonnenblumenkerne': 5, 'zut-ingwer': 0, 'zut-knoblauch': 0, 'zut-limette': 0, 'zut-zitrone': 0, 'zut-salz': 8, 'zut-pfeffer': 8 };
 const LADEN_KAT = { gemuese: 0, obst: 0, milch: 2, ei: 2, fleisch: 3, fisch: 3, getreide: 5, huelsenfrucht: 5, fett: 7, gewuerz_kraut: 8, sonstiges: 10 };
@@ -213,7 +213,7 @@ const istFleischFisch = z => z && (['fleisch', 'fisch'].includes(z.kategorie) ||
 function rezeptInfo(r) {
   const m = r.meta; const zs = r.zutaten.filter(z => z.zutat).map(z => Z[z.zutat]).filter(Boolean);
   const veg = !zs.some(istFleischFisch);
-  const pruefen = zs.filter(z => z.tier_herkunft === 'unbekannt' || /Gelatine|Schwein|tierisch|Herkunft|Fleisch/i.test(z.pruef_hinweis || ''));
+  const pruefen = zs.filter(z => z.tier_herkunft === 'unbekannt' || /Gelatine|Schwein|tierisch|Herkunft|Fleisch|Alkohol/i.test(z.pruef_hinweis || ''));
   const kat = arr(m.kategorien);
   return { veg, pruefen, kat, aktiv: Number(m.zeit_aktiv_min) || null, gesamt: Number(m.zeit_gesamt_min) || null, schwierigkeit: Number(m.schwierigkeit) || null };
 }
@@ -285,13 +285,18 @@ const scrollPos = {};
 /* Bereich der App (für Akzentfarbe): Kochen warm, Ernährung ruhig, Training konzentriert */
 const BEREICH_VON_SEITE = { tagebuch: 'ernaehrung', ziele: 'ernaehrung', produkte: 'ernaehrung', training: 'training' };
 /* „Weitermachen“: laufendes Kochen, laufendes Training, bald fällige Restportionen */
-function weitermachenHtml() {
-  const teile = [];
-  Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<span class="weiter-gruppe"><a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a><button class="weiter-x" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">✕ abbrechen</button></span>`); });
-  if (D.training && D.training.aktiv) { const e = (D.training.einheiten || []).find(x => x.id === D.training.aktiv); teile.push(`<a class="weiter-chip" href="#/training/${e && e.fuehrung ? 'fuehrung' : 'einheit'}">${ico('hantel', 'klein')} Training fortsetzen</a>`); }
-  if (D.mobility && D.mobility.lauf) teile.push(`<a class="weiter-chip" href="#/mobility/lauf">${ico('dehnen', 'klein')} Mobility-Routine fortsetzen</a>`);
-  D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
-  return teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '';
+// Nur Laufendes aus dem eigenen Bereich groß zeigen; anderes als eine dezente Zeile. In Mentality nichts davon (Ruhe beim Üben).
+function weitermachenHtml(haupt) {
+  if (haupt === 'mentality') return '';
+  const teile = []; const fremd = [];
+  if (haupt !== 'food') { const n = Object.keys(D.fortschritt || {}).filter(id => R[id]).length; if (n) fremd.push(`<a href="#/kochen/${esc(Object.keys(D.fortschritt).find(id => R[id]))}">${n === 1 ? 'Kochvorgang' : n + ' Kochvorgänge'}</a>`); }
+  if (haupt !== 'training' && D.training && D.training.aktiv) fremd.push(`<a href="#/training/einheit">Training</a>`);
+  if (haupt !== 'mobility' && D.mobility && D.mobility.lauf) fremd.push(`<a href="#/mobility/lauf">Mobility-Routine</a>`);
+  if (haupt === 'food') Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<span class="weiter-gruppe"><a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a><button class="weiter-x" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">✕ abbrechen</button></span>`); });
+  if (haupt === 'training' && D.training && D.training.aktiv) { const e = (D.training.einheiten || []).find(x => x.id === D.training.aktiv); teile.push(`<a class="weiter-chip" href="#/training/${e && e.fuehrung ? 'fuehrung' : 'einheit'}">${ico('hantel', 'klein')} Training fortsetzen</a>`); }
+  if (haupt === 'mobility' && D.mobility && D.mobility.lauf) teile.push(`<a class="weiter-chip" href="#/mobility/lauf">${ico('dehnen', 'klein')} Mobility-Routine fortsetzen</a>`);
+  if (haupt === 'food') D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
+  return (teile.length ? `<div class="weitermachen" role="region" aria-label="Weitermachen">${teile.join('')}</div>` : '') + (fremd.length ? `<p class="leise klein weiter-fremd">Läuft noch: ${fremd.join(' · ')}</p>` : '');
 }
 function planTabs(akt) { return `<div class="segment" role="tablist" aria-label="Einkauf"><a role="tab" href="#/planung" aria-selected="${akt === 'planung'}">Mehrere Tage planen</a><a role="tab" href="#/auswahl" aria-selected="${akt === 'auswahl'}">Gerichte${D.auswahl.length ? ' (' + D.auswahl.length + ')' : ''}</a><a role="tab" href="#/einkauf" aria-selected="${akt === 'einkauf'}">Einkaufsliste</a><a role="tab" href="#/preise" aria-selected="${akt === 'preise'}">Preise</a></div>`; }
 /* ---------- Drei Hauptbereiche: Food · Training · Mobility – mit Unterreitern und Fortsetzen-Anzeige ---------- */
@@ -309,7 +314,7 @@ function kopfLeiste(seite, a) {
   if (!zeigeReiter) return '';
   const akt = haupt === 'food' ? (seite === 'auswahl' || seite === 'planung' ? 'einkauf' : seite) : (a || '');
   const nAusw = D.auswahl.length;
-  return `${seite === 'kochen' ? '' : weitermachenHtml()}<nav class="unterreiter" aria-label="${{ food: 'Food', training: 'Training', mobility: 'Mobility', mentality: 'Mentality' }[haupt]}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
+  return `${seite === 'kochen' ? '' : weitermachenHtml(haupt)}<nav class="unterreiter" aria-label="${{ food: 'Food', training: 'Training', mobility: 'Mobility', mentality: 'Mentality' }[haupt]}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
 }
 /* Darstellung Hell/Dunkel/Wie Gerät – je Gerät (reine Anzeige-Vorliebe, keine persönlichen Daten); früh gesetzt im Kopf von index.html */
 const FARBE_SPEICHER = 'kochschule.farbe.v1';
@@ -555,8 +560,9 @@ function vRezept(id) {
   ${fort ? `<div class="hinweis">Kochfortschritt gespeichert: Schritt ${fort.schritt + 1} von ${r.schritte.length} (${esc(fort.portionen)} Portionen). <a href="#/kochen/${esc(r.id)}">Weiter kochen</a> · <button class="klein" data-a="fortschritt-weg" data-v="${esc(r.id)}">verwerfen</button></div>` : ''}
   <div class="zweispaltig"><div class="seite">
     <div class="karte"><div class="zeile" style="justify-content:space-between"><strong>Portionen</strong>
-      <span class="stepper"><button data-a="port" data-v="-1" data-r="${esc(r.id)}" aria-label="weniger">−</button><output>${p}</output><button data-a="port" data-v="1" data-r="${esc(r.id)}" aria-label="mehr">+</button></span></div>
-      <p class="leise klein">${f !== 1 ? `Rezept ist für ${esc(m.portionen)} Portionen geschrieben; Mengen sind ×${zahlDE(f, 2)} umgerechnet.${m.portionen_pro_durchgang && p > m.portionen_pro_durchgang ? ` <b>Mehr Durchgänge nötig</b> (ca. ${esc(m.portionen_pro_durchgang)} Portionen pro Durchgang) – aktive Zeit steigt.` : ''}` : `Originalrezept für ${esc(m.portionen)} Portionen.`}</p>
+      <span class="stepper"><button data-a="port" data-v="-1" data-r="${esc(r.id)}" aria-label="weniger">−</button><output>${zahlDE(p, 1)}</output><button data-a="port" data-v="1" data-r="${esc(r.id)}" aria-label="mehr">+</button></span></div>
+      <p class="leise klein">${f !== 1 ? `Rezept ist für ${esc(m.portionen)} Portionen geschrieben; Mengen sind ×${zahlDE(f, 2)} umgerechnet.` : `Originalrezept für ${esc(m.portionen)} Portionen.`}</p>
+      ${(() => { const h = mengenHinweise(r, f * (r.angepasst ? Number(m.portionen) / (Number(m.portionen_original) || Number(m.portionen)) : 1), p); return h.length ? `<ul class="hinweis klein mengen-hinweise">${h.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''; })()}
       <h2 style="margin-top:.6em">Zutaten</h2>${anpassungBannerHtml(r)}${anpassPanelHtml(r)}${zutatenListe(r, p, true, !anpassDialog)}<p class="leise klein">${ico('stift', 'klein')} bei einer Zutat: Menge ändern (z. B. ganze Packung) und das Rezept anpassen.</p>
       <p class="klein"><b>Geräte:</b> ${geraeteText}</p>${ein.geraete.length || geraeteHinweise(r) ? `<details class="klein"><summary>Hinweise zu den Geräten</summary>${ein.geraete.map(t => mdAnl(t)).join('')}${geraeteHinweise(r)}</details>` : ''}
       <div class="knopfreihe"><a class="knopf haupt" href="#/kochen/${esc(r.id)}">${ico('flamme', 'klein')} Kochen starten</a><button data-a="auswahl-toggle" data-v="${esc(r.id)}">${inAuswahl ? ico('haken', 'klein') + ' In der Auswahl' : ico('plus', 'klein') + ' Zur Auswahl'}</button><button class="still" data-a="tb-rezept" data-v="${esc(r.id)}" data-p="1">Als gegessen buchen</button></div>
@@ -600,6 +606,10 @@ function vKochen(id) {
   <p class="leise klein">Schritt ${i + 1} von ${r.schritte.length} · ${esc(s.phase || '')}</p>
   <h1>${s.nr != null ? s.nr + ' · ' : ''}${inline(s.titel)}</h1>
   ${sf.dl}
+  ${(() => { /* Mengenhinweise: alle im ersten Schritt, danach nur bei Schritten mit Zeitangabe */
+    const fg = f * (r.angepasst ? Number(r.meta.portionen) / (Number(r.meta.portionen_original) || Number(r.meta.portionen)) : 1); if (Math.abs(fg - 1) < 0.2) return '';
+    const teile = i === 0 ? mengenHinweise(r, fg, Number(fort.portionen)) : (zeit ? [`Die Zeitangabe gilt für die Originalmenge (${zahlDE(Number(r.meta.portionen_original || r.meta.portionen), 1)} Port.) – nach den Garzeichen richten, nicht hochrechnen.`] : []);
+    return teile.length ? `<p class="hinweis klein">${teile.map(esc).join(' ')}</p>` : ''; })()}
   ${mz ? `<div class="knopfreihe"><button data-a="timer" data-min="${mz[1]}" data-name="${esc(s.titel)}">⏱ Timer ${mz[1]} Min.</button>${mz[2] ? `<button data-a="timer" data-min="${mz[2]}" data-name="${esc(s.titel)}">⏱ ${mz[2]} Min.</button>` : ''}<span class="leise klein">Zeiten sind Orientierung – entscheidend ist „Fertig, wenn“.</span></div>` : ''}
   ${sf.fertig}
   ${md(sf.rest)}

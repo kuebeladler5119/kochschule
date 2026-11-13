@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131038 */
+/* Fitomat-Build 202611131313 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -135,7 +135,7 @@ function kurztitel(t) { return String(t).split(/ – | mit | und | aus /)[0]; }
 /* Nachweis nach den Creative-Commons-Bedingungen: Urheber, Lizenz mit Link, Quelle, Hinweis auf Änderung */
 function bildNachweisHtml(m) {
   const a = (url, t) => url && /^https:\/\//.test(url) ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(t)}</a>` : esc(t);
-  return `Foto: ${esc(m.bild_autor || 'unbekannt')} · ${a(m.bild_lizenz_url, m.bild_lizenz || 'Lizenz unbekannt')} · ${a(m.bild_quelle, 'Wikimedia Commons')} · verkleinert · Beispielfoto, nicht nach diesem Rezept`;
+  return `Foto: ${esc(m.bild_autor || 'unbekannt')} · ${a(m.bild_lizenz_url, m.bild_lizenz || 'Lizenz unbekannt')} · ${a(m.bild_quelle, 'Wikimedia Commons')} · verkleinert · Beispielfoto aus einer freien Bildsammlung, nicht nach diesem Rezept gekocht${m.bild_hinweis ? ' · ' + esc(m.bild_hinweis) : ''}`;
 }
 function bildHtml(r, art = 'karte') {
   const m = r.meta || {}; const hero = art === 'hero';
@@ -284,13 +284,18 @@ function verlaufSchaetzung() {
   const ende = kg[kg.length - 1]; const start = [...kg].reverse().find(x => tageZwischenE(x.datum, ende.datum) >= 14); if (!start) return { ok: false, grund: 'Gewichtsmessungen über mindestens 14 Tage nötig' };
   const tage = tageZwischenE(start.datum, ende.datum); const vollst = []; for (let i = 0; i < tage; i++) { const t = plusTage(start.datum, i); if (((D.tage || {})[t] || {}).vollstaendig) { const s = tagWerte(t); if (s.kcal > 0 && !s.fehlend.kcal) vollst.push(s.kcal); } }
   if (vollst.length < tage * 0.8) return { ok: false, grund: `nur ${vollst.length} von ${tage} Tagen als vollständig protokolliert (mindestens 80 % nötig)` };
-  const schnitt = vollst.reduce((a, b) => a + b, 0) / vollst.length; const diff = ende.kg - start.kg; const kcal = schnitt - diff * 7700 / tage;
-  return { ok: true, kcal: rund(kcal, 50), schnitt, diff, tage, n: vollst.length };
+  // Gewichtstrend als Ausgleichsgerade über ALLE Messungen im Zeitraum (weniger empfindlich für Tagesschwankungen als zwei Einzelwerte)
+  const punkte = kg.filter(x => x.datum >= start.datum && x.datum <= ende.datum); if (punkte.length < 4) return { ok: false, grund: `nur ${punkte.length} Gewichtsmessungen im Zeitraum – mindestens 4 nötig (z. B. zweimal pro Woche)` };
+  const xs = punkte.map(x => tageZwischenE(start.datum, x.datum)), ys = punkte.map(x => Number(x.kg)); const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+  const steig = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0) / (xs.reduce((s, x) => s + (x - mx) ** 2, 0) || 1);   // kg pro Tag
+  const schnitt = vollst.reduce((a, b) => a + b, 0) / vollst.length; const diff = steig * tage; const kcal = schnitt - steig * 7700;
+  return { ok: true, kcal: rund(kcal, 50), schnitt, diff, tage, n: vollst.length, messungen: punkte.length };
 }
 const tageZwischenE = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 function verlaufSchaetzungHtml(b) {
   const v = verlaufSchaetzung();
-  return `<h2>3. Schätzung aus deinem Verlauf</h2>${v.ok ? `<div class="flaeche"><p>Erhaltungsbedarf laut Verlauf ≈ <b>${v.kcal.toLocaleString('de-DE')} kcal</b>${b.ok ? ` (Formel: ${Math.round(b.gesamt).toLocaleString('de-DE')} kcal)` : ''}</p><p class="leise klein">Grundlage: ${v.n} vollständig protokollierte Tage, Ø ${Math.round(v.schnitt)} kcal; Gewicht ${v.diff >= 0 ? '+' : ''}${zahlDE(v.diff, 1)} kg in ${v.tage} Tagen; 1 kg ≈ 7.700 kcal (grobe Näherung). Wasserschwankungen und Protokollfehler verzerren das – die App übernimmt diesen Wert nicht automatisch; bei Bedarf unter „Selbst festlegen“ eintragen.</p></div>` : `<p class="leise klein">Noch keine Schätzung: ${esc(v.grund)}.</p>`}`;
+  return `<h2>3. Schätzung aus deinem Verlauf</h2>${v.ok ? `<div class="flaeche"><p>Erhaltungsbedarf laut Verlauf ≈ <b>${v.kcal.toLocaleString('de-DE')} kcal</b>${b.ok ? ` (Formel: ${Math.round(b.gesamt).toLocaleString('de-DE')} kcal)` : ''}</p><p class="leise klein">Grundlage: ${v.n} vollständig protokollierte Tage, Ø ${Math.round(v.schnitt)} kcal; Gewichtstrend ${v.diff >= 0 ? '+' : ''}${zahlDE(v.diff, 1)} kg in ${v.tage} Tagen (Ausgleichsgerade über ${v.messungen} Messungen); 1 kg ≈ 7.700 kcal (grobe Näherung). Wasserschwankungen und Protokollfehler verzerren das – die App übernimmt diesen Wert nicht automatisch; bei Bedarf unter „Selbst festlegen“ eintragen.</p>
+    ${b.ok && Math.abs(v.kcal - b.gesamt) > 150 ? `<p class="klein"><b>Vorsichtiger Vorschlag:</b> Formel und Verlauf liegen ${zahlDE(Math.round(Math.abs(v.kcal - b.gesamt)))} kcal auseinander. Statt den ganzen Unterschied zu übernehmen, den Erhaltungswert um höchstens ${zahlDE(Math.min(200, Math.round(Math.abs(v.kcal - b.gesamt) / 2 / 50) * 50))} kcal ${v.kcal > b.gesamt ? 'erhöhen' : 'senken'} und 2–3 Wochen weiter beobachten.</p>` : ''}</div>` : `<p class="leise klein">Noch keine Schätzung: ${esc(v.grund)}.</p>`}`;
 }
 
 function vProfile() {

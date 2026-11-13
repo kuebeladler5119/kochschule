@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131038 */
+/* Fitomat-Build 202611131313 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -41,7 +41,7 @@ const METHODEN = [['', 'normal'], ['drop', 'Dropsatz'], ['voll_plus_teil', 'voll
 const methodeZusatz = s => s.methode === 'drop' ? ' + Drop ' + arr(s.stufen).filter(x => x && (x.kg !== '' || x.wdh !== '')).map(x => `${x.wdh || '?'} × ${kgText(x.kg)}`).join(', ')
   : s.methode === 'voll_plus_teil' ? ` + ${s.teil_wdh || '?'} Teilwdh. gedehnt` : s.methode === 'lang_teil' ? ' (nur Teilwdh., gedehnt)' : '';
 const satzText = s => satzTextBasis(s) + methodeZusatz(s);
-const satzTextBasis = s => s.sek != null && s.sek !== '' ?sekTeil(s) + (s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') : `${s.seiten ?`L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
+const satzTextBasis = s => s.sek != null && s.sek !== '' ? (s.seiten && s.seiten.l && s.seiten.l.sek != null ? `L ${s.seiten.l.sek} s / R ${s.seiten.r.sek} s` : sekTeil(s)) +(s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') : `${s.seiten ?`L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
 
 /* ---------- Muskelgruppen, Gewichtsangabe, Auswahl ---------- */
 const MUSKEL_GRUPPEN = [['brust', 'Brust', ['brust']], ['ruecken', 'Rücken', ['latissimus', 'oberer_ruecken', 'rueckenstrecker']], ['schultern', 'Schultern', ['vordere_schulter', 'seitliche_schulter', 'hintere_schulter']], ['arme', 'Arme', ['bizeps', 'trizeps']], ['beine', 'Beine', ['quadrizeps', 'beinbeuger', 'waden']], ['gesaess', 'Gesäß', ['gesaess']], ['rumpf', 'Rumpf', ['rumpf']]];
@@ -52,7 +52,7 @@ let trWahl = { q: '', gruppe: '' };
 function uebungsWahlListe(ziel) {
   const q = trWahl.q.trim().toLowerCase();
   const l = alleUebungen().filter(u => (!trWahl.gruppe || uebGruppen(u).includes(trWahl.gruppe)) && (!q || (u.name + ' ' + arr(u.alias).join(' ')).toLowerCase().includes(q)));
-  return l.length ? `<ul class="eintraege">${l.slice(0, 40).map(u => `<li><span><b>${esc(u.name)}</b><br><span class="leise klein">${esc(uebGruppen(u).map(g => MUSKEL_GRUPPEN.find(x => x[0] === g)[1]).join(', ') || (u.quelle === 'eigen' ? 'eigene Übung' : ''))}${arr(u.geraet).length ? ' · ' + esc(arr(u.geraet).join(', ')) : ''}</span></span><span><button class="klein" data-a="tr-wahl" data-v="${esc(u.id)}" data-ziel="${ziel}">${ico('plus', 'klein')} hinzufügen</button></span></li>`).join('')}</ul>` : '<p class="leise klein">Keine passende Übung. <a href="#/training/uebungen">Eigene Übung anlegen</a></p>';
+  return l.length ? `<ul class="eintraege">${l.slice(0, 40).map(u => `<li><span><b>${esc(u.name)}</b><br><span class="leise klein">${esc(uebGruppen(u).map(g => MUSKEL_GRUPPEN.find(x => x[0] === g)[1]).join(', ') || (u.quelle === 'eigen' ? 'eigene Übung' : ''))}${arr(u.geraet).length ? ' · ' + esc(geraetText(u)) : ''}</span></span><span><button class="klein" data-a="tr-wahl" data-v="${esc(u.id)}" data-ziel="${ziel}">${ico('plus', 'klein')} hinzufügen</button></span></li>`).join('')}</ul>` : '<p class="leise klein">Keine passende Übung. <a href="#/training/uebungen">Eigene Übung anlegen</a></p>';
 }
 function uebungsWahlHtml(ziel) {
   return `<details class="karte tr-wahl"${trWahl.offen === ziel ? ' open' : ''}><summary data-tr-wahl-auf="${ziel}"><b>${ico('plus', 'klein')} Übung hinzufügen</b></summary>
@@ -245,10 +245,14 @@ const tagTyp = name => Object.keys(TAG_FUELL).find(k => String(name).startsWith(
 const ZEIT_UEBUNGEN = ['ueb-plank', 'ueb-seitstuetz'];
 const zeitBereich = id => { const m = String((K.uebungen || []).find(u => u.id === id)?.wdh_bereich_vorschlag || '').match(/(\d+)\s*(?:–\s*(\d+)\s*)?s\b/); return m ? { von: Number(m[1]), bis: Number(m[2] || m[1]) } : null; };
 const istZeit = x => !!x && (x.messung ? x.messung === 'zeit' : ZEIT_UEBUNGEN.includes(x.uebung) || !!zeitBereich(x.uebung));
-// Neuer Routineneintrag mit passender Messart (Wiederholungen oder Sekunden aus der Bibliothek)
+/* Startvorgabe für Halteübungen ohne Spanne in der Bibliothek (Plank, Seitstütz): 20–30 s.
+   Abgeleitet aus der ACE-Spanne 20–45 s für Halteübungen (Hollow Hold, Wandsitzen), bewusst am unteren Ende – Vorschlag, ungeprüft. */
+const ZEIT_START = { von: 20, bis: 30 };
+function zeitStart(id) { const zb = zeitBereich(id); return zb ? { von: zb.von, bis: zb.bis, vorschlag: false } : { von: ZEIT_START.von, bis: ZEIT_START.bis, vorschlag: true }; }
+// Neuer Routineneintrag mit passender Messart (Wiederholungen oder Sekunden aus der Bibliothek); einseitige Übungen je Seite
 function neuerEintrag(id, extra) {
-  const u = ueb(id); const zb = zeitBereich(id); const zeit = ZEIT_UEBUNGEN.includes(id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
-  return Object.assign({ uebung: id, aufwaerm: 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zb ? zb.von : null, sek_bis: zb ? zb.bis : null, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, u.einseitig === true ? { je_seite: true } : {}, extra || {});
+  const u = ueb(id); const zb = zeitBereich(id); const zeit = ZEIT_UEBUNGEN.includes(id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/); const zs = zeitStart(id);
+  return Object.assign({ uebung: id, aufwaerm: zeit ? 0 : 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zs.von, sek_bis: zs.bis, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, (u.einseitig === true || istEinseitig(u)) ? { je_seite: true } : {}, extra || {});
 }
 // Sekundenziel: eigene Angabe, sonst die Spanne aus der Bibliothek (z. B. „20–45 s“), sonst offen
 function sekZiel(x) { if (x.sek_von || x.sek_bis) return { von: x.sek_von, bis: x.sek_bis }; const z = zeitBereich(x.uebung); return z || { von: null, bis: null }; }
@@ -291,7 +295,8 @@ function uebEintrag(u, basis, erste, prio) {
   const iso = u.bewegungsmuster === 'isolation' || u.bewegungsmuster === 'rumpf'; const nurKg = arr(u.geraet).every(g => g === 'koerpergewicht' || g === 'bank');
   const zb = zeitBereich(u.id); const zeit = ZEIT_UEBUNGEN.includes(u.id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/);
   const x = { uebung: u.id, aufwaerm: erste ? 2 : 0, saetze: basis, wdh_von: zeit ? null : (von ? Number(von[1]) : 8), wdh_bis: zeit ? null : (von ? Number(von[2]) : nurKg ? 15 : 12), pause_s: iso ? 90 : nurKg ? 120 : 150, ziel_rir: zeit ? null : '1–3', _iso: iso, _fokus: uebGruppen(u).some(g => prio.includes(g)), _bonus: 0 };
-  if (zeit) { x.messung = 'zeit'; x.sek_von = zb ? zb.von : null; x.sek_bis = zb ? zb.bis : null; }
+  if (zeit) { const zs = zeitStart(u.id); x.messung = 'zeit'; x.sek_von = zs.von; x.sek_bis = zs.bis; x.aufwaerm = 0; }
+  if (istEinseitig(u)) x.je_seite = true;
   return x;
 }
 const planDauer = x => (x.saetze + (x.aufwaerm || 0)) * 45 + x.saetze * (x.pause_s || 0) + (x.aufwaerm || 0) * 60;
@@ -368,7 +373,11 @@ function planVorschlag(cfg, splitKey, m) {
   const haeufig = {}; einheiten.forEach(e => { const gs = new Set(); e.uebungen.forEach(x => uebGruppen(ueb(x.uebung)).forEach(g => gs.add(g))); gs.forEach(g => { haeufig[g] = (haeufig[g] || 0) + 1; }); });
   const rest = verf.length - m;
   return { key: splitKey, m, tage: tagKeys, name: `${sp.name} an ${m} Tag${m === 1 ? '' : 'en'}`, untertitel: rest > 0 ? `${m} Krafttage von ${verf.length} verfügbaren; ${rest} Tag${rest === 1 ? '' : 'e'} frei für Erholung oder Mobility` : `alle ${m} verfügbaren Tage`,
-    plus: sp.plus, minus: sp.minus, einheiten, wochensaetze: zaehl, vol, orient, gestrichen, haeufigkeit: haeufig, luecken: [...luecken], fehler, hinweise, bonusSaetze, extra, gekappt, bonusWeg: einheiten.reduce((s, e) => s + e.bonusWeg, 0) };
+    // Beschreibung muss zum tatsächlichen Plan passen: fehlende Gruppen benennen statt „jeder Muskel“ zu behaupten
+    plus: (() => { const gn = k => (MUSKEL_GRUPPEN.find(g => g[0] === k) || [])[1]; const fehlt = MUSKEL_GRUPPEN.map(g => g[0]).filter(k => !haeufig[k]); const selten = splitKey === 'gk' ? MUSKEL_GRUPPEN.map(g => g[0]).filter(k => haeufig[k] && haeufig[k] < m) : [];
+      if (splitKey === 'gk') return fehlt.length || selten.length ? `Mehrere Muskelgruppen an jedem Trainingstag; ein ausgefallener Tag fällt weniger ins Gewicht.${fehlt.length ? ` Mit deiner Ausstattung nicht trainiert: ${fehlt.map(gn).join(', ')}.` : ''}${selten.length ? ` Nicht an jedem Tag: ${selten.map(gn).join(', ')}.` : ''}` : sp.plus;
+      return sp.plus + (fehlt.length ? ` Nicht trainiert mit deiner Ausstattung: ${fehlt.map(gn).join(', ')}.` : ''); })(),
+    minus: sp.minus, einheiten, wochensaetze: zaehl, vol, orient, gestrichen, haeufigkeit: haeufig, luecken: [...luecken], fehler, hinweise, bonusSaetze, extra, gekappt, bonusWeg: einheiten.reduce((s, e) => s + e.bonusWeg, 0) };
 }
 const PLATZ_NAME = { kniebeuge: 'Kniebeuge/Ausfallschritt', hueftbeuge: 'Hüftstreckung (Gesäß/Beinbeuger)', horizontal_druecken: 'Drücken horizontal (Brust)', vertikal_druecken: 'Drücken über Kopf (Schulter)', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben (Latissimus)', rumpf: 'Rumpf', 'iso:arme': 'Arme (Isolation)', 'iso:bizeps': 'Bizeps', 'iso:trizeps': 'Trizeps', 'iso:schultern': 'Schultern (Isolation)', 'iso:hintere': 'hintere Schulter', 'iso:gesaess': 'Gesäß (Isolation)' };
 const SLOT_GERAET = { vertikal_ziehen: 'Klimmzugstange oder Kabelzug/Latzug', horizontal_ziehen: 'Widerstandsband, Kurzhanteln, Kabelzug oder Langhantel im Rack (umgekehrtes Rudern)', vertikal_druecken: 'Kurzhanteln oder Langhantel', 'iso:arme': 'Kurzhanteln, Kabel oder Band', 'iso:bizeps': 'Kurzhanteln, Kabel oder Band', 'iso:trizeps': 'Kabel, Kurzhanteln oder Dips am Stuhl', 'iso:schultern': 'Kurzhanteln, Kabel oder Band', 'iso:hintere': 'Kurzhanteln, Kabel oder Maschine', hueftbeuge: 'Kurzhanteln/Langhantel oder eine Bank für Hip Thrusts' };
@@ -395,7 +404,9 @@ function entwurfAlternativen(id, imTag) {
 }
 function entwurfPruefen(ew) {
   const p = []; if (!ew.einheiten.length) p.push('Der Plan hat keine Einheit.');
-  ew.einheiten.forEach((e, i) => { if (!e.uebungen.length) p.push(`Einheit ${i + 1} (${e.name || 'ohne Namen'}) hat keine Übung – Übung hinzufügen oder Einheit entfernen.`); if (e.uebungen.some(x => !(x.saetze >= 1))) p.push(`Einheit ${i + 1}: jede Übung braucht mindestens 1 Satz.`); });
+  ew.einheiten.forEach((e, i) => { if (!e.uebungen.length) p.push(`Einheit ${i + 1} (${e.name || 'ohne Namen'}) hat keine Übung – Übung hinzufügen oder Einheit entfernen.`); if (e.uebungen.some(x => !(x.saetze >= 1))) p.push(`Einheit ${i + 1}: jede Übung braucht mindestens 1 Satz.`);
+    e.uebungen.forEach(x => { const n = ueb(x.uebung).name; if (istZeit(x) && !(x.sek_von > 0 || x.sek_bis > 0)) p.push(`Einheit ${i + 1}, ${n}: Haltezeit in Sekunden fehlt.`); if (!istZeit(x) && !(x.wdh_von > 0 || x.wdh_bis > 0)) p.push(`Einheit ${i + 1}, ${n}: Wiederholungsziel fehlt.`);
+      if ((x.sek_von && x.sek_bis && x.sek_von > x.sek_bis) || (!istZeit(x) && x.wdh_von && x.wdh_bis && x.wdh_von > x.wdh_bis)) p.push(`Einheit ${i + 1}, ${n}: „von“ ist größer als „bis“.`); }); });
   const tage = ew.einheiten.map(e => e.tag).filter(Boolean); const doppelt = tage.filter((t, i) => tage.indexOf(t) !== i);
   if (doppelt.length) p.push(`Zwei Einheiten am selben Tag (${[...new Set(doppelt)].map(k => (WOCHENTAGE.find(w => w[0] === k) || [])[1]).join(', ')}) – Tag ändern oder „flexibel“ wählen.`);
   return p;
@@ -424,8 +435,9 @@ function entwurfHtml() {
         return `<li class="te-ueb"><div class="te-kopf"><b>${esc(ueb(x.uebung).name)}</b>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</div>
         ${istTechnik(ueb(x.uebung)) ? '<p class="hinweis klein" style="margin:.2em 0">Technikübung: gut zum Lernen und Aufwärmen, für Geübte kaum Muskelaufbaureiz.</p>' : ''}${arr(ueb(x.uebung).voraussetzung).length ? `<p class="leise klein" style="margin:.2em 0">Braucht: ${esc(arr(ueb(x.uebung).voraussetzung).map(vorausName).join(', '))}</p>` : ''}
         ${x._getauscht ? `<p class="leise klein" style="margin:.2em 0">${esc(tauschUnterschied(x._getauscht, x.uebung))}</p>` : ''}
+        ${istZeit(x) && zeitStart(x.uebung).vorschlag ? `<p class="leise klein" style="margin:.2em 0">Haltezeit: Startvorschlag ${ZEIT_START.von}–${ZEIT_START.bis} s${x.je_seite ? ' je Seite' : ''} (die Quellen nennen keine Zeit; abgeleitet aus 20–45 s bei ähnlichen Halteübungen). Nur so lange halten, wie die Ausführung sauber bleibt.</p>` : ''}
         <div class="te-felder"><label class="feld"><span>Sätze</span>${zahl('saetze', ei, ui, x.saetze, 'min="1" max="10" step="1"')}</label>
-        ${zeit ? `<label class="feld"><span>Sek. von</span>${zahl('sek_von', ei, ui, x.sek_von, 'min="5" max="600" step="5" placeholder="selbst"')}</label><label class="feld"><span>bis</span>${zahl('sek_bis', ei, ui, x.sek_bis, 'min="5" max="600" step="5" placeholder="selbst"')}</label>`
+        ${zeit ? `<label class="feld"><span>Sek.${x.je_seite ? ' je Seite' : ''} von</span>${zahl('sek_von', ei, ui, x.sek_von, 'min="5" max="600" step="5"')}</label><label class="feld"><span>bis</span>${zahl('sek_bis', ei, ui, x.sek_bis, 'min="5" max="600" step="5"')}</label>`
           : `<label class="feld"><span>Wdh. von</span>${zahl('wdh_von', ei, ui, x.wdh_von, 'min="1" max="50"')}</label><label class="feld"><span>bis</span>${zahl('wdh_bis', ei, ui, x.wdh_bis, 'min="1" max="50"')}</label>`}
         <label class="feld"><span>Pause (s)</span>${zahl('pause_s', ei, ui, x.pause_s, 'min="0" max="600" step="15"')}</label></div>
         <div class="te-aktion"><label class="feld"><span>Tauschen gegen</span><select data-te="tausch" data-e="${ei}" data-u="${ui}"><option value="">${alt.gleich.length + alt.muskel.length + alt.eigen.length ? '– Alternative wählen –' : 'keine weitere Alternative mit deiner Ausstattung'}</option>${alt.gleich.length ? `<optgroup label="Gleiches Bewegungsmuster">${opt(alt.gleich)}</optgroup>` : ''}${alt.muskel.length ? `<optgroup label="Gleiche Muskelgruppe – anderer Schwerpunkt">${opt(alt.muskel)}</optgroup>` : ''}${alt.eigen.length ? `<optgroup label="Eigene Übungen">${opt(alt.eigen)}</optgroup>` : ''}</select></label>
@@ -468,7 +480,7 @@ document.addEventListener('change', ev => {
   if (te === 'e-name' && e) { e.name = el.value.trim().slice(0, 40) || e.name; return; }
   if (te === 'e-tag' && e) { e.tag = el.value; entwurfZahlAktualisieren(ei); return; }
   if (ENTWURF_ZAHLEN.includes(te) && x) { entwurfZahlUebernehmen(el, x, te, ei); return; }
-  if (te === 'zeit' && x) { if (el.checked) { x.messung = 'zeit'; x.sek_von = x.sek_von || null; x.sek_bis = x.sek_bis || null; } else { x.messung = 'wdh'; if (!x.wdh_von) { x.wdh_von = 8; x.wdh_bis = 12; } } entwurfNeuZeichnen(); return; }
+  if (te === 'zeit' && x) { if (el.checked) { const zs = zeitStart(x.uebung); x.messung = 'zeit'; x.sek_von = x.sek_von || zs.von; x.sek_bis = x.sek_bis || zs.bis; } else { x.messung = 'wdh'; if (!x.wdh_von) { x.wdh_von = 8; x.wdh_bis = 12; } } entwurfNeuZeichnen(); return; }
   if (te === 'tausch' && x && el.value) { const u = ueb(el.value); const neu = uebEintrag(u, x.saetze, !!x.aufwaerm, []); neu.saetze = x.saetze; neu.aufwaerm = x.aufwaerm; if (x.pause_s != null) neu.pause_s = x.pause_s; delete neu._iso; delete neu._fokus; delete neu._bonus; neu._getauscht = x._getauscht || x.uebung; e.uebungen[ui] = neu; entwurfNeuZeichnen(); return; }
   if (te === 'dazu' && e && el.value) { const neu = uebEintrag(ueb(el.value), (trDaten().einrichtung || {}).erfahrung === 'einsteiger' ? 2 : 3, !e.uebungen.length, []); delete neu._iso; delete neu._fokus; delete neu._bonus; e.uebungen.push(neu); entwurfNeuZeichnen(); return; }
 });
@@ -906,7 +918,7 @@ function trCardioHtml() {
 /* Passender Ersatz = gleiches Bewegungsmuster bzw. bei Isolation gleicher Hauptmuskel, und mindestens ein gemeinsamer Hauptmuskel.
    Eine gemeinsame Muskelgruppe allein (z. B. „Rücken“ bei Latzug und Kreuzheben) reicht nicht. Freie Auswahl ist davon getrennt. */
 const MUSKEL_NAME = { brust: 'Brust', latissimus: 'Latissimus', oberer_ruecken: 'oberer Rücken', rueckenstrecker: 'Rückenstrecker', vordere_schulter: 'vordere Schulter', seitliche_schulter: 'seitliche Schulter', hintere_schulter: 'hintere Schulter', bizeps: 'Bizeps', trizeps: 'Trizeps', quadrizeps: 'Quadrizeps', beinbeuger: 'Beinbeuger', waden: 'Waden', gesaess: 'Gesäß', rumpf: 'Rumpf', adduktoren: 'Adduktoren', unterarme: 'Unterarme' };
-const GERAET_NAME = { langhantel: 'Langhantel', kurzhantel: 'Kurzhantel', kabel: 'Kabel', maschine: 'Maschine', koerpergewicht: 'Körpergewicht', klimmzugstange: 'Klimmzugstange', rack: 'Rack', bank: 'Bank', band: 'Band', kettlebell: 'Kettlebell' };
+const UEB_GERAET_NAME = { langhantel: 'Langhantel', kurzhantel: 'Kurzhantel', kabel: 'Kabel', maschine: 'Maschine', koerpergewicht: 'Körpergewicht', klimmzugstange: 'Klimmzugstange', rack: 'Rack', bank: 'Bank', band: 'Band', kettlebell: 'Kettlebell' };
 function ersatzVorschlaege(info, ohne) {
   const ein = trDaten().einrichtung || {}; const ger = arr(ein.geraete); const nein = arr(ein.unerwuenscht);
   const haupt = arr(info.muskeln_haupt); const iso = !info.bewegungsmuster || info.bewegungsmuster === 'isolation';
@@ -1182,7 +1194,7 @@ function trFuehrungHtml() {
     ${hinw.length ? `<p class="hinweis klein">${hinw.map(esc).join('<br>')}</p>` : ''}${vsKurz}
     <div class="fz-eingabe"><p class="fz-ist">Tatsächlich – bestätigen oder ändern:</p>
       ${u.je_seite ? `<div class="zeile" style="align-items:center"><label class="klein"><input type="checkbox" data-a="tr-f-getrennt" ${ent.getrennt ? 'checked' : ''}> Seiten unterschiedlich (sonst gilt der Wert für beide Seiten)</label><button class="klein still" data-a="timer" data-quelle="seite" data-min="0.5" data-name="Seitenwechsel">⏱ 30 s Seitenwechsel</button></div><p class="leise klein">Ein Satz = beide Seiten; er zählt im Volumen einmal.</p>` : ''}
-      ${u.je_seite && ent.getrennt ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-kgL', 'Gewicht', ent.kgL, schritt)}${stepperHtml('fz-wdhL', 'Wdh.', ent.wdhL, 1)}</div><div><b>Rechts</b>${stepperHtml('fz-kgR', 'Gewicht', ent.kgR, schritt)}${stepperHtml('fz-wdhR', 'Wdh.', ent.wdhR, 1)}</div></div>`
+      ${u.je_seite && ent.getrennt ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-kgL', istZeit(u) ? 'Zusatzgewicht' : 'Gewicht', ent.kgL, schritt)}${stepperHtml('fz-wdhL', istZeit(u) ? 'Sekunden' : 'Wdh.', ent.wdhL, istZeit(u) ? 5 : 1)}</div><div><b>Rechts</b>${stepperHtml('fz-kgR', istZeit(u) ? 'Zusatzgewicht' : 'Gewicht', ent.kgR, schritt)}${stepperHtml('fz-wdhR', istZeit(u) ? 'Sekunden' : 'Wdh.', ent.wdhR, istZeit(u) ? 5 : 1)}</div></div>`
         : `<div class="fz-paar">${stepperHtml('fz-kg', 'Gewicht', ent.kg, schritt, so.einheit)}${istZeit(u) ? stepperHtml('fz-wdh', u.je_seite ? 'Sekunden je Seite' : 'Sekunden gehalten', ent.wdh, 5) : stepperHtml('fz-wdh', u.je_seite ? 'Wdh. je Seite' : 'Wiederholungen', ent.wdh, 1)}</div>`}
       ${istZeit(u) ? '<p class="leise klein fz-label">Bei Halteübungen gibt es keine RIR-Angabe: Halte nur so lange, wie die Ausführung sauber bleibt. Variante und Zusatzgewicht werden getrennt gespeichert.</p>' : ''}
       ${s.art === 'arbeit' && !istZeit(u) ? `<p class="klein fz-label"><b>RIR</b> – Wiederholungen in Reserve (freiwillig; leer = unbekannt)</p>${chipsHtml('rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), ent.rir, 'unbekannt')}` : ''}
@@ -1237,7 +1249,8 @@ document.addEventListener('click', ev => {
       aendere(null, d => { const e2 = trEinheit(); const f2 = e2.fuehrung; const u2 = e2.uebungen[f2.ui]; const s2 = u2.saetze[f2.si];
         Object.assign(s2, { soll: { kg: so.kg, wdh: so.wdh, ziel: so.ziel, rir: so.rir }, kg: kg === '' ? '' : Number(kg), wdh: Number(wdh), rir: ent.rir == null ? '' : ent.rir, erledigt: true, zeit: new Date().toISOString() });
         if (seiten) s2.seiten = seiten; else delete s2.seiten;
-        if (istZeit(u2)) { s2.sek = Number(wdh); s2.wdh = ''; s2.soll.sek = so.wdh; s2.soll.wdh = ''; }
+        if (istZeit(u2)) { s2.sek = Number(wdh); s2.wdh = ''; s2.soll.sek = so.wdh; s2.soll.wdh = '';
+          if (s2.seiten) s2.seiten = { l: { kg: s2.seiten.l.kg, sek: Number(s2.seiten.l.wdh) || 0 }, r: { kg: s2.seiten.r.kg, sek: Number(s2.seiten.r.wdh) || 0 } }; }
         delete s2.methode; delete s2.stufen; delete s2.teil_wdh;
         if (ent.methode && !istZeit(u2)) { s2.methode = ent.methode;
           if (ent.methode === 'drop') s2.stufen = [[ent.d0kg, ent.d0wdh], [ent.d1kg, ent.d1wdh]].filter(([k, w]) => (k !== '' && k != null) || (w !== '' && w != null)).map(([k, w]) => ({ kg: k === '' || k == null ? '' : Number(k), wdh: w === '' || w == null ? '' : Number(w) }));
@@ -1396,11 +1409,15 @@ function trUebungHtml(id) {
 const MUSTER_NAME = { horizontal_druecken: 'Drücken nach vorn', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben', kniebeuge: 'Kniebeuge', ausfallschritt: 'Ausfallschritt', hueftbeuge: 'Hüftstreckung', isolation: 'Isolation', rumpf: 'Rumpf' };
 const istEinseitig = u => u.einseitig === true || /einarmig|einbeinig|einseitig|ausfallschritt|step-up|pistol|seitstütz|kickback|konzentrationscurl|split squat/i.test(String(u.name) + ' ' + arr(u.alias).join(' '));
 let trBib = { q: '', gruppe: '', muster: '', ger: '', seite: '' };
+// Geräte lesbar: Alternativen mit „oder“; „rack“ ist bei Langhantel-Übungen Teil der Langhantel-Station
+const GERAET_LESBAR = { langhantel: 'Langhantel', rack: 'Rack/Hantelständer', kurzhantel: 'Kurzhanteln', kabel: 'Kabelzug', maschine: 'Maschine', klimmzugstange: 'Klimmzugstange', bank: 'Bank', band: 'Widerstandsband', kettlebell: 'Kettlebell', koerpergewicht: 'Körpergewicht' };
+function geraetText(u) { const g = arr(u.geraet); const mitRack = g.includes('rack') && g.includes('langhantel');
+  return g.filter(x => !(x === 'rack' && mitRack)).map(x => x === 'langhantel' && mitRack ? 'Langhantel mit Rack' : (GERAET_LESBAR[x] || x)).join(' oder '); }
 function trBibListe() {
   const q = suchNorm(trBib.q).trim(); const ger = arr((trDaten().einrichtung || {}).geraete);
   const l = alleUebungen().filter(u => (!q || suchNorm(u.name + ' ' + arr(u.alias).join(' ')).includes(q)) && (!trBib.gruppe || uebGruppen(u).includes(trBib.gruppe)) && (!trBib.muster || u.bewegungsmuster === trBib.muster)
     && (trBib.ger !== 'meine' || u.quelle === 'eigen' || (ger.length && uebVerfuegbar(u, ger))) && (!trBib.seite || (trBib.seite === 'ein') === istEinseitig(u)));
-  return `<p class="leise klein">${l.length} von ${alleUebungen().length} Übungen</p>${l.length ? `<ul class="eintraege">${l.slice(0, 80).map(u => `<li><span><b><a href="#/training/uebung/${esc(u.id)}">${esc(u.name)}</a></b>${u.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}${istTechnik(u) ? ' <span class="chip">Technik</span>' : ''}${istEinseitig(u) ? ' <span class="chip">einseitig</span>' : ''}<br><span class="leise klein">${esc([MUSTER_NAME[u.bewegungsmuster] || '', arr(u.muskeln_haupt).map(m => MUSKEL_NAME[m] || m).join(', '), arr(u.geraet).map(g => (TR_GERAETE.find(x => x[0] === g) || [g, g])[1]).join(' / '), arr(u.voraussetzung).length ? 'braucht ' + arr(u.voraussetzung).map(vorausName).join(', ') : ''].filter(Boolean).join(' · '))}</span></span><span>${anleitungsKnopf('tr', u.id, '', true)}</span></li>`).join('')}</ul>` : '<p class="leise">Keine Übung passt zu diesen Filtern.</p>'}`;
+  return `<p class="leise klein">${l.length} von ${alleUebungen().length} Übungen</p>${l.length ? `<ul class="eintraege">${l.slice(0, 80).map(u => `<li><span><b><a href="#/training/uebung/${esc(u.id)}">${esc(u.name)}</a></b>${u.quelle === 'eigen' ? ' <span class="chip">eigene</span>' : ''}${istTechnik(u) ? ' <span class="chip">Technik</span>' : ''}${istEinseitig(u) ? ' <span class="chip">einseitig</span>' : ''}<br><span class="leise klein">${esc([MUSTER_NAME[u.bewegungsmuster] || '', arr(u.muskeln_haupt).map(m => MUSKEL_NAME[m] || m).join(', '), geraetText(u), arr(u.voraussetzung).length ? 'braucht ' + arr(u.voraussetzung).map(vorausName).join(', ') : ''].filter(Boolean).join(' · '))}</span></span><span>${anleitungsKnopf('tr', u.id, '', true)}</span></li>`).join('')}</ul>` : '<p class="leise">Keine Übung passt zu diesen Filtern.</p>'}`;
 }
 function trUebungenHtml() {
   const sel = (k, titel, opts) => `<label class="feld"><span>${titel}</span><select data-tr-bib="${k}">${opts.map(([v, t]) => `<option value="${v}" ${trBib[k] === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;

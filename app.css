@@ -635,3 +635,10 @@ body[data-bereich="mentality"] { --akzent: #5a4b80; --akzent-hell: #ece8f4; --ak
 .mt-takt b { position: absolute; font-size: 1.2rem; }
 .mt-hilfe ul { padding-left: 1.2em; }
 @media (prefers-reduced-motion: reduce) { .mt-kreis { transition: none; } }
+/* 2.24: geführte Mentality-Abschnitte */
+.mt-punkte { display: flex; gap: 6px; margin: 8px 0; }
+.mt-punkte i { flex: 1 1 0; height: 6px; border-radius: 3px; background: var(--linie); }
+.mt-punkte i.fertig { background: var(--akzent-hell); }
+.mt-punkte i.jetzt { background: var(--akzent); }
+.mt-abschnitt-text { font-size: 1.15rem; line-height: 1.5; min-height: 4.5em; margin: 10px 0; }
+.weiter-fremd { margin: 0 0 10px; }

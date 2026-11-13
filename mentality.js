@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131038 */
+/* Fitomat-Build 202611131313 */
 /* Fitomat – Mentality: kurze, sachliche Übungen für konkrete Situationen. Alles lokal; nichts wird gesendet.
    Grundlagen, Belege und Grenzen: Vault „70 Mentality/Mentality – Grundlagen“. Keine Diagnosen, keine Heilversprechen. */
 
@@ -15,12 +15,13 @@ const MT_UEBUNGEN = [
     schritte: ['Setz dich aufrecht, aber bequem hin.', 'Spür, wo du den Atem am deutlichsten merkst – Nase, Brust oder Bauch. Den Atem nicht verändern.', 'Wenn die Gedanken abschweifen, merk kurz „abgeschweift“ und geh freundlich zurück zum Atem. Das ist die eigentliche Übung, kein Fehler.', 'Zum Schluss ein paar Atemzüge lang den ganzen Körper und den Raum wahrnehmen, dann die Augen öffnen.'],
     beleg: 'Achtsamkeitsprogramme senkten in einer Meta-Analyse bei gesunden Erwachsenen Stress im Mittel moderat (Khoury et al. 2015). Eine einzelne kurze Übung ist kein Programm.' },
   { id: 'body-scan', name: 'Body-Scan', art: 'still', unauffaellig: false, minuten: [5, 10],
-    kurz: 'Aufmerksamkeit langsam von den Füßen bis zum Kopf wandern lassen.',
-    schritte: ['Leg dich hin oder setz dich bequem. Augen schließen, wenn das angenehm ist.', 'Füße und Beine: nur wahrnehmen, was da ist – Wärme, Druck, Kribbeln oder nichts Besonderes.', 'Becken, Bauch und Rücken: der Atem darf sich bewegen, wie er will.', 'Hände, Arme, Schultern: wenn etwas angespannt ist, nur bemerken – loslassen ist kein Muss.', 'Nacken, Gesicht, Kopf. Zum Schluss den ganzen Körper auf einmal spüren.'],
+    kurz: 'Aufmerksamkeit langsam von den Füßen bis zum Kopf wandern lassen.', gefuehrt: true, vorbereitung: 'Leg dich hin oder setz dich bequem. Augen schließen, wenn das angenehm ist. Es gibt nichts zu erreichen – nur wahrnehmen.',
+    schritte: ['Füße und Beine: nur wahrnehmen, was da ist – Wärme, Druck, Kribbeln oder nichts Besonderes.', 'Becken, Bauch und Rücken: der Atem darf sich bewegen, wie er will.', 'Hände, Arme, Schultern: wenn etwas angespannt ist, nur bemerken – loslassen ist kein Muss.', 'Nacken, Gesicht, Kopf. Zum Schluss den ganzen Körper auf einmal spüren.'],
     beleg: 'Teil vieler Achtsamkeitsprogramme; die Wirkung des Body-Scans allein ist wenig untersucht.' },
   { id: 'pmr', name: 'Muskeln anspannen und lösen', art: 'still', unauffaellig: false, minuten: [5, 10],
     kurz: 'Kurzform der progressiven Muskelentspannung: je Muskelgruppe kurz anspannen, dann lösen.',
-    schritte: ['Hände zu Fäusten, etwa 5 Sekunden halten, dann lösen und 15–20 Sekunden nachspüren.', 'Arme beugen und anspannen – halten – lösen.', 'Schultern zu den Ohren ziehen – halten – fallen lassen.', 'Gesicht: Augen zukneifen, Stirn runzeln – halten – lösen.', 'Bauch anspannen – halten – lösen. Dann Beine und Füße.', 'Nur leicht anspannen, nicht bis zum Schmerz. Bei Verletzungen oder Krämpfen die Stelle auslassen.'],
+    gefuehrt: true, vorbereitung: 'Setz oder leg dich bequem hin. Nur leicht anspannen (etwa halbe Kraft), nie bis zum Schmerz; Stellen mit Verletzung oder Krampfneigung auslassen. Je Abschnitt: etwa 5 Sekunden anspannen, dann lösen und nachspüren.',
+    schritte: ['Hände: zu Fäusten ballen – etwa 5 Sekunden halten – lösen und nachspüren, wie die Spannung nachlässt.', 'Arme: Unterarme beugen und die Oberarme anspannen – halten – lösen.', 'Schultern: zu den Ohren ziehen – halten – fallen lassen.', 'Gesicht: Augen zukneifen, Stirn runzeln – halten – lösen.', 'Bauch: anspannen – halten – lösen, ruhig weiteratmen.', 'Beine und Füße: Oberschenkel anspannen, Zehen zu dir ziehen – halten – lösen. Zum Schluss den ganzen Körper wahrnehmen.'],
     beleg: 'Progressive Muskelentspannung ist ein gut eingeführtes Entspannungsverfahren; die Kurzform hier ist vereinfacht (Vorschlag).' },
   { id: 'sinne-54321', name: '5-4-3-2-1 – mit den Sinnen ankommen', art: 'still', unauffaellig: true, minuten: [2, 3],
     kurz: 'Aufmerksamkeit nach außen lenken: 5 Dinge sehen, 4 hören, 3 spüren, 2 riechen, 1 schmecken.',
@@ -107,33 +108,60 @@ function mtUebungHtml(id) {
   const u = mtUeb(id); if (!u) return '<p class="leer">Übung nicht gefunden. <a href="#/mentality">Mentality</a></p>';
   const letzteFokus = mtDaten().fokus.filter(f => f.geschafft).slice(-1)[0];
   return `<p class="klein"><a class="knopf still klein" href="#/mentality">${ico('zurueck', 'klein')} Mentality</a></p><h1>${esc(u.name)}</h1><p>${esc(u.kurz)}</p>
-  <ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+  ${u.vorbereitung ? `<p class="hinweis klein"><b>Vorbereiten:</b> ${esc(u.vorbereitung)}</p>` : ''}
+  ${u.gefuehrt ? `<details class="klein"><summary>Alle ${u.schritte.length} Abschnitte ansehen</summary><ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol></details><p class="leise klein">Beim Üben führt die App Abschnitt für Abschnitt; die gewählte Dauer wird gleichmäßig verteilt. Du kannst jederzeit weiter- oder zurückspringen.</p>` : `<ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`}
   ${u.fokus ? `<label class="feld"><span>Deine Aufgabe</span><input id="mt-aufgabe" maxlength="120" placeholder="z. B. Bericht Abschnitt 2 entwerfen"></label>${letzteFokus ? `<p class="leise klein">Zuletzt ganz geschafft: ${letzteFokus.min} Min. Wenn das gut ging, kannst du ${letzteFokus.min + 5} Min. versuchen.</p>` : '<p class="leise klein">Fang lieber kurz an; verlängern kannst du später.</p>'}` : ''}
   <p class="klein"><b>Dauer:</b></p><div class="chips-wrap">${u.minuten.map(n => `<button class="haupt gross-chip" data-a="mt-start" data-v="${u.id}" data-min="${n}">${n} Min. starten</button>`).join('')}</div>
   <details class="klein"><summary>Was ist belegt?</summary><p>${esc(u.beleg)}</p><p class="leise">Quellen und Grenzen: Vault „Mentality – Grundlagen“.</p></details>
   <p class="leise klein">Der Timer läuft nur, solange die App offen ist; bei gesperrtem iPhone kann er stehen bleiben und kein Ton kommen.</p>`;
 }
-function mtRest() { if (!mtLauf) return 0; const pause = mtLauf.pausiertMs + (mtLauf.pausiertSeit ? Date.now() - mtLauf.pausiertSeit : 0); return Math.max(0, mtLauf.min * 60000 - (Date.now() - mtLauf.start - pause)); }
+/* Aktive Dauer = Uhrzeit seit Start minus Pausen; beim Beenden eingefroren. Zeit außerhalb der App wird nach der Rückkehr erfragt. */
+function mtAktivMs() { if (!mtLauf) return 0; if (mtLauf.aktivMsEnde != null) return mtLauf.aktivMsEnde; const pause = mtLauf.pausiertMs + (mtLauf.pausiertSeit ? Date.now() - mtLauf.pausiertSeit : 0); return Math.min(mtLauf.min * 60000, Math.max(0, Date.now() - mtLauf.start - pause)); }
+function mtRest() { return mtLauf ? Math.max(0, mtLauf.min * 60000 - mtAktivMs()) : 0; }
+const mtDauerText = x => x.sek != null ? `${x.sek < 60 ? x.sek + ' s' :Math.floor(x.sek / 60) + ':' + String(x.sek % 60).padStart(2, '0') + ' Min.'}${x.min_geplant ? ` von ${x.min_geplant} Min.` : ''}` : `${x.min} Min.`;
+document.addEventListener('visibilitychange', () => { if (!mtLauf || mtLauf.aktivMsEnde != null) return;
+  if (document.visibilityState === 'hidden') { mtLauf.verstecktSeit = Date.now(); return; }
+  const weg = mtLauf.verstecktSeit ? Date.now() - mtLauf.verstecktSeit : 0; const seit = mtLauf.verstecktSeit; mtLauf.verstecktSeit = null;
+  if (weg > 20000 && !mtLauf.pausiertSeit) { mtLauf.pausiertSeit = seit; mtLauf.abwesendMs = weg; if (location.hash.startsWith('#/mentality/lauf')) route(); } });
 function mtLaufHtml() {
   if (!mtLauf) return '<p class="leer">Keine Übung aktiv. <a href="#/mentality">Mentality</a></p>';
   const u = mtUeb(mtLauf.id); const rest = mtRest(); const fertig = rest <= 0 || mtLauf.beendet;
-  if (fertig) return `<h1>${esc(u.name)}</h1><p>${mtLauf.beendet === 'frueh' ? 'Beendet.' : 'Die Zeit ist um.'}</p>
+  if (fertig) return `<h1>${esc(u.name)}</h1><p>${mtLauf.beendet === 'frueh' ? 'Vorzeitig beendet' : 'Die Zeit ist um'} – aktiv ${esc(mtDauerText({ sek: Math.round(mtAktivMs() / 1000), min_geplant: mtLauf.min }))}</p>
     ${u.journal ? mtJournalForm() : ''}
     ${u.fokus ? `<p class="klein"><b>Aufgabe:</b> ${esc(mtLauf.aufgabe || '–')}</p><div class="knopfreihe"><button data-a="mt-fokus-ergebnis" data-v="ja">Konnte dranbleiben</button><button data-a="mt-fokus-ergebnis" data-v="teils">Teilweise</button><button data-a="mt-fokus-ergebnis" data-v="nein">Kaum</button></div>` : ''}
     <section class="karte"><p class="klein"><b>War das hilfreich?</b> (freiwillig)</p><div class="knopfreihe"><button data-a="mt-bewerten" data-v="hilfreich">hilfreich</button><button data-a="mt-bewerten" data-v="neutral">neutral</button><button data-a="mt-bewerten" data-v="nicht">nicht hilfreich</button><button class="still" data-a="mt-bewerten" data-v="">ohne Rückmeldung</button></div></section>`;
   const min = Math.floor(rest / 60000), sek = Math.floor(rest / 1000) % 60;
-  return `<p class="leise klein">${esc(u.name)} · ${mtLauf.min} Min.</p>
+  return `<p class="leise klein">${esc(u.name)} · ${mtLauf.min} Min.${mtLauf.pausiertSeit && !mtLauf.abwesendMs ? ' · angehalten' : ''}</p>
+  ${mtLauf.abwesendMs ? `<div class="hinweis klein"><b>Du warst ca. ${mtLauf.abwesendMs < 60000 ? Math.round(mtLauf.abwesendMs / 1000) + ' s' : Math.round(mtLauf.abwesendMs / 60000) + ' Min.'} außerhalb der App.</b> Hast du in dieser Zeit weitergeübt (z. B. mit gesperrtem Bildschirm)? <div class="knopfreihe"><button class="klein" data-a="mt-abwesend" data-v="ja">Ja, mitzählen</button><button class="klein" data-a="mt-abwesend" data-v="nein">Nein, als Pause werten</button></div><span class="leise">Bei gesperrtem iPhone kann die App die Zeit nicht beobachten und keinen Ton geben.</span></div>` : ''}
   ${u.takt ? `<div class="mt-takt" id="mt-takt" aria-live="off"><div class="mt-kreis" id="mt-kreis"></div><b id="mt-takt-text">ein</b></div>` : ''}
   <div class="mt-uhr" id="mt-uhr" aria-live="off">${min}:${String(sek).padStart(2, '0')}</div>
-  ${u.fokus ? `<p class="klein"><b>Aufgabe:</b> ${esc(mtLauf.aufgabe || '–')}</p>` : `<ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`}
-  <div class="knopfreihe"><button class="gross" data-a="mt-pause">${mtLauf.pausiertSeit ? '▶ weiter' : 'Ⅱ anhalten'}</button><button class="gross" data-a="mt-ende">Beenden</button><button class="still" data-a="mt-abbruch">✕ abbrechen (nichts speichern)</button></div>`;
+  ${u.fokus ? `<p class="klein"><b>Aufgabe:</b> ${esc(mtLauf.aufgabe || '–')}</p>` : u.gefuehrt ? `<div id="mt-abschnitt">${mtAbschnittHtml(u)}</div>` : `<ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`}
+  <div class="knopfreihe"><button class="gross" data-a="mt-pause">${mtLauf.pausiertSeit ? '▶ weiter' : 'Ⅱ anhalten'}</button><button class="gross" data-a="mt-ende">Beenden</button><button class="still" data-a="mt-abbruch">✕ abbrechen (nichts speichern)</button></div>
+  ${u.gefuehrt ? `<details class="klein"><summary>Signal beim Abschnittswechsel</summary><label><input type="checkbox" data-a="mt-signal" data-v="vibration" ${mtEinst().vibration ? 'checked' : ''}> Vibration (wo der Browser es unterstützt – Safari auf dem iPhone kann das nicht)</label><br><label><input type="checkbox" data-a="mt-signal" data-v="ton" ${mtEinst().ton ? 'checked' : ''}> leiser Ton (nur bei geöffneter App und nicht stumm geschaltetem Gerät)</label></details>` : ''}`;
+}
+/* Geführte Übungen (Body-Scan, Muskelentspannung): ein Abschnitt nach dem anderen; Dauer gleichmäßig auf die Abschnitte verteilt.
+   Weiter/Zurück jederzeit; Signal nur, wenn ausdrücklich eingeschaltet. */
+const mtEinst = () => Object.assign({ vibration: false, ton: false }, mtDaten().einst || {});
+function mtAbschnittHtml(u) {
+  const n = u.schritte.length; const i = Math.min(mtLauf.abIdx || 0, n - 1); const per = mtLauf.min * 60000 / n; const rest = Math.max(0, per - (mtAktivMs() - (mtLauf.abStart || 0)));
+  return `<p class="leise klein" style="margin:0">Abschnitt ${i + 1} von ${n}${i < n - 1 ? ` · nächster in ca. ${Math.ceil(rest / 1000)} s` : ' · letzter Abschnitt'}</p>
+    <div class="mt-punkte" aria-hidden="true">${u.schritte.map((_, k) => `<i class="${k < i ? 'fertig' : k === i ? 'jetzt' : ''}"></i>`).join('')}</div>
+    <p class="mt-abschnitt-text">${esc(u.schritte[i])}</p>
+    <div class="knopfreihe"><button class="still" data-a="mt-ab" data-v="-1" ${i === 0 ? 'disabled' : ''}>← Zurück</button><button class="still" data-a="mt-ab" data-v="1" ${i === n - 1 ? 'disabled' : ''}>Weiter →</button></div>`;
+}
+function mtSignal() {
+  const e = mtEinst(); try { if (e.vibration && navigator.vibrate) navigator.vibrate(120); } catch (er) { /* */ }
+  if (e.ton) { try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; mtSignal.ctx = mtSignal.ctx || new AC(); const c = mtSignal.ctx; const o = c.createOscillator(), g = c.createGain(); o.frequency.value = 528; g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(0.06, c.currentTime + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.6); o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.65); } catch (er) { /* */ } }
 }
 function mtTick() {
+  if (mtLauf && !mtLauf.pausiertSeit && mtLauf.aktivMsEnde == null) { const u0 = mtUeb(mtLauf.id); if (u0 && u0.gefuehrt) { const n = u0.schritte.length, per = mtLauf.min * 60000 / n, i = mtLauf.abIdx || 0;
+    if (i < n - 1 && mtAktivMs() - (mtLauf.abStart || 0) >= per) { mtLauf.abIdx = i + 1; mtLauf.abStart = mtAktivMs(); mtSignal(); }
+    const el = $('#mt-abschnitt'); if (el && (!el.dataset.i || Number(el.dataset.i) !== (mtLauf.abIdx || 0) || Date.now() - (el._t || 0) > 1000)) { el.innerHTML = mtAbschnittHtml(u0); el.dataset.i = mtLauf.abIdx || 0; el._t = Date.now(); } } }
   if (!mtLauf || !location.hash.startsWith('#/mentality/lauf')) { clearInterval(mtTakt); mtTakt = null; return; }
   const rest = mtRest(); const uhr = $('#mt-uhr'); if (uhr) uhr.textContent = `${Math.floor(rest / 60000)}:${String(Math.floor(rest / 1000) % 60).padStart(2, '0')}`;
   const u = mtUeb(mtLauf.id); if (u.takt && !mtLauf.pausiertSeit) { const zyk = (u.takt.ein + u.takt.aus) * 1000; const t = (Date.now() - mtLauf.start) % zyk; const ein = t < u.takt.ein * 1000;
     const tx = $('#mt-takt-text'); if (tx) tx.textContent = ein ? 'einatmen' : 'ausatmen'; const k = $('#mt-kreis'); if (k) k.style.transform = `scale(${ein ? 0.6 + 0.4 * t / (u.takt.ein * 1000) : 1 - 0.4 * (t - u.takt.ein * 1000) / (u.takt.aus * 1000)})`; }
-  if (rest <= 0 && !mtLauf.gemeldet) { mtLauf.gemeldet = true; try { navigator.vibrate && navigator.vibrate(200); } catch (e) { /* */ } route(); }
+  if (rest <= 0 && !mtLauf.gemeldet) { mtLauf.gemeldet = true; mtLauf.aktivMsEnde = mtLauf.min * 60000; try { navigator.vibrate && navigator.vibrate(200); } catch (e) { /* */ } route(); }
 }
 function mtWerkzeugeHtml() {
   return `<h1>Werkzeuge</h1><p class="leise klein">Alle Übungen direkt. Mit ☆ speicherst du sie für den Start.</p>${MT_UEBUNGEN.map(u => mtKarte(u)).join('')}
@@ -149,14 +177,14 @@ function mtJournalForm() {
 }
 function mtJournalHtml() {
   const m = mtDaten(); const l = [...m.journal].sort((a, b) => b.zeit.localeCompare(a.zeit));
-  return `<h1>Journal</h1><p class="leise klein">Privat und nur auf diesem Gerät. Wird nie gesendet.</p>${mtJournalForm()}
+  return `<h1>Journal</h1><p class="leise klein">Bleibt in diesem Browser auf diesem Gerät; die App sendet es nirgendwohin. Eine Datei entsteht nur, wenn du selbst exportierst.</p>${mtJournalForm()}
   ${l.length ? `<ul class="eintraege">${l.slice(0, 50).map(j => `<li><span><b>${esc(datumDE(j.zeit.slice(0, 10)))}</b><br>${esc(j.was || '–')}${j.beeinflussen ? `<br><span class="klein">Beeinflussbar: ${esc(j.beeinflussen)}</span>` : ''}${j.schritt ? `<br><span class="klein">Nächster Schritt: ${esc(j.schritt)}</span>` : ''}</span><span><button class="klein still" data-a="mt-j-weg" data-v="${esc(j.id)}">löschen</button></span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Einträge.</p>'}
   ${mtDatenHtml()}`;
 }
 function mtVerlaufHtml() {
   const m = mtDaten(); const v = [...m.verlauf].sort((a, b) => b.zeit.localeCompare(a.zeit)); const ci = [...m.checkins].sort((a, b) => b.zeit.localeCompare(a.zeit));
   return `<h1>Verlauf</h1><p class="leise klein">Ein einfaches Protokoll – keine Punkte, keine Serien.</p>
-  ${v.length ? `<ul class="eintraege">${v.slice(0, 40).map(x => `<li><span>${esc(datumDE(x.zeit.slice(0, 10)))} · <b>${esc((mtUeb(x.id) || { name: x.id }).name)}</b> · ${x.min} Min.${x.frueh ? ' (früher beendet)' : ''}${x.bewertung ? ` · ${esc({ hilfreich: 'hilfreich', neutral: 'neutral', nicht: 'nicht hilfreich' }[x.bewertung])}` : ''}</span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Übung abgeschlossen.</p>'}
+  ${v.length ? `<ul class="eintraege">${v.slice(0, 40).map(x => `<li><span>${esc(datumDE(x.zeit.slice(0, 10)))} · <b>${esc((mtUeb(x.id) || { name: x.id }).name)}</b> · ${esc(mtDauerText(x))}${x.frueh ? ' (vorzeitig beendet)' : ''}${x.bewertung ? ` · ${esc({ hilfreich: 'hilfreich', neutral: 'neutral', nicht: 'nicht hilfreich' }[x.bewertung])}` : ''}</span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Übung abgeschlossen.</p>'}
   ${ci.length ? `<h2>Check-ins</h2><ul class="eintraege">${ci.slice(0, 30).map(c => `<li><span>${esc(datumDE(c.zeit.slice(0, 10)))} ${esc(c.zeit.slice(11, 16))} · Anspannung ${c.anspannung ?? '–'} · Energie ${c.energie ?? '–'}${c.notiz ? ' · ' + esc(c.notiz) : ''}</span><span><button class="klein still" data-a="mt-ci-weg" data-v="${esc(c.id)}">löschen</button></span></li>`).join('')}</ul>` : ''}
   ${mtDatenHtml()}`;
 }
@@ -188,11 +216,14 @@ document.addEventListener('click', ev => {
     case 'mt-fav': aendere(null, d => { mtDaten(); const f = new Set(d.mentality.favoriten); f.has(v) ? f.delete(v) : f.add(v); d.mentality.favoriten = [...f]; }); break;
     case 'mt-start': { const auf = ($('#mt-aufgabe') || {}).value || ''; mtLauf = { id: v, min: Number(b.dataset.min), start: Date.now(), pausiertSeit: null, pausiertMs: 0, aufgabe: auf.trim().slice(0, 120) }; location.hash = '#/mentality/lauf'; clearInterval(mtTakt); mtTakt = setInterval(mtTick, 200); break; }
     case 'mt-pause': if (!mtLauf) return; if (mtLauf.pausiertSeit) { mtLauf.pausiertMs += Date.now() - mtLauf.pausiertSeit; mtLauf.pausiertSeit = null; } else mtLauf.pausiertSeit = Date.now(); route(); break;
-    case 'mt-ende': if (!mtLauf) return; mtLauf.beendet = mtRest() > 0 ? 'frueh' : 'zeit'; route(); break;
+    case 'mt-ende': if (!mtLauf) return; mtLauf.aktivMsEnde = mtAktivMs(); mtLauf.beendet = mtRest() > 0 ? 'frueh' : 'zeit'; route(); break;
+    case 'mt-ab': { if (!mtLauf) return; const n = mtUeb(mtLauf.id).schritte.length; mtLauf.abIdx = Math.max(0, Math.min(n - 1, (mtLauf.abIdx || 0) + Number(v))); mtLauf.abStart = mtAktivMs(); const el = $('#mt-abschnitt'); if (el) { el.innerHTML = mtAbschnittHtml(mtUeb(mtLauf.id)); el.dataset.i = mtLauf.abIdx; } break; }
+    case 'mt-signal': aendere(null, d => { mtDaten(); d.mentality.einst = Object.assign({}, d.mentality.einst || {}, { [v]: b.checked }); }, { neuZeichnen: false }); if (b.checked && v === 'ton') mtSignal(); break;
+    case 'mt-abwesend': if (!mtLauf || !mtLauf.pausiertSeit) return; if (v === 'ja') { mtLauf.pausiertSeit = null; } else { mtLauf.pausiertMs += Date.now() - mtLauf.pausiertSeit; mtLauf.pausiertSeit = null; } mtLauf.abwesendMs = null; route(); break;
     case 'mt-abbruch': mtLauf = null; clearInterval(mtTakt); mtTakt = null; location.hash = '#/mentality'; break;
     case 'mt-fokus-ergebnis': if (!mtLauf) return; mtLauf.fokusErgebnis = v; toast('Notiert'); break;
-    case 'mt-bewerten': { const l = mtLauf; if (!l) return; const gespielt = Math.max(1, Math.round((l.min * 60000 - mtRest()) / 60000));
-      aendere(v ? 'Rückmeldung gespeichert' : 'Gespeichert', d => { mtDaten(); d.mentality.verlauf.push({ zeit: new Date().toISOString(), id: l.id, min: gespielt, frueh: l.beendet === 'frueh', bewertung: v || null });
+    case 'mt-bewerten': { const l = mtLauf; if (!l) return; const sek = Math.round(mtAktivMs() / 1000); const gespielt = Math.round(sek / 60);
+      aendere(v ? 'Rückmeldung gespeichert' : 'Gespeichert', d => { mtDaten(); d.mentality.verlauf.push({ zeit: new Date().toISOString(), id: l.id, sek, min: gespielt, min_geplant: l.min, frueh: l.beendet === 'frueh', bewertung: v || null });
         if (mtUeb(l.id).fokus) d.mentality.fokus.push({ zeit: new Date().toISOString(), min: gespielt, geplant: l.min, geschafft: l.fokusErgebnis === 'ja' && l.beendet !== 'frueh', ergebnis: l.fokusErgebnis || null }); }, { neuZeichnen: false });
       mtLauf = null; clearInterval(mtTakt); mtTakt = null; location.hash = '#/mentality'; break; }
     case 'mt-checkin': { const z = id => { const x = ($(id) || {}).value; return x === '' || x == null ? null : Math.max(0, Math.min(10, Math.round(Number(x)))); };

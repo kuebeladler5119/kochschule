@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131038 */
+/* Fitomat-Build 202611131313 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
@@ -322,6 +322,17 @@ function rezepteAktualisieren() {
     R[id] = v ? effektivesRezept(R0[id], varianteAlsAnpassung(v)) : R0[id];
   }
 }
+/* Mengenhinweise für Rezeptseite und Kochmodus: Zeiten, Pfannenkapazität und Würze nicht linear hochrechnen.
+   f = Mengenfaktor gegenüber dem Originalrezept, p = gewählte Portionen. */
+function mengenHinweise(r, f, p) {
+  const m = r.meta; const h = []; const P0 = Number(m.portionen_original || m.portionen) || 1; const ppd = Number(m.portionen_pro_durchgang) || 0;
+  if (ppd && p > ppd) h.push(`Pfanne/Topf: ca. ${Math.ceil(p / ppd)} Durchgänge (je ca. ${ppd} Portionen) statt ${Math.ceil(P0 / ppd)} – nicht stapeln; die aktive Zeit steigt entsprechend.`);
+  else if (!ppd && f >= 1.5 && arr(m.geraete_noetig).some(g => ['pfanne', 'wok'].includes(g))) h.push('Größere Menge: Pfanne nicht überfüllen – zum Anbraten lieber in mehreren Durchgängen, sonst dünstet es statt zu bräunen.');
+  if (f > 1.25) h.push('Zeiten und Temperaturen gelten für die Originalmenge: nicht hochrechnen, sondern nach den Garzeichen im Schritt richten. Aufkochen und Erhitzen dauern mit mehr Menge länger.');
+  else if (f < 0.75) h.push('Kleinere Menge gart oft schneller – früher prüfen (Garzeichen im Schritt).');
+  if (f > 1.2) h.push('Salz, Sojasauce, Chili und Brühe: zuerst etwa die Originalmenge nehmen, dann abschmecken und nachwürzen.');
+  return h;
+}
 /* Zubereitungshinweise bei geänderter Menge – keine erfundene Genauigkeit */
 function anpassungHinweise(r0, rNeu) {
   const h = []; const m = r0.meta; const P0 = Number(m.portionen) || 1;
@@ -583,6 +594,11 @@ function plBewertung(r, c, ziel, gewaehlt) {
   if (arr(m.kategorien).includes('meal_prep')) { s += 3; gruende.push('gut vorzubereiten'); }
   if (c.kuechen.length && [m.kueche, ...arr(m.kuechen)].some(k => c.kuechen.includes(k))) { s += 3; gruende.push('bevorzugte Küche'); }
   if (c.budget !== '' && m.kosten_klasse === 'guenstig') { s += 2; gruende.push('eher günstig (Schätzklasse)'); } if (m.kosten_klasse === 'hoeher') s -= 1;
+  // Mit Budget und belegten Preisen: verbrauchter Warenwert je Portion aus deinen Preisen (nur wenn mindestens 70 % der Zutaten belegt sind)
+  if (c.budget !== '' && Number(c.budget) > 0 && preise().length) { const k = kostenRechnung([{ rezept: r.id, portionen: 1 }], c.haendler || 'beide'); const abd = k.posten.length ? k.mit.length / k.posten.length : 0;
+    const mahlzeiten = (Number(c.tage) || 7) * (arr(c.slots).length || 1) * (Number(c.personen) || 1); const ziel = Number(c.budget) / mahlzeiten;
+    if (abd >= 0.7) { const pro = k.anteil / Math.max(abd, 0.01); if (pro <= ziel * 0.8) { s += 3; gruende.push(`laut deinen Preisen ca. ${euro(pro)} je Portion (${Math.round(abd * 100)} % belegt)`); } else if (pro > ziel * 1.3) s -= 2; }
+    else s -= 0.5; }
   const prio = new Set(D.vorrat.filter(v => v.geoeffnet || v.prioritaet === 'hoch' || (v.verbrauchsdatum && tageBis(v.verbrauchsdatum) <= 3)).map(v => v.zutat)); const vorrat = new Set(D.vorrat.map(v => v.zutat));
   const nutzt = r.zutaten.filter(z => z.zutat && z.bedarf !== 'grundvorrat' && vorrat.has(z.zutat)); if (nutzt.length) { s += nutzt.length + 2 * nutzt.filter(z => prio.has(z.zutat)).length; gruende.push('nutzt Vorrat: ' + [...new Set(nutzt.map(z => Z[z.zutat].name))].slice(0, 3).join(', ')); }
   if (ziel && np.protein != null) { s -= Math.abs(np.protein - ziel.protein) / 8; if (np.kcal != null) s -= Math.abs(np.kcal - ziel.kcal) / 200; if (np.protein >= ziel.protein * 0.9) gruende.push(`${zahlDE(np.protein)} g Protein je Portion`); }
@@ -803,7 +819,9 @@ const DATE_GAENGE = [['vorspeise', 'Vorspeise'], ['haupt', 'Hauptgang'], ['desse
 /* Menüportion als Zahl: Anteil einer Rezeptportion je Person im Mehrgangmenü (Feld `date_menue_faktor` im Rezept; Text in `date_menue_portion`).
    Fehlt die Zahl, rechnet die App mit der vollen Portion und sagt das. Mengen, Einkauf und Nährwerte folgen daraus. */
 const dateFaktor = r => { const f = Number(r && r.meta.date_menue_faktor); return f > 0 && f <= 2 ? f : null; };
-const datePortionen = (r, personen) => Math.max(0.5, Math.round(personen * (dateFaktor(r) || 1) * 2) / 2);
+// EINE Mengenbasis für Anzeige, Einkauf, Kochmodus und Nährwerte: Personen × Menüportion, auf 0,1 Portion genau – keine zweite Rundung.
+// Gerundet wird nur in der Anzeige von Gramm-Mengen (Zutatenliste) bzw. auf Packungen in der Einkaufsliste.
+const datePortionen = (r, personen) => Math.max(0.1, Math.round(personen * (dateFaktor(r) || 1) * 10) / 10);
 // Servier-Abstände im Menü (Vorschlag): Hauptgang 30 Min. nach der Vorspeise, Dessert 45 Min. nach dem Hauptgang
 const DATE_ABSTAND = { vorspeise: 0, haupt: 30, dessert: 45 };
 function dateZustand() { D.date = D.date || {}; const d = D.date; d.einst = Object.assign({ anspruch: 'egal', budget: 'egal', veg: false, zeit: 'egal', personen: 2, servieren: '' }, d.einst || {}); d.gaenge = Object.assign({ vorspeise: true, haupt: true, dessert: true }, d.gaenge || {}); d.wahl = d.wahl || {}; return d; }
@@ -828,16 +846,16 @@ function vDate() {
     const x = m[g]; if (!x || !x.r) return `<div class="karte date-gang"><b>${gn}</b><p class="leise klein">Kein passendes Rezept mit Date-Angaben – Einstellungen lockern.</p></div>`;
     const r = x.r, i = rezeptInfo(r), np = r.naehrwerte.pro_portion;
     return `<div class="karte date-gang"><div class="zeile" style="justify-content:space-between"><b>${gn}</b><span>${x.anzahl > 1 ? `<button class="klein" data-a="date-anders" data-v="${g}">anderes (${x.anzahl})</button>` : ''}<button class="klein still" data-a="date-gang" data-v="${g}">weglassen</button></span></div>
-      <a class="date-rezept" href="#/rezept/${esc(r.id)}">${bildHtml(r)}<span><b>${esc(r.titel)}</b><br><span class="leise klein">aktiv ${i.aktiv || '?'} Min. · gesamt ${i.gesamt || '?'} Min. · Schwierigkeit ${i.schwierigkeit || '?'}/5${i.veg ? ' · vegetarisch' : ''}${r.meta.kosten_klasse ? ' · Kosten ' + esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[r.meta.kosten_klasse] || '') + ' (Schätzung)' : ''}</span></span></a>
+      <a class="date-rezept" href="#/rezept/${esc(r.id)}" data-date-port="${datePortionen(r, P)}">${bildHtml(r)}<span><b>${esc(r.titel)}</b><br><span class="leise klein">aktiv ${i.aktiv || '?'} Min. · gesamt ${i.gesamt || '?'} Min. · Schwierigkeit ${i.schwierigkeit || '?'}/5${i.veg ? ' · vegetarisch' : ''}${r.meta.kosten_klasse ? ' · Kosten ' + esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[r.meta.kosten_klasse] || '') + ' (Schätzung)' : ''}</span></span></a>
       ${x.anzahl > 1 ? `<label class="feld"><span>Gericht wählen</span><select data-date-wahl="${g}">${x.kandidaten.map(k => `<option value="${esc(k.id)}" ${k.id === r.id ? 'selected' : ''}>${esc(kurztitel(k.titel))}</option>`).join('')}</select></label>` : ''}
-      ${(() => { const f = dateFaktor(r); const port = datePortionen(r, P); const pp = f || 1;
+      ${(() => { const f = dateFaktor(r); const port = datePortionen(r, P); const pp = port / P; /* je Person aus derselben Menge, die gekocht und eingekauft wird */
         return `<p class="klein"><b>Menüportion:</b> ${f ? `${zahlDE(Math.round(f * 100))} % einer Rezeptportion je Person` : 'nicht beziffert – gerechnet wird mit der vollen Portion'} → für ${P} ${P === 1 ? 'Person' : 'Personen'} <b>${zahlDE(port, 1)} Rezeptportion${port === 1 ? '' : 'en'}</b> kochen (Rezept ist für ${esc(r.meta.portionen)}).</p>
         <p class="leise klein">Je Person im Menü: ${np.kcal != null ? `ca. ${zahlDE(Math.round(np.kcal * pp))} kcal · ${zahlDE(Math.round((np.protein || 0) * pp))} g Eiweiß` : 'Nährwerte unvollständig'} (volle Rezeptportion: ${np.kcal != null ? zahlDE(np.kcal) + ' kcal' : '?'}).</p>
         ${r.meta.date_menue_portion ? `<details class="klein"><summary>Wie portionieren?</summary><p>${esc(r.meta.date_menue_portion)}</p></details>` : ''}`; })()}</div>`; };
   const vorab = rs.filter(r => r.meta.date_vorab).map(r => [r, String(r.meta.date_vorab)]).sort((a, b) => vorabRang(a[1]) - vorabRang(b[1]));
   const getr = rs.flatMap(r => arr(r.meta.getraenke).map(s => String(s).split('|').map(x => (x || '').trim())).filter(([, art]) => art !== 'alkohol').map(([n, , grund]) => [r, n, grund]));
   const P = Math.max(1, Math.min(8, Number(e.personen) || 2));
-  const kcalMenue = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.kcal || 0) * (dateFaktor(r) || 1), 0); const protMenue = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.protein || 0) * (dateFaktor(r) || 1), 0);
+  const kcalMenue = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.kcal || 0) * datePortionen(r, P) / P, 0); const protMenue = rs.reduce((s, r) => s + (r.naehrwerte.pro_portion.protein || 0) * datePortionen(r, P) / P, 0);
   const unbek = rs.some(r => r.naehrwerte.pro_portion.kcal == null); const ohneFaktor = rs.filter(r => !dateFaktor(r));
   // Zeitplan rückwärts vom Servierzeitpunkt: je Gang „spätestens beginnen“ = Servierzeit des Gangs − Gesamtzeit laut Rezept
   const zeitplan = (() => { const m0 = /^(\d{1,2}):(\d{2})$/.exec(e.servieren || ''); if (!m0) return null; let t = Number(m0[1]) * 60 + Number(m0[2]); const fmt = x => { const y = ((x % 1440) + 1440) % 1440; return String(Math.floor(y / 60)).padStart(2, '0') + ':' + String(y % 60).padStart(2, '0'); };
@@ -857,12 +875,14 @@ function vDate() {
     <p class="klein">Den gemeinsamen Ablauf mit Reihenfolge, Geräten und „kurz vor dem Servieren“ findest du hier: <a class="knopf klein" href="#/ablauf/${esc(rs.map(r => r.id).join(','))}">Gemeinsamer Ablauf</a></p>
     ${getr.length ? `<h2>Alkoholfreie Getränke</h2><ul class="klein">${getr.map(([r, n, g]) => `<li><b>${esc(n)}</b> – ${esc(g)} <span class="leise">(zu ${esc(kurztitel(r.titel))})</span></li>`).join('')}</ul>` : ''}
     <h2>Nährwerte und Einkauf</h2><p class="klein">Ganzes Menü je Person mit Menüportionen: ${unbek ? 'mind. ' : 'ca. '}${zahlDE(Math.round(kcalMenue))} kcal · ${zahlDE(Math.round(protMenue))} g Eiweiß${ohneFaktor.length ? ` – für ${esc(ohneFaktor.map(r => kurztitel(r.titel)).join(', '))} ist keine Menüportion beziffert, dort ist die volle Portion gerechnet` : ''}.</p>
-    <p class="leise klein">Eingekauft wird für ${rs.map(r => `${esc(kurztitel(r.titel))} ${zahlDE(datePortionen(r, P), 1)} Port.`).join(' · ')} – Getränke und Brot extra sind nicht eingerechnet.</p>
+    <p class="leise klein">Eingekauft wird für ${rs.map(r => `${esc(kurztitel(r.titel))} ${zahlDE(datePortionen(r, P), 1)} Port.`).join(' · ')} – Getränke und Brot extra sind nicht eingerechnet. Dieselbe Menge (Personen × Menüportion, auf 0,1 Portion genau) gilt für Zutaten, Kochmodus, Einkauf und die Nährwerte oben; gerundet wird nur die Gramm-Anzeige und in der Einkaufsliste auf Packungen.</p>
     <div class="knopfreihe"><button class="haupt" data-a="date-einkauf">${ico('plus', 'klein')} Menü für ${P} in die Einkaufsauswahl</button></div>
     <p class="leise klein">Gemeinsame Zutaten werden in der Einkaufsliste zusammengefasst. Ausgewählt heißt noch nicht gekauft oder gegessen.</p></div>` : ''}`;
 }
 document.addEventListener('change', ev => { const s = ev.target.closest('[data-date-einst]'); if (!s) return; const k = s.dataset.dateEinst; const v = k === 'veg' ? s.value === 'true' : k === 'personen' ? Number(s.value) || 2 : s.value;
   aendere('', dd => { dateZustand(); dd.date.einst[k] = v; if (!['personen', 'servieren'].includes(k)) dd.date.wahl = {}; }); });
+// Rezept aus dem Date-Menü öffnen: mit der Menümenge (nur Anzeige; die Einkaufsauswahl hat Vorrang, falls dort schon eingetragen)
+document.addEventListener('click', ev => { const a = ev.target.closest('a[data-date-port]'); if (!a) return; const id = a.getAttribute('href').split('/').pop(); if (R[id]) portionenWahl[id] = Number(a.dataset.datePort); });
 document.addEventListener('change', ev => { const s = ev.target.closest('[data-date-wahl]'); if (!s) return; aendere('', dd => { dateZustand(); dd.date.wahl[s.dataset.dateWahl] = s.value; }); });
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
@@ -870,8 +890,17 @@ document.addEventListener('click', ev => {
   else if (a === 'date-gang') aendere('', dd => { dateZustand(); dd.date.gaenge[v] = !dd.date.gaenge[v]; });
   else if (a === 'date-einkauf') { const { m } = dateMenue(); const rs = DATE_GAENGE.map(([g]) => m[g] && m[g].r).filter(Boolean); const haupt = (m.haupt && m.haupt.r) || rs[0];
     const P = Math.max(1, Math.min(8, Number(dateZustand().einst.personen) || 2));
-    aendere(`Menü (${rs.length} Gänge, ${P} Pers.) in der Einkaufsauswahl – Mengen nach Menüportion`, dd => { rs.forEach(r => { const port = datePortionen(r, P); const vorh = dd.auswahl.find(x => x.rezept === r.id);
-      if (vorh) { if (vorh.date) vorh.jetzt = port; } else dd.auswahl.push({ rezept: r.id, jetzt: port, vorkochen: 0, zu: r.id === haupt.id ? undefined : haupt.id, date: true }); }); }, { neuZeichnen: false }); location.hash = '#/auswahl'; }
+    // Erneute Übernahme: Date-Einträge werden aktualisiert statt doppelt angelegt; weggelassene/getauschte Gänge werden entfernt;
+    // Gerichte, die schon unabhängig vom Date-Menü in der Auswahl stehen, bleiben unverändert (wird gemeldet)
+    const ids = rs.map(r => r.id); let neu = 0, aktual = 0, entfernt = 0; const fremd = [];
+    aendere(null, dd => { dd.auswahl = dd.auswahl.filter(x => { if (x.date && !ids.includes(x.rezept)) { entfernt++; return false; } return true; });
+      rs.forEach(r => { const port = datePortionen(r, P); const vorh = dd.auswahl.find(x => x.rezept === r.id);
+        if (vorh && vorh.date) { if (vorh.jetzt !== port || vorh.vorkochen) { vorh.jetzt = port; vorh.vorkochen = 0; aktual++; } }
+        else if (vorh) fremd.push(kurztitel(r.titel));
+        else { dd.auswahl.push({ rezept: r.id, jetzt: port, vorkochen: 0, zu: r.id === haupt.id ? undefined : haupt.id, date: true, date_personen: P }); neu++; } });
+      dd.auswahl.filter(x => x.date).forEach(x => { x.date_personen = P; }); }, { neuZeichnen: false });
+    toast(`Date-Menü für ${P}: ${neu} neu, ${aktual} angepasst${entfernt ? `, ${entfernt} entfernt` : ''}${fremd.length ? ` – ${fremd.join(', ')} stand schon in der Auswahl und blieb unverändert` : ''}`);
+    location.hash = '#/auswahl'; }
 });
 
 /* ---------- Gemeinsamer Kochablauf für mehrere Gerichte: Reihenfolge nach Rezeptzeiten, keine erfundene Minutenplanung ---------- */
@@ -901,7 +930,7 @@ function vAblauf(teil) {
   const maxG = Math.max(0, ...a.info.map(x => x.gesamt || 0));
   return `<div class="seitenkopf"><h1>Gemeinsamer Ablauf</h1><a class="knopf klein still" href="#/auswahl">${ico('zurueck', 'klein')} Auswahl</a></div>
   <p class="unterzeile">${a.info.map(x => esc(kurztitel(x.r.titel))).join(' · ')}</p>
-  <div class="karte"><ul class="klein">${a.info.map(x => `<li><b>${esc(kurztitel(x.r.titel))}</b>: aktiv ${x.aktiv ?? '?'} Min.${x.warten != null ? `, Warten/Garen ohne Arbeit ca. ${x.warten} Min.` : ''}${x.schwer ? ' · <span class="chip warn">anspruchsvoll</span>' : ''}</li>`).join('')}</ul>
+  <div class="karte"><ul class="klein">${a.info.map(x => `<li><b>${esc(kurztitel(x.r.titel))}</b>${(() => { const aw = D.auswahl.find(y => y.rezept === x.r.id); const p = aw ? aw.jetzt + aw.vorkochen : null; return p ? ` (${zahlDE(p, 1)} Port.${aw.date ? ', Date-Menü' : ''})` : ''; })()}: aktiv ${x.aktiv ?? '?'} Min.${x.warten != null ? `, Warten/Garen ohne Arbeit ca. ${x.warten} Min.` : ''}${x.schwer ? ' · <span class="chip warn">anspruchsvoll</span>' : ''}</li>`).join('')}</ul>
     <p class="leise klein">Zeiten stammen aus den Rezepten (für Anfänger geschätzt). Die Reihenfolge unten ist ein Vorschlag aus diesen Zeiten – keine minutengenaue Planung; echte Garzeiten hängen von Gerät und Menge ab.</p>
     ${st ? `<p class="klein"><b>Läuft</b> seit ${esc(new Date(st.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))} – Häkchen bleiben gespeichert, du kannst jederzeit unterbrechen.</p><div class="knopfreihe"><button class="klein still" data-a="ablauf-ende" data-v="${esc(quelle.join(','))}">Ablauf beenden</button></div>` : `<div class="knopfreihe"><button class="haupt" data-a="ablauf-start" data-v="${esc(quelle.join(','))}">Ablauf starten (abhaken)</button></div>`}
     <p class="leise klein">Der Ablauf verbraucht keine Zutaten und bucht nichts. Gekocht wird im Kochmodus des jeweiligen Rezepts; dort gibt es nach „Fertig gekocht“ Vorrat und Tagebuch.</p></div>
@@ -924,8 +953,13 @@ document.addEventListener('click', ev => {
 function preise() { D.preise = arr(D.preise); return D.preise; }
 function preisGueltig(p) { if (p.angebot && p.gueltig_bis && p.gueltig_bis < heute()) return { ok: false, grund: 'Angebot abgelaufen' }; const alt = p.datum ? -tageBis(p.datum) : 999; return { ok: true, alt: alt > 90, tage: alt }; }
 function preisFuer(zid, einheit, haendler) {
-  const l = preise().filter(p => p.zutat === zid && (!haendler || haendler === 'beide' || p.haendler === haendler) && preisGueltig(p).ok && Number(p.preis) > 0 && Number(p.packung) > 0 && (p.einheit || 'g') === einheit);
-  return l.sort((a, b) => a.preis / a.packung - b.preis / b.packung)[0] || null;
+  const passt = p => p.zutat === zid && (!haendler || haendler === 'beide' || p.haendler === haendler) && preisGueltig(p).ok && Number(p.preis) > 0 && Number(p.packung) > 0;
+  const l = preise().filter(p => passt(p) && (p.einheit || 'g') === einheit);
+  if (l.length) return l.sort((a, b) => a.preis / a.packung - b.preis / b.packung)[0];
+  // g ↔ ml nur mit hinterlegter Dichte der Zutat (g/ml); Stückpreise ohne Stückgewicht bleiben unberechnet
+  const dichte = Number((Z[zid] || {}).dichte); if (!(dichte > 0) || !/^(g|ml)$/.test(einheit)) return null;
+  const andere = einheit === 'g' ? 'ml' : 'g'; const u = preise().filter(p => passt(p) && (p.einheit || 'g') === andere).sort((a, b) => a.preis / a.packung - b.preis / b.packung)[0];
+  return u ? Object.assign({}, u, { packung: andere === 'ml' ? u.packung * dichte : u.packung / dichte, einheit, umgerechnet: `${zahlDE(u.packung)} ${andere} mit Dichte ${zahlDE(dichte, 2)} g/ml umgerechnet` }) : null;
 }
 function kostenRechnung(liste, haendler, vorratAbziehen) {
   const bedarf = {}; let grundvorrat = 0;
@@ -954,6 +988,7 @@ function vPreise() {
   const zeile = p => { const g = preisGueltig(p); return `<li><span><b>${esc(p.name || (Z[p.zutat] || {}).name || '?')}</b> · ${esc({ rewe: 'REWE', lidl: 'Lidl' }[p.haendler] || p.haendler || '')} · ${euro(Number(p.preis))} für ${zahlDE(p.packung)} ${esc(p.einheit || 'g')}${p.packung ? ` <span class="leise">(${euro(p.preis / p.packung * (p.einheit === 'stk' ? 1 : 1000))}/${p.einheit === 'stk' ? 'Stück' : p.einheit === 'ml' ? 'l' : 'kg'})</span>` : ''}${p.pfand ? ` + Pfand ${euro(Number(p.pfand))}` : ''}<br><span class="leise klein">${esc(datumDE(p.datum))} · ${esc(p.quelle || 'Quelle?')}${p.angebot ? ` · <span class="chip warn">Angebot${p.gueltig_bis ? ' bis ' + esc(datumDE(p.gueltig_bis)) : ''}</span>` : ''}${p.bedingung ? ' · Bedingung: ' + esc(p.bedingung) : ''}${!g.ok ? ` · <span class="chip warn">${g.grund} – wird nicht gerechnet</span>` : g.alt ? ' · <span class="chip warn">älter als 90 Tage</span>' : ''}${p.zutat ? '' : ' · <span class="chip warn">keiner Zutat zugeordnet – wird nicht gerechnet</span>'}</span></span><button class="klein still" data-a="preis-weg" data-v="${esc(p.id)}" aria-label="Preis löschen">×</button></li>`; };
   return `<h1>Einkauf</h1>${planTabs('preise')}
   <p class="leise">Dein privater Preisbestand – nur auf diesem Gerät, im Export enthalten, nie veröffentlicht. Die App erfindet keine Preise und rechnet fehlende nicht als 0.</p>
+  ${preisCodeVorschauHtml()}
   <details class="karte" ${l.length ? '' : 'open'}><summary><b>Preis eintragen</b></summary><form id="preis-form">
     <div class="zeile"><label class="feld" style="flex:2 1 180px"><span>Zutat (aus der Liste)</span><input name="zutat" list="preis-zutaten" required placeholder="z. B. Magerquark"></label><label class="feld" style="flex:2 1 180px"><span>Genaues Produkt</span><input name="name" placeholder="z. B. Milbona Magerquark 500 g"></label>
     <label class="feld"><span>Händler</span><select name="haendler"><option value="lidl">Lidl</option><option value="rewe">REWE</option><option value="andere">anderer</option></select></label></div>
@@ -961,12 +996,46 @@ function vPreise() {
     <div class="zeile"><label><input type="checkbox" name="angebot"> Angebot</label><label class="feld"><span>gültig bis</span><input name="gueltig_bis" type="date"></label><label class="feld" style="flex:1 1 160px"><span>Bedingung (Coupon, App, Karte)</span><input name="bedingung"></label><label class="feld" style="flex:1 1 160px"><span>Quelle</span><input name="quelle" placeholder="Kassenbon, Prospekt, App …"></label></div>
     <datalist id="preis-zutaten">${K.zutaten.filter(z => z.bls && Object.keys(z.bls).length).map(z => `<option value="${esc(z.name)}">`).join('')}</datalist>
     <button class="haupt" type="submit">Speichern</button></form></details>
-  <details class="karte"><summary><b>Mehrere Preise importieren</b> <span class="leise klein">– z. B. einmal pro Woche aus deinen Notizen</span></summary>
-    <p class="klein">Eine Zeile je Preis: <code>Zutat; Produkt; Händler; Preis; Packung; Einheit; Datum; Quelle; Angebot bis (optional); Bedingung (optional); Pfand (optional)</code></p>
+  <details class="karte"><summary><b>Mehrere Preise übernehmen</b> <span class="leise klein">– Zeilen oder Preis-Code einfügen</span></summary>
+    <p class="klein">Einen kopierten Preis-Code (beginnt mit <code>FITOMAT-PREISE1:</code>) einfach einfügen – oder eine Zeile je Preis: <code>Zutat; Produkt; Händler; Preis; Packung; Einheit; Datum; Quelle; Angebot bis (optional); Bedingung (optional); Pfand (optional)</code></p>
     <textarea id="preis-import" rows="5" placeholder="Magerquark; Milbona Magerquark 500 g; lidl; 1,19; 500; g; 2026-11-14; Kassenbon"></textarea>
     <div class="knopfreihe"><button class="klein" data-a="preis-import">Prüfen und übernehmen</button></div><p class="leise klein">Nur Zeilen mit bekannter Zutat, Preis, Packung und Datum werden übernommen; der Rest wird angezeigt.</p></details>
   <div class="karte"><label class="feld"><span>Deine Märkte / Region (privat, optional)</span><input id="preis-region" value="${esc(e.region || '')}" maxlength="80" placeholder="z. B. deine zwei Stammmärkte"></label><p class="leise klein">Hilft dir beim Notieren, weil Preise je Markt abweichen können. Bleibt auf diesem Gerät.</p></div>
   <h2>Hinterlegt (${l.length})</h2>${l.length ? `<ul class="eintraege">${l.map(zeile).join('')}</ul>` : '<p class="leer">Noch keine Preise. Ohne Preise schlägt die App trotzdem Gerichte vor, bestätigt aber kein Budget.</p>'}`;
+}
+/* Preise als Textzeilen „Zutat;Produkt;Händler;Preis;Packung;Einheit;Datum;Quelle;gültig bis;Bedingung;Pfand“ übernehmen (ohne Dubletten) */
+function preiseUebernehmen(t) {
+  const ok = [], schlecht = [];
+  String(t || '').split(/\r?\n/).map(z => z.trim()).filter(Boolean).forEach((z, i) => { const s = z.split(';').map(x => x.trim()); const { p, fehler } = preisAusFeldern({ zutat: s[0], name: s[1], haendler: s[2], preis: s[3], packung: s[4], einheit: s[5], datum: s[6], quelle: s[7], gueltig_bis: s[8], bedingung: s[9], pfand: s[10] }); if (fehler.length) schlecht.push(`Zeile ${i + 1}: ${fehler.join(', ')}`); else ok.push(p); });
+  if (!ok.length) { toast(schlecht.length ? schlecht[0] : 'Nichts zu übernehmen'); return; }
+  let doppelt = 0;
+  aendere(`${ok.length} Preise geprüft${schlecht.length ? `, ${schlecht.length} Zeilen übersprungen (${schlecht.slice(0, 2).join('; ')})` : ''} – Rückgängig möglich`, d => { d.preise = arr(d.preise); ok.forEach(p => { if (d.preise.some(x => x.zutat === p.zutat && x.haendler === p.haendler && x.datum === p.datum && x.packung === p.packung && x.preis === p.preis)) doppelt++; else d.preise.push(p); }); });
+  if (doppelt) setTimeout(() => toast(`${ok.length - doppelt} neu übernommen, ${doppelt} waren schon vorhanden`), 1200);
+}
+/* Private Preisübergabe ohne Datei: komprimierte Zeilen im Link-Fragment (#/preis-import/…) oder als Text „FITOMAT-PREISE1:…“.
+   Das Fragment wird nicht an den Server gesendet; die App entfernt es sofort aus der Adresse. Übernommen wird erst nach Tippen. */
+const PREISCODE_PREFIX = 'FITOMAT-PREISE1:';
+let preisImportVorschau = null, preisImportCode = '';
+async function preisCodeLesen(t) {
+  const m = String(t).match(/(?:FITOMAT-PREISE1:|preis-import\/)([A-Za-z0-9_-]+)/); if (!m) throw new Error('Kein Preis-Code gefunden.');
+  const b = atob(m[1].replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((m[1].length + 3) % 4)); const z = Uint8Array.from(b, c => c.charCodeAt(0));
+  const text = await new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text(); preisImportCode = m[1]; return text;
+}
+async function preisCodeErzeugen(text) { const z = new Uint8Array(await new Response(new Blob([new TextEncoder().encode(text)]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); let s = ''; for (let i = 0; i < z.length; i += 8192) s += String.fromCharCode(...z.subarray(i, i + 8192)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+async function preisImportAusAdresse() { const h = location.hash; if (!h.startsWith('#/preis-import/')) return; const code = h.slice('#/preis-import/'.length);
+  history.replaceState(null, '', location.pathname + location.search + '#/preise');
+  try { preisImportVorschau = await preisCodeLesen('preis-import/' + code); } catch (e) { preisImportVorschau = null; setTimeout(() => toast('Preis-Code nicht lesbar: ' + e.message), 500); }
+  if (typeof route === 'function') route(); }
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#/preis-import/')) preisImportAusAdresse(); });
+window.addEventListener('load', () => { if (location.hash.startsWith('#/preis-import/')) preisImportAusAdresse(); });
+function preisCodeVorschauHtml() {
+  if (!preisImportVorschau) return ''; const zeilen = preisImportVorschau.split(/\r?\n/).filter(z => z.trim()); const hs = [...new Set(zeilen.map(z => z.split(';')[2]))].join(', '); const dat = [...new Set(zeilen.map(z => z.split(';')[6]))].join(', ');
+  const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  return `<section class="karte" id="preis-code"><h2 style="margin-top:0">Preise aus einem Übergabe-Code</h2>
+    <p class="klein">${zeilen.length} Preise · Händler: ${esc(hs)} · Stand: ${esc(dat)}. Nichts ist übernommen, bevor du tippst. Vorhandene gleiche Einträge werden nicht doppelt angelegt.</p>
+    <details class="klein"><summary>Zeilen ansehen</summary><ul>${zeilen.slice(0, 80).map(z => { const s = z.split(';'); return `<li>${esc(s[0])}: ${esc(s[1])} – ${esc(s[3])} € / ${esc(s[4])} ${esc(s[5])}${s[9] ? ` <span class="leise">(${esc(s[9])})</span>` : ''}</li>`; }).join('')}</ul></details>
+    ${standalone ? '' : '<p class="hinweis klein"><b>Nutzt du Fitomat vom Home-Bildschirm?</b> Dann hat diese Browser-Ansicht einen eigenen Speicher. Tippe „Code kopieren“, öffne Fitomat vom Home-Bildschirm und füge den Code unter Einkauf › Preise › „Mehrere Preise übernehmen“ ein.</p>'}
+    <div class="knopfreihe"><button class="haupt" data-a="preis-code-ok">Preise übernehmen</button><button data-a="preis-code-kopieren">Code kopieren</button><button class="still" data-a="preis-code-weg">Verwerfen</button></div></section>`;
 }
 function preisAusFeldern(o) {
   const z = K.zutaten.find(x => x.name.toLowerCase() === String(o.zutat || '').trim().toLowerCase()); const zahl = v => v === '' || v == null ? null : Number(String(v).replace(',', '.'));
@@ -981,10 +1050,12 @@ document.addEventListener('change', ev => { if (ev.target.id === 'preis-region')
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
   if (a === 'preis-weg') aendere('Preis gelöscht – Rückgängig möglich', d => { d.preise = arr(d.preise).filter(p => p.id !== v); });
-  else if (a === 'preis-import') { const t = document.getElementById('preis-import').value; const ok = [], schlecht = [];
-    t.split(/\r?\n/).map(z => z.trim()).filter(Boolean).forEach((z, i) => { const s = z.split(';').map(x => x.trim()); const { p, fehler } = preisAusFeldern({ zutat: s[0], name: s[1], haendler: s[2], preis: s[3], packung: s[4], einheit: s[5], datum: s[6], quelle: s[7], gueltig_bis: s[8], bedingung: s[9], pfand: s[10] }); if (fehler.length) schlecht.push(`Zeile ${i + 1}: ${fehler.join(', ')}`); else ok.push(p); });
-    if (!ok.length) { toast(schlecht.length ? schlecht[0] : 'Nichts zu übernehmen'); return; }
-    aendere(`${ok.length} Preise übernommen${schlecht.length ? `, ${schlecht.length} Zeilen übersprungen (${schlecht.slice(0, 2).join('; ')})` : ''} – Rückgängig möglich`, d => { d.preise = arr(d.preise); ok.forEach(p => { if (!d.preise.some(x => x.zutat === p.zutat && x.haendler === p.haendler && x.datum === p.datum && x.packung === p.packung && x.preis === p.preis)) d.preise.push(p); }); }); }
+  else if (a === 'preis-import') { (async () => { let t = document.getElementById('preis-import').value;
+      if (/FITOMAT-PREISE1:|preis-import\//.test(t)) { try { t = await preisCodeLesen(t); } catch (e) { toast('Preis-Code nicht lesbar: ' + e.message); return; } }
+      preiseUebernehmen(t); })(); }
+  else if (a === 'preis-code-ok') { if (preisImportVorschau) { const t = preisImportVorschau; preisImportVorschau = null; preiseUebernehmen(t); } }
+  else if (a === 'preis-code-weg') { preisImportVorschau = null; route(); }
+  else if (a === 'preis-code-kopieren') (async () => { try { await navigator.clipboard.writeText(PREISCODE_PREFIX + preisImportCode); toast('Preis-Code kopiert – jetzt Fitomat vom Home-Bildschirm öffnen und unter Einkauf › Preise einfügen'); } catch (e) { toast('Kopieren nicht möglich'); } })();
 });
 /* ---------- „Was passt jetzt?“: Zeit → Personen → Vorschläge aus Vorrat, Restportionen, Geräten, Vorlieben und Tagesspielraum ---------- */
 const jetztZustand = { zeit: null, personen: null, art: 'mahlzeit' };
