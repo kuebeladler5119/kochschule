@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611172221 */
+/* Fitomat-Build 202611180003 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -98,6 +98,7 @@ function vTraining(teil, id) {
   const naechste = ap ? planNaechste(ap) : null; const heutig = ap ? ap.einheiten.findIndex(x => x.tag === heuteTag()) : -1;
   const startKnopf = (i, haupt) => { const pe = ap.einheiten[i]; return `<button class="${haupt ? 'haupt ' : ''}klein" data-a="tr-start" data-v="${esc(pe.routine)}" data-plan="${esc(ap.id)}" data-pe="${i}" ${akt ? 'disabled' : ''}>Starten</button>`; };
   return `<div class="seitenkopf"><h1>Training</h1><a class="knopf klein" href="#/training/uebungen">Übungen</a></div>
+  ${trWochenKachelnHtml(t, kg)}
   ${akt ? `<div class="hinweis"><b>Einheit läuft</b> seit ${esc(new Date(akt.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))} · ${esc(akt.name)} <a class="knopf haupt klein" href="#/training/${akt.fuehrung ? 'fuehrung' : 'einheit'}">Fortsetzen</a></div>` : ''}
   <h2>Plan</h2>
   ${ap ? `<div class="karte"><div class="zeile" style="justify-content:space-between;align-items:baseline"><b><a href="#/training/plan/${esc(ap.id)}">${esc(ap.name)}</a></b><span class="leise klein">${esc(PLAN_ART[ap.art] || '')}</span></div>
@@ -126,6 +127,21 @@ function vTraining(teil, id) {
   <p class="leise klein">Körpergewicht wird getrennt von Trainingsgewichten gespeichert. Gewichtsvorschläge je Übung entstehen aus deinen eigenen bestätigten Sätzen an derselben Übung und Variante (ab der zweiten vergleichbaren Einheit); historische Referenzgewichte sind nur Startwerte.</p>`;
 }
 
+/* Wochenüberblick als Kacheln: nur abgeschlossene Einheiten und bestätigte Arbeitssätze zählen (keine offenen/übersprungenen) */
+function trWochenKachelnHtml(t, kg) {
+  const h = heute(); const wt = (new Date(h + 'T12:00:00').getDay() + 6) % 7; const mo = plusTage(h, -wt); const tage = [...Array(7)].map((_, i) => plusTage(mo, i));
+  const woche = t.einheiten.filter(e => e.ende && e.start.slice(0, 10) >= mo && e.start.slice(0, 10) <= h);
+  const saetze = woche.reduce((s, e) => s + e.uebungen.reduce((a, u) => a + u.saetze.filter(x => x.art === 'arbeit' && x.erledigt).length, 0), 0);
+  const letzte = t.einheiten.filter(e => e.ende).sort((a, b) => b.start.localeCompare(a.start))[0];
+  const kgs = [...t.koerpergewicht].sort((a, b) => a.datum.localeCompare(b.datum)).slice(-8);
+  const spark = kgs.length >= 2 ? (() => { const v = kgs.map(x => Number(x.kg)); const mi = Math.min(...v), ma = Math.max(...v), sp = ma - mi || 1; return `<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" points="${v.map((x, i) => `${(i / (v.length - 1) * 100).toFixed(1)},${(26 - (x - mi) / sp * 24).toFixed(1)}`).join(' ')}"/></svg>`; })() : '';
+  return `<div class="kacheln" aria-label="Diese Woche">
+    <div class="kachel"><span class="k-name">Diese Woche</span><span class="k-wert">${woche.length} <small>Einheit${woche.length === 1 ? '' : 'en'}</small></span>
+      <span class="wochenpunkte" aria-hidden="true">${tage.map(d => `<i class="${woche.some(e => e.start.slice(0, 10) === d) ? 'an' : ''}${d === h ? ' heute' : ''}"></i>`).join('')}</span><span class="wochentage" aria-hidden="true">${['M', 'D', 'M', 'D', 'F', 'S', 'S'].map(x => `<span>${x}</span>`).join('')}</span></div>
+    <div class="kachel"><span class="k-name">Arbeitssätze</span><span class="k-wert">${saetze}</span><span class="k-unter">bestätigt seit Montag</span></div>
+    <a class="kachel" href="${letzte ? '#/training/zusammenfassung/' + esc(letzte.id) : '#/training'}"><span class="k-name">Zuletzt</span><span class="k-wert" style="font-size:1.15rem">${letzte ? esc(letzte.name) : '–'}</span><span class="k-unter">${letzte ? esc(datumDE(letzte.start.slice(0, 10))) : 'noch keine Einheit'}</span></a>
+    <a class="kachel" href="#/training/gewicht"><span class="k-name">Körpergewicht</span><span class="k-wert">${kg ? esc(zahlDE(kg.kg, 1)) + ' <small>kg</small>' : '–'}</span>${spark ? `<span class="k-unter spark-wrap">${spark}</span>` : `<span class="k-unter">${kg ? esc(datumDE(kg.datum)) : 'noch nicht erfasst'}</span>`}</a></div>`;
+}
 /* ---------- Routine bearbeiten ---------- */
 function trRoutineHtml(id) {
   const r = trDaten().routinen.find(x => x.id === id); if (!r) return '<p class="leer">Routine nicht gefunden.</p>';
@@ -743,9 +759,14 @@ function linienSvg(punkte, titel, einheit) {
     ${xy.map((a, i) => `<circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="${punkte[i].hohl ? 4 : 3.5}" fill="${punkte[i].hohl ? 'var(--flaeche)' : 'var(--akzent)'}" stroke="var(--akzent)" stroke-width="2"><title>${esc(datumDE(punkte[i].datum))}: ${fmt(punkte[i].y)} ${esc(einheit)}</title></circle>`).join('')}</svg></figure>`;
 }
 // Sitzungen einer Übung, getrennt nach Variante; je Sitzung schwerster Satz, Wdh. dabei, Volumen, geschätzte Kraft (nur 1–12 Wdh.)
+// Gehaltene Sekunden eines Satzes; bei links/rechts zählt die kürzere Seite (wie beim Abschließen)
+const haltSek = x => x.seiten && x.seiten.l && x.seiten.r && (x.seiten.l.sek != null || x.seiten.r.sek != null) ? Math.min(Number(x.seiten.l.sek) || 0, Number(x.seiten.r.sek) || 0) : Number(x.sek) || 0;
 function uebungsSitzungen(id) {
   const out = {}; trDaten().einheiten.filter(e => e.ende).sort((a, b) => a.start.localeCompare(b.start)).forEach(e => e.uebungen.filter(u => u.uebung === id).forEach(u => {
-    const s = u.saetze.filter(x => x.art === 'arbeit' && x.erledigt && Number(x.wdh) > 0); if (!s.length) return; const k = u.variante || '';
+    const k = u.variante || '';
+    if (istZeit(u)) { const s = u.saetze.filter(x => x.art === 'arbeit' && x.erledigt && haltSek(x) > 0); if (!s.length) return;
+      (out[k] = out[k] || []).push({ zeit: true, datum: e.start.slice(0, 10), saetze: s, aufwaerm: u.saetze.filter(x => x.art === 'aufwaerm' && x.erledigt).length, topSek: Math.max(...s.map(haltSek)), summeSek: s.reduce((a, x) => a + haltSek(x), 0), rirFehlt: false, beschwerde: !!u.beschwerde, technik: s.map(x => x.technik).filter(Boolean) }); return; }
+    const s = u.saetze.filter(x => x.art === 'arbeit' && x.erledigt && Number(x.wdh) > 0); if (!s.length) return;
     const top = [...s].sort((a, b) => (Number(b.kg) || 0) - (Number(a.kg) || 0) || Number(b.wdh) - Number(a.wdh))[0];
     const e1 = s.filter(x => Number(x.wdh) <= 12 && Number(x.kg) > 0).map(x => Number(x.kg) * (1 + Number(x.wdh) / 30));
     (out[k] = out[k] || []).push({ datum: e.start.slice(0, 10), saetze: s, aufwaerm: u.saetze.filter(x => x.art === 'aufwaerm' && x.erledigt).length, top, volumen: s.reduce((a, x) => a + (Number(x.kg) || 0) * Number(x.wdh), 0), e1rm: e1.length ? Math.max(...e1) : null, rirFehlt: s.some(x => x.rir === '' || x.rir == null), beschwerde: !!u.beschwerde, technik: s.map(x => x.technik).filter(Boolean) }); }));
@@ -756,6 +777,7 @@ function uebungVerlaufHtml(id) {
   const v = vars.includes(trVVar[id]) ? trVVar[id] : vars.sort((a, b) => alle[b][alle[b].length - 1].datum.localeCompare(alle[a][alle[a].length - 1].datum))[0];
   const grenze = trZeitGrenze(); const l = alle[v].filter(s => s.datum >= grenze);
   const erste = l[0], letzte = l[l.length - 1];
+  if (l.length ? l[0].zeit : alle[v][0].zeit) return uebungVerlaufZeitHtml(id, vars, v, l);
   const zus = l.length >= 2 ? (() => { const a = erste.top, b = letzte.top; const ka = Number(a.kg) || 0, kb = Number(b.kg) || 0, wa = Number(a.wdh), wb = Number(b.wdh);
     const urteil = kb === ka ? (wb > wa ? 'gleiches Gewicht, mehr Wiederholungen' : wb < wa ? 'gleiches Gewicht, weniger Wiederholungen' : 'gleiches Gewicht und gleiche Wiederholungen') : kb > ka && wb >= wa ? 'mehr Gewicht bei mindestens gleich vielen Wiederholungen' : kb < ka && wb <= wa ? 'weniger Gewicht bei höchstens gleich vielen Wiederholungen' : kb > ka ? 'mehr Gewicht, aber weniger Wiederholungen – nicht eindeutig vergleichbar' : 'weniger Gewicht, aber mehr Wiederholungen – nicht eindeutig vergleichbar';
     return `${l.length} Einheiten im Zeitraum. Schwerster Satz: ${satzText(a)} (${datumDE(erste.datum)}) → ${satzText(b)} (${datumDE(letzte.datum)}): ${urteil}.${l.some(s => s.rirFehlt) ? ' In manchen Sätzen fehlt die RIR – die Anstrengung ist dort unbekannt.' : ''}${l.some(s => s.beschwerde) ? ' In mindestens einer Einheit waren Beschwerden notiert.' : ''}`; })() : l.length ? '1 Einheit im Zeitraum – für einen Vergleich sind mindestens zwei nötig.' : 'Keine Einheit in diesem Zeitraum.';
@@ -772,6 +794,20 @@ function uebungVerlaufHtml(id) {
       ${l.some(s => s.e1rm) ? linienSvg(l.filter(s => s.e1rm).map(s => ({ datum: s.datum, y: Math.round(s.e1rm * 10) / 10 })), 'Geschätztes 1-Wiederholungs-Maximum (Epley-Formel, nur Sätze mit 1–12 Wdh.)', 'kg') : ''}
       <p class="leise">Volumen hängt stark von Satzzahl und Wiederholungen ab und ist kein direktes Maß für Muskelwachstum. Das geschätzte Maximum ist eine Formelschätzung (Fehler oft mehrere kg, abhängig von Übung und Nähe zum Versagen) – kein gemessener Wert. Hohle Punkte: RIR fehlte.</p></details>
     <table class="mikro verlauf-tabelle"><thead><tr><th>Datum</th><th>Arbeitssätze (Wdh. × kg)</th></tr></thead><tbody>${[...l].reverse().map(s => `<tr><td>${esc(datumDE(s.datum))}${s.aufwaerm ? `<br><span class="leise">+${s.aufwaerm} Aufw.</span>` : ''}</td><td>${s.saetze.map(satzText).map(esc).join('<br>')}${s.technik.length ? `<br><span class="leise">Ausführung: ${esc([...new Set(s.technik)].join('/'))}</span>` : ''}${s.beschwerde ? '<br><span class="chip warn">Beschwerden</span>' : ''}</td></tr>`).join('')}</tbody></table>` : ''}`;
+}
+/* Verlauf für Halteübungen: längste gehaltene Zeit und Gesamthaltezeit je Einheit; L/R in Sekunden. Nur bestätigte Arbeitssätze. */
+function uebungVerlaufZeitHtml(id, vars, v, l) {
+  const erste = l[0], letzte = l[l.length - 1];
+  const zus = l.length >= 2 ? `${l.length} Einheiten im Zeitraum. Längste Haltezeit: ${erste.topSek} s (${datumDE(erste.datum)}) → ${letzte.topSek} s (${datumDE(letzte.datum)})${letzte.topSek > erste.topSek ? ' – länger gehalten' : letzte.topSek < erste.topSek ? ' – kürzer gehalten' : ' – gleich lang'}. Länger halten ist nur sinnvoll, solange die Ausführung sauber bleibt.` : l.length ? '1 Einheit im Zeitraum – für einen Vergleich sind mindestens zwei nötig.' : 'Keine Einheit in diesem Zeitraum.';
+  const lr = (() => { const e = trDaten().einheiten.filter(x => x.ende && x.uebungen.some(u => u.uebung === id && (u.variante || '') === v && u.saetze.some(s => s.seiten && s.erledigt))).sort((a, b) => b.start.localeCompare(a.start))[0]; if (!e) return '';
+    const ss = e.uebungen.find(u => u.uebung === id && (u.variante || '') === v).saetze.filter(s => s.seiten && s.erledigt);
+    return `<p class="klein">Links/rechts zuletzt (${esc(datumDE(e.start.slice(0, 10)))}): ${ss.map(s => `L ${esc(String(s.seiten.l.sek ?? '?'))} s / R ${esc(String(s.seiten.r.sek ?? '?'))} s`).join(' · ')}. <span class="leise">Gezählt wird je Satz die kürzere Seite. Kleine Seitenunterschiede sind häufig und allein kein Befund.</span></p>`; })();
+  return `<h2>Verlauf</h2>
+  ${vars.length > 1 ? `<p class="klein" style="margin:0">Variante/Gerät (getrennt geführt, nicht vergleichbar):</p><div class="fz-chips">${vars.map(x => `<button class="filterchip" data-a="tr-vz-var" data-u="${esc(id)}" data-v="${esc(x)}" aria-pressed="${x === v}">${esc(x || 'ohne Angabe')}</button>`).join('')}</div>` : v ? `<p class="leise klein">Variante: ${esc(v)}</p>` : ''}
+  ${zeitChips()}<p class="klein">${esc(zus)}</p>${lr}
+  ${l.length ? `${linienSvg(l.map(s => ({ datum: s.datum, y: s.topSek })), 'Längste gehaltene Zeit je Einheit (s)', 's')}
+    ${linienSvg(l.map(s => ({ datum: s.datum, y: s.summeSek })), 'Gesamte Haltezeit aller Arbeitssätze (s)', 's')}
+    <table class="mikro verlauf-tabelle"><thead><tr><th>Datum</th><th>Arbeitssätze</th></tr></thead><tbody>${[...l].reverse().map(s => `<tr><td>${esc(datumDE(s.datum))}</td><td>${s.saetze.map(x => x.seiten ? `L ${esc(String(x.seiten.l.sek ?? '?'))} s / R ${esc(String(x.seiten.r.sek ?? '?'))} s` : `${esc(String(haltSek(x)))} s`).join('<br>')}${s.beschwerde ? '<br><span class="chip warn">Beschwerden</span>' : ''}</td></tr>`).join('')}</tbody></table>` : ''}`;
 }
 function trVerlaufHtml() {
   const t = trDaten(); const grenze = trZeitGrenze(); const fertig = t.einheiten.filter(e => e.ende && e.start.slice(0, 10) >= grenze).sort((a, b) => b.start.localeCompare(a.start));

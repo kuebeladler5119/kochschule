@@ -1,15 +1,15 @@
-/* Fitomat-Build 202611172221 */
+/* Fitomat-Build 202611180003 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
 
 /* ---------- Küchen ---------- */
 const KUECHEN_GRUPPEN = [
-  ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch'], ['pakistanisch', 'Pakistanisch']]],
+  ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch'], ['pakistanisch', 'Pakistanisch'], ['nepalesisch', 'Nepalesisch']]],
   ['orient', 'Türkei, Nahost & Nordafrika', [['tuerkisch', 'Türkisch'], ['levantinisch', 'Levantinisch'], ['persisch', 'Persisch'], ['nordafrikanisch', 'Nordafrikanisch']]],
   ['europaeisch', 'Europäisch', [['italienisch', 'Italienisch'], ['griechisch', 'Griechisch'], ['spanisch', 'Spanisch'], ['franzoesisch', 'Französisch'], ['deutsch', 'Deutsch'], ['oesterreichisch', 'Österreichisch'], ['britisch', 'Britisch']]],
-  ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch'], ['peruanisch', 'Peruanisch'], ['kolumbianisch', 'Kolumbianisch'], ['karibisch', 'Karibisch'], ['brasilianisch', 'Brasilianisch']]],
-  ['afrika', 'Afrika (südlich der Sahara)', [['aethiopisch', 'Äthiopisch'], ['westafrikanisch', 'Westafrikanisch'], ['suedafrikanisch', 'Südafrikanisch']]]
+  ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch'], ['peruanisch', 'Peruanisch'], ['kolumbianisch', 'Kolumbianisch'], ['venezolanisch', 'Venezolanisch'], ['argentinisch', 'Argentinisch'], ['chilenisch', 'Chilenisch'], ['karibisch', 'Karibisch'], ['brasilianisch', 'Brasilianisch']]],
+  ['afrika', 'Afrika (südlich der Sahara)', [['aethiopisch', 'Äthiopisch'], ['ostafrikanisch', 'Ostafrikanisch'], ['westafrikanisch', 'Westafrikanisch'], ['suedafrikanisch', 'Südafrikanisch']]]
 ];
 const KUECHE_NAME = {}; const KUECHE_GRUPPE = {};
 KUECHEN_GRUPPEN.forEach(([g, gn, subs]) => { KUECHE_NAME[g] = gn; subs.forEach(([k, n]) => { KUECHE_NAME[k] = n; KUECHE_GRUPPE[k] = g; }); });
@@ -744,6 +744,7 @@ const RM_GESCHMACK = [['passt', 'passt'], ['fad', 'zu fad'], ['salzig', 'zu salz
 const RM_KONSISTENZ = [['passt', 'passt'], ['duenn', 'zu dünn/flüssig'], ['dick', 'zu dick/fest'], ['trocken', 'zu trocken'], ['weich', 'zu weich/matschig']];
 const RM_PORTION = [['passt', 'passt'], ['klein', 'zu klein'], ['gross', 'zu groß']];
 const RM_SCHWER = [['passt', 'wie erwartet'], ['leichter', 'leichter als gedacht'], ['schwerer', 'schwerer als gedacht']];
+const RM_PROBLEME = [['angebrannt', 'angebrannt / zu dunkel'], ['nicht_gar', 'nicht ganz gar'], ['zu_voll', 'Pfanne oder Topf zu voll'], ['timing', 'Timing der Komponenten'], ['vorbereitung', 'Schneiden/Vorbereitung dauerte lange'], ['unklar', 'Anleitung unklar'], ['geraet', 'passendes Gerät fehlte']];
 const rmText = (liste, k) => (liste.find(x => x[0] === k) || [])[1] || '';
 /* Hinweis aus der letzten Rückmeldung – nur Information, nichts wird automatisch geändert oder als Abneigung gespeichert */
 function rueckmeldungHinweisHtml(r) {
@@ -754,13 +755,66 @@ function rueckmeldungHinweisHtml(r) {
   if (p.portion && p.portion !== 'passt') teile.push('Portion ' + rmText(RM_PORTION, p.portion));
   if (p.schwierigkeit && p.schwierigkeit !== 'passt') teile.push(rmText(RM_SCHWER, p.schwierigkeit));
   const plan = rezeptInfo(r).gesamt; if (p.dauer_min && plan) teile.push(`gebraucht ${p.dauer_min} Min. (Rezept: ${plan} Min.)`);
+  if (arr(p.probleme).length) teile.push('Probleme: ' + arr(p.probleme).map(k => rmText(RM_PROBLEME, k)).filter(Boolean).join(', '));
+  if (p.problem_text) teile.push('„' + p.problem_text + '“');
   const tipps = [];
+  if (arr(p.probleme).includes('zu_voll')) tipps.push('Diesmal in mehreren Durchgängen anbraten bzw. einen größeren Topf nehmen (siehe Mengenhinweise).');
+  if (arr(p.probleme).includes('timing')) tipps.push('Vorher „Ablauf auf einen Blick“ lesen und alles Geschnittene bereitstellen.');
   if (p.portion === 'klein') tipps.push('Mehr Menge über den Stift an einer Zutat einstellen und als Variante speichern.');
   if (p.portion === 'gross') tipps.push('Weniger Portionen wählen oder den Rest als Restportion einplanen.');
   if (p.dauer_min && plan && p.dauer_min > plan * 1.3) tipps.push('Mehr Zeit einplanen – die App ändert die Rezeptzeiten nicht.');
   const a = r.angepasst; const wunsch = p.aenderung ? `Dein Wunsch: „${esc(p.aenderung)}“.` : '';
   const varText = a && a.variante ? ` Gerade aktiv: deine Variante „${esc(a.variante)}“${a.notiz ? ` (${esc(a.notiz)})` : ''}.` : (wunsch ? ' <button class="klein still" data-a="var-editor" data-v="' + esc(r.id) + '">Als Variante festhalten</button>' : '');
   return `<div class="hinweis klein rm-hinweis"><b>${g.n}× gekocht</b>, zuletzt ${esc(datumDE(p.datum))}${p.nochmal ? ` · wieder kochen: ${esc(p.nochmal)}` : ''}${teile.length ? `<br>Letztes Mal: ${esc(teile.join(' · '))}.` : ''} ${wunsch}${varText}${tipps.length ? `<br><span class="leise">${esc(tipps.join(' '))}</span>` : ''}</div>`;
+}
+/* ---------- Kochen lernen: Lernfokus, Garzeichen, Technik-Fortschritt ----------
+   Fortschritt zählt NUR tatsächlich gekochte Rezepte (Kochprotokoll nach „Fertig“), nie geöffnete Seiten. Keine Pflicht, keine Serien. */
+const technikName = l => String(l || '').replace(/^\[\[|\]\]$/g, '').split('|')[0].split('#')[0].trim();
+const rezeptLernfokus = r => [...new Set(arr(r.meta.lernfokus).map(technikName).filter(Boolean))];
+const rezeptTechniken = r => [...new Set([...arr(r.meta.lernfokus), ...arr(r.meta.techniken)].map(technikName).filter(Boolean))];
+function technikLink(name) { const t = TN[name]; return t ? `<a class="chip info" href="#/technik/${esc(t.id)}">${esc(name)}</a>` : `<span class="chip">${esc(name)}</span>`; }
+// „Fertig, wenn“-Zeilen aller Schritte: kurze sensorische Hinweise, woran man erkennt, dass es passt
+function garzeichen(r) {
+  return arr(r.schritte).map(s => { const m = String(s.md || '').match(/\*\*Fertig, wenn:\*\*\s*([^\n]+)/); return m ? { nr: s.nr, titel: s.titel, text: m[1].trim() } : null; }).filter(Boolean);
+}
+function lernBlockHtml(r) {
+  const lf = rezeptLernfokus(r); const gz = garzeichen(r); const stand = technikStand(); const kompakt = !D.einstellungen.hilfen_offen;
+  if (!lf.length && !gz.length) return '';
+  const neu = lf.filter(t => !stand[t]);
+  return `<div class="karte lernblock"><div class="zeile" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Das lernst du hier</h3>
+    <button class="klein still" data-a="hilfen-umschalten" aria-pressed="${!kompakt}">${kompakt ? 'Kompakt · Hilfen zeigen' : 'Anfängerhilfen · kompakt anzeigen'}</button></div>
+    ${lf.length ? `<p class="chips" style="margin:.5rem 0">${lf.map(technikLink).join('')}</p>${Object.keys(stand).length ? `<p class="leise klein">${neu.length ? `Neu für dich: ${esc(neu.join(', '))}.` : 'Diese Techniken hast du schon in gekochten Rezepten geübt.'}</p>` : ''}` : ''}
+    ${gz.length ? `<details class="garzeichen"${kompakt ? '' : ' open'}><summary><b>Woran erkenne ich, dass es passt?</b></summary><ol class="klein">${gz.map(g => `<li value="${esc(g.nr)}"><b>${esc(g.titel)}:</b> ${inline(g.text)}</li>`).join('')}</ol><p class="leise klein">Zeiten sind Orientierung – entscheidend sind diese Zeichen.</p></details>` : ''}</div>`;
+}
+// Technik → { n: Anzahl gekochter Rezepte mit dieser Technik, zuletzt, rezepte: [ids] }
+function technikStand() {
+  const st = {}; arr(D.kochprotokolle).slice().sort((a, b) => String(a.datum).localeCompare(String(b.datum))).forEach(p => { const r = R[p.rezept]; if (!r) return;
+    rezeptTechniken(r).forEach(t => { const s = st[t] || (st[t] = { n: 0, zuletzt: null, rezepte: [] }); if (!s.rezepte.includes(r.id)) { s.rezepte.push(r.id); s.n++; } s.zuletzt = p.datum; }); });
+  return st;
+}
+// Nächste Gerichte: nicht gekocht, passend zum Profil; bevorzugt genau eine neue Lernfokus-Technik auf Basis bekannter Techniken, sonst Festigen
+function lernVorschlaege(n = 6) {
+  const st = technikStand(); const gekocht = new Set(arr(D.kochprotokolle).map(p => p.rezept)); const anfang = !Object.keys(st).length;
+  return K.rezepte.map(x => R[x.id]).filter(r => r && !gekocht.has(r.id) && !ausgeschlossen(r).length && !(geraeteFehlen(r) || []).length).map(r => {
+    const lf = rezeptLernfokus(r), alle = rezeptTechniken(r); const neu = lf.filter(t => !st[t]); const bekannt = alle.filter(t => st[t]); const festigen = lf.filter(t => st[t] && st[t].n === 1);
+    const s = Number(r.meta.schwierigkeit) || 3; let punkte = 0, grund = '';
+    if (anfang) { punkte = (s <= 1 ? 6 : s === 2 ? 3 : 0) + (lf.length ? 1 : 0); grund = s <= 1 ? 'einfacher Einstieg' : ''; }
+    else if (neu.length === 1 && bekannt.length >= Math.ceil(alle.length / 2)) { punkte = 8 + bekannt.length - s; grund = `neu: ${neu[0]} · baut auf: ${bekannt.slice(0, 3).join(', ')}`; }
+    else if (festigen.length && !neu.length) { punkte = 5 + festigen.length - s / 2; grund = `festigt: ${festigen.join(', ')} (bisher 1× gekocht)`; }
+    else if (neu.length === 1) { punkte = 3 - s / 2; grund = `neu: ${neu[0]}`; }
+    return { r, punkte, grund };
+  }).filter(x => x.punkte > 0 && x.grund).sort((a, b) => b.punkte - a.punkte).slice(0, n);
+}
+function lernenHtml() {
+  const st = technikStand(); const alle = K.techniken.map(t => t.name); const geuebt = alle.filter(t => st[t]).sort((a, b) => st[b].n - st[a].n); const offen = alle.filter(t => !st[t]);
+  const vs = lernVorschlaege(); const leerF = { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' };
+  return `<p class="leise">Kochen lernst du hier nach Lust und Zeit – ohne Kurs und ohne Tagespflicht. Gezählt werden nur Rezepte, die du im Kochmodus mit „Fertig“ abgeschlossen hast, nicht geöffnete Seiten.</p>
+    <div class="karte"><h2 style="margin-top:0">Geübte Techniken <span class="leise klein">${geuebt.length} von ${alle.length}</span></h2>
+    ${geuebt.length ? `<ul class="eintraege">${geuebt.map(t => `<li><span>${technikLink(t)}</span><span class="leise klein">${st[t].n}× in gekochten Rezepten · zuletzt ${esc(datumDE(st[t].zuletzt))}</span></li>`).join('')}</ul>` : '<p class="leer">Noch nichts gekocht. Die Vorschläge unten starten mit einfachen Gerichten.</p>'}
+    ${offen.length ? `<details class="klein"><summary>Noch nicht geübt (${offen.length})</summary><p class="chips">${offen.map(technikLink).join('')}</p></details>` : ''}</div>
+    <h2>Passende nächste Gerichte</h2>
+    ${vs.length ? `<div class="raster karten">${vs.map(v => `<div class="lern-vorschlag">${rezeptKarte(v.r, bewerte(v.r, leerF), geraeteFehlen(v.r))}<p class="leise klein">${esc(v.grund)}</p></div>`).join('')}</div>` : '<p class="leer">Gerade kein passender Vorschlag – alle passenden Rezepte sind schon gekocht oder durch Ausschlüsse in den Einstellungen herausgefiltert.</p>'}
+    <p class="leise klein">Vorschlag-Logik: am liebsten genau eine neue Technik, während du die übrigen schon kennst; sonst Rezepte, die eine erst einmal geübte Technik festigen. Profil-Ausschlüsse und fehlende Geräte werden beachtet.</p>`;
 }
 function persoenlichLeisteHtml(r) {
   const k = kb(); const fav = k.favoriten.includes(r.id), will = k.kochen_wollen.includes(r.id);
@@ -772,16 +826,17 @@ function persoenlichLeisteHtml(r) {
 function meinKochbuchZahlen() { const k = kb(); return { fav: k.favoriten.filter(id => R[id]).length, will: k.kochen_wollen.filter(id => R[id]).length, gekocht: new Set(arr(D.kochprotokolle).map(p => p.rezept).filter(id => R[id])).size, samml: k.sammlungen.length, zuletzt: k.zuletzt.filter(x => R[x.id]).length }; }
 function meinKochbuchLinksHtml() {
   const z = meinKochbuchZahlen(); if (!z.fav && !z.will && !z.gekocht && !z.samml && !z.zuletzt) return '';
-  const l = [['favoriten', '♥ Favoriten', z.fav], ['kochen', 'Will ich kochen', z.will], ['gekocht', 'Schon gekocht', z.gekocht], ['sammlungen', 'Sammlungen', z.samml], ['zuletzt', 'Zuletzt angesehen', z.zuletzt]].filter(x => x[2]);
-  return `<nav class="chips-wrap mein-kb" aria-label="Mein Kochbuch">${l.map(([t, n, c]) => `<a class="filterchip" href="#/meinkochbuch/${t}">${esc(n)} <span class="leise">${c}</span></a>`).join('')}</nav>`;
+  const l = [['favoriten', '♥ Favoriten', z.fav], ['kochen', 'Will ich kochen', z.will], ['gekocht', 'Schon gekocht', z.gekocht], ['lernen', 'Kochen lernen', z.gekocht ? -1 : 0], ['sammlungen', 'Sammlungen', z.samml], ['zuletzt', 'Zuletzt angesehen', z.zuletzt]].filter(x => x[2]);
+  return `<nav class="chips-wrap mein-kb" aria-label="Mein Kochbuch">${l.map(([t, n, c]) => `<a class="filterchip" href="#/meinkochbuch/${t}">${esc(n)}${c > 0 ? ` <span class="leise">${c}</span>` : ''}</a>`).join('')}</nav>`;
 }
 function vMeinKochbuch(tab) {
   const k = kb(); tab = tab || 'favoriten'; const leerF = { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' };
   const karten = ids => { const l = ids.filter(id => R[id]); return l.length ? `<div class="raster karten">${l.map(id => rezeptKarte(R[id], bewerte(R[id], leerF), geraeteFehlen(R[id]))).join('')}</div>` : ''; };
   const z = meinKochbuchZahlen();
-  const tabs = [['favoriten', '♥ Favoriten', z.fav], ['kochen', 'Will ich kochen', z.will], ['gekocht', 'Schon gekocht', z.gekocht], ['sammlungen', 'Sammlungen', z.samml], ['zuletzt', 'Zuletzt angesehen', z.zuletzt]];
+  const tabs = [['favoriten', '♥ Favoriten', z.fav], ['kochen', 'Will ich kochen', z.will], ['gekocht', 'Schon gekocht', z.gekocht], ['lernen', 'Kochen lernen', 0], ['sammlungen', 'Sammlungen', z.samml], ['zuletzt', 'Zuletzt angesehen', z.zuletzt]];
   let inhalt = '';
-  if (tab === 'favoriten') inhalt = karten(k.favoriten) || '<p class="leer">Noch keine Favoriten. Im Rezept auf „♡ Favorit“ tippen.</p>';
+  if (tab === 'lernen') inhalt = lernenHtml();
+  else if (tab === 'favoriten') inhalt = karten(k.favoriten) || '<p class="leer">Noch keine Favoriten. Im Rezept auf „♡ Favorit“ tippen.</p>';
   else if (tab === 'kochen') inhalt = karten(k.kochen_wollen) || '<p class="leer">Noch nichts vorgemerkt. Im Rezept „+ Will ich kochen“ tippen.</p>';
   else if (tab === 'zuletzt') inhalt = karten(k.zuletzt.map(x => x.id)) || '<p class="leer">Noch keine Rezepte angesehen.</p>';
   else if (tab === 'gekocht') { const ids = [...new Set(arr(D.kochprotokolle).slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))).map(p => p.rezept))].filter(id => R[id]);
@@ -952,8 +1007,11 @@ document.addEventListener('click', ev => {
 /* ---------- Preise: kleiner, belegter, PRIVATER Bestand (nie im öffentlichen Katalog). Unbekannte Preise zählen nie als 0. ---------- */
 function preise() { D.preise = arr(D.preise); return D.preise; }
 function preisGueltig(p) { if (p.angebot && p.gueltig_bis && p.gueltig_bis < heute()) return { ok: false, grund: 'Angebot abgelaufen' }; const alt = p.datum ? -tageBis(p.datum) : 999; return { ok: true, alt: alt > 90, tage: alt }; }
+// Gleiches Produkt = gleiche Zutat, gleicher Händler, gleiche Produktbezeichnung. Gerechnet wird nur der neueste Preis je Produkt; ältere bleiben als Verlauf.
+const preisSchluessel = p => [p.zutat, String(p.haendler || '').toLowerCase(), String(p.name || '').trim().toLowerCase()].join('|');
+function preisAktuell(p) { if (p.ersetzt) return false; const k = preisSchluessel(p); return !preise().some(x => x !== p && !x.ersetzt && preisSchluessel(x) === k && String(x.datum) > String(p.datum)); }
 function preisFuer(zid, einheit, haendler) {
-  const passt = p => p.zutat === zid && (!haendler || haendler === 'beide' || p.haendler === haendler) && preisGueltig(p).ok && Number(p.preis) > 0 && Number(p.packung) > 0;
+  const passt = p => p.zutat === zid && (!haendler || haendler === 'beide' || p.haendler === haendler) && preisGueltig(p).ok && preisAktuell(p) && Number(p.preis) > 0 && Number(p.packung) > 0;
   const l = preise().filter(p => passt(p) && (p.einheit || 'g') === einheit);
   if (l.length) return l.sort((a, b) => a.preis / a.packung - b.preis / b.packung)[0];
   // g ↔ ml nur mit hinterlegter Dichte der Zutat (g/ml); Stückpreise ohne Stückgewicht bleiben unberechnet
@@ -965,12 +1023,14 @@ function kostenRechnung(liste, haendler, vorratAbziehen) {
   const bedarf = {}; let grundvorrat = 0;
   liste.forEach(({ rezept, portionen }) => { const r = R[rezept]; if (!r) return; const f = faktor(r, portionen);
     r.zutaten.forEach(z => { if (!z.zutat || z.menge == null || !/^(g|ml)$/.test(z.einheit)) return; if (z.bedarf === 'grundvorrat') { grundvorrat++; return; } if (z.bedarf === 'optional') return; const k = z.zutat + '|' + z.einheit; bedarf[k] = (bedarf[k] || 0) + z.menge * f; }); });
-  const posten = Object.entries(bedarf).map(([k, menge]) => { const [zid, einheit] = k.split('|'); let m = menge;
+  const alle = Object.entries(bedarf).map(([k, menge]) => { const [zid, einheit] = k.split('|'); let m = menge;
     if (vorratAbziehen) { const v = vorratMenge(zid); if (v.vorhanden && !v.unbekannt && vorratEinheit(zid) === einheit) m = Math.max(0, m - v.menge); }
-    const p = preisFuer(zid, einheit, haendler); const pk = p ? Math.ceil(m / p.packung - 1e-9) : null;
-    return { zid, name: (Z[zid] || {}).name || zid, einheit, menge: m, p, packungen: pk, kosten: p && m > 0 ? pk * p.preis : p ? 0 : null, anteil: p ? m / p.packung * p.preis : null, pfand: p && p.pfand ? pk * p.pfand : 0, alt: p ? preisGueltig(p).alt : false, rest: p && m > 0 ? pk * p.packung - m : 0 }; }).filter(x => x.menge > 0);
+    const p = preisFuer(zid, einheit, haendler); const pk = p ? Math.ceil(m / p.packung - 1e-9) : null; const ausVorrat = menge - m;
+    return { zid, name: (Z[zid] || {}).name || zid, einheit, menge: m, bedarf: menge, ausVorrat, vorratWert: p && ausVorrat > 0 ? ausVorrat / p.packung * p.preis : null, p, packungen: pk, kosten: p && m > 0 ? pk * p.preis : p ? 0 : null, anteil: p ? m / p.packung * p.preis : null, pfand: p && p.pfand ? pk * p.pfand : 0, alt: p ? preisGueltig(p).alt : false, rest: p && m > 0 ? pk * p.packung - m : 0 }; });
+  const posten = alle.filter(x => x.menge > 0); const vorrat = alle.filter(x => x.ausVorrat > 0);
   const mit = posten.filter(x => x.p), ohne = posten.filter(x => !x.p);
-  return { posten, mit, ohne, summe: mit.reduce((s, x) => s + x.kosten, 0), anteil: mit.reduce((s, x) => s + x.anteil, 0), pfand: mit.reduce((s, x) => s + x.pfand, 0), alt: mit.filter(x => x.alt).length, grundvorrat };
+  const summe = mit.reduce((s, x) => s + x.kosten, 0), anteil = mit.reduce((s, x) => s + x.anteil, 0);
+  return { posten, mit, ohne, summe, anteil, restWert: Math.max(0, summe - anteil), vorrat, vorratWert: vorrat.reduce((s, x) => s + (x.vorratWert || 0), 0), vorratOhnePreis: vorrat.filter(x => x.vorratWert == null).length, pfand: mit.reduce((s, x) => s + x.pfand, 0), alt: mit.filter(x => x.alt).length, grundvorrat };
 }
 const euro = x => x == null ? '?' : x.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 function kostenHtml(liste, budget, haendler, vorratAbziehen) {
@@ -979,16 +1039,26 @@ function kostenHtml(liste, budget, haendler, vorratAbziehen) {
   const stufe = !k.mit.length ? 'nicht belastbar' : k.ohne.length ? 'teilweise belegt' : k.alt ? 'vollständig belegt, teils ältere Preise' : 'vollständig belegt';
   const b = budget !== '' && budget != null ? Number(budget) : null;
   const budgetText = b == null ? '' : !k.mit.length ? ` Budget ${euro(b)}: <b>nicht prüfbar</b> – ohne Preise wird keine Einhaltung bestätigt.` : k.ohne.length ? (k.summe > b ? ` Budget ${euro(b)}: <b>schon mit den belegten Teilen überschritten</b>.` : ` Budget ${euro(b)}: <b>nicht prüfbar</b> – ${k.ohne.length} Zutaten ohne Preis.`) : k.summe <= b ? ` Budget ${euro(b)}: eingehalten (laut belegten Preisen${k.alt ? ', teils älter als 90 Tage' : ''}).` : ` Budget ${euro(b)}: <b>überschritten</b>.`;
-  return `<div class="klein kosten"><p><b>Kosten: ${stufe}.</b> ${k.mit.length ? `Für ${k.mit.length} von ${n} Zutaten: ${euro(k.summe)} beim Kauf ganzer Packungen (verbraucht davon ca. ${euro(k.anteil)})${k.pfand ? `, Pfand separat ${euro(k.pfand)}` : ''}.` : `Für keine der ${n} Zutaten ist ein Preis hinterlegt.`}${k.ohne.length && k.mit.length ? ` Ohne Preis (nicht als 0 gerechnet): ${esc(k.ohne.slice(0, 6).map(x => x.name).join(', '))}${k.ohne.length > 6 ? ` und ${k.ohne.length - 6} weitere` : ''}.` : ''}${budgetText}</p>
+  /* Getrennte Aufstellung: zu bezahlen (ganze Packungen) · davon verbraucht · später übrig · unbekannt · aus dem Vorrat */
+  const zeilen = [
+    k.mit.length ? ['Zu bezahlen (ganze Packungen)', `${euro(k.summe)} für ${k.mit.length} von ${n} Zutaten${k.pfand ? ` + Pfand ${euro(k.pfand)}` : ''}`] : ['Zu bezahlen', 'unbekannt – keine Preise hinterlegt'],
+    k.mit.length ? ['davon für diese Gerichte verbraucht', `ca. ${euro(k.anteil)} Warenwert`] : null,
+    k.mit.length && k.restWert > 0.005 ? ['bleibt als Packungsrest', `ca. ${euro(k.restWert)} Warenwert (siehe Packungsreste)`] : null,
+    k.ohne.length ? ['Kosten unbekannt', `${k.ohne.length} Zutat${k.ohne.length === 1 ? '' : 'en'} ohne Preis – nicht als 0 gerechnet: ${esc(k.ohne.slice(0, 5).map(x => x.name).join(', '))}${k.ohne.length > 5 ? ` und ${k.ohne.length - 5} weitere` : ''}`] : null,
+    vorratAbziehen && k.vorrat.length ? ['aus deinem Vorrat (nicht gekauft)', `${k.vorrat.length} Zutat${k.vorrat.length === 1 ? '' : 'en'}${k.vorratWert > 0 ? `, Warenwert ca. ${euro(k.vorratWert)}` : ''}${k.vorratOhnePreis ? ` (${k.vorratOhnePreis} ohne Preis)` : ''}`] : null].filter(Boolean);
+  return `<div class="klein kosten"><p style="margin-bottom:.3rem"><b>Kosten: ${stufe}.</b></p><dl class="kosten-liste">${zeilen.map(([a, b2]) => `<dt>${a}</dt><dd>${b2}</dd>`).join('')}</dl>${budgetText ? `<p>${budgetText.trim()}</p>` : ''}
     ${k.mit.some(x => x.rest > 0) ? `<details><summary>Packungsreste</summary><ul>${k.mit.filter(x => x.rest > 0).map(x => `<li>${esc(x.name)}: ${x.packungen}× ${zahlDE(x.p.packung)} ${esc(x.einheit)} gekauft, ${zahlDE(Math.round(x.rest))} ${esc(x.einheit)} bleiben übrig</li>`).join('')}</ul><p class="leise">Reste kommen nach dem Einkauf in den Vorrat und werden bei späteren Vorschlägen bevorzugt.</p></details>` : ''}
     <p class="leise">${k.grundvorrat ? 'Grundvorrat (Salz, Öl, Gewürze) nicht eingerechnet. ' : ''}Preise stammen nur aus deinem privaten Preisbestand – <a href="#/preise">Preise ansehen oder eintragen</a>.</p></div>`;
 }
 function vPreise() {
   const l = preise().slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum))); const e = D.preise_einst || {};
-  const zeile = p => { const g = preisGueltig(p); return `<li><span><b>${esc(p.name || (Z[p.zutat] || {}).name || '?')}</b> · ${esc({ rewe: 'REWE', lidl: 'Lidl' }[p.haendler] || p.haendler || '')} · ${euro(Number(p.preis))} für ${zahlDE(p.packung)} ${esc(p.einheit || 'g')}${p.packung ? ` <span class="leise">(${euro(p.preis / p.packung * (p.einheit === 'stk' ? 1 : 1000))}/${p.einheit === 'stk' ? 'Stück' : p.einheit === 'ml' ? 'l' : 'kg'})</span>` : ''}${p.pfand ? ` + Pfand ${euro(Number(p.pfand))}` : ''}<br><span class="leise klein">${esc(datumDE(p.datum))} · ${esc(p.quelle || 'Quelle?')}${p.angebot ? ` · <span class="chip warn">Angebot${p.gueltig_bis ? ' bis ' + esc(datumDE(p.gueltig_bis)) : ''}</span>` : ''}${p.bedingung ? ' · Bedingung: ' + esc(p.bedingung) : ''}${!g.ok ? ` · <span class="chip warn">${g.grund} – wird nicht gerechnet</span>` : g.alt ? ' · <span class="chip warn">älter als 90 Tage</span>' : ''}${p.zutat ? '' : ' · <span class="chip warn">keiner Zutat zugeordnet – wird nicht gerechnet</span>'}</span></span><button class="klein still" data-a="preis-weg" data-v="${esc(p.id)}" aria-label="Preis löschen">×</button></li>`; };
+  const zeile = p => { const g = preisGueltig(p); return `<li><span><b>${esc(p.name || (Z[p.zutat] || {}).name || '?')}</b> · ${esc({ rewe: 'REWE', lidl: 'Lidl' }[p.haendler] || p.haendler || '')} · ${euro(Number(p.preis))} für ${zahlDE(p.packung)} ${esc(p.einheit || 'g')}${p.packung ? ` <span class="leise">(${euro(p.preis / p.packung * (p.einheit === 'stk' ? 1 : 1000))}/${p.einheit === 'stk' ? 'Stück' : p.einheit === 'ml' ? 'l' : 'kg'})</span>` : ''}${p.pfand ? ` + Pfand ${euro(Number(p.pfand))}` : ''}<br><span class="leise klein">${esc(datumDE(p.datum))} · ${esc(p.quelle || 'Quelle?')}${p.angebot ? ` · <span class="chip warn">Angebot${p.gueltig_bis ? ' bis ' + esc(datumDE(p.gueltig_bis)) : ''}</span>` : ''}${p.bedingung ? ' · Bedingung: ' + esc(p.bedingung) : ''}${!g.ok ? ` · <span class="chip warn">${g.grund} – wird nicht gerechnet</span>` : !preisAktuell(p) ? ` · <span class="chip">Verlauf – ${p.ersetzt ? 'ersetzt' : 'neuerer Preis vorhanden'}, nicht gerechnet</span>` : g.alt ? ' · <span class="chip warn">älter als 90 Tage</span>' : ''}${p.zutat ? '' : ' · <span class="chip warn">keiner Zutat zugeordnet – wird nicht gerechnet</span>'}</span></span><button class="klein still" data-a="preis-weg" data-v="${esc(p.id)}" aria-label="Preis löschen">×</button></li>`; };
   return `<h1>Einkauf</h1>${planTabs('preise')}
-  <p class="leise">Dein privater Preisbestand – nur auf diesem Gerät, im Export enthalten, nie veröffentlicht. Die App erfindet keine Preise und rechnet fehlende nicht als 0.</p>
-  ${preisCodeVorschauHtml()}
+  <p class="leise">Dein privater Preisbestand – nur auf diesem Gerät, im Export enthalten, nie veröffentlicht. Die App erfindet keine Preise und rechnet fehlende nicht als 0. Es gibt bewusst keinen allgemeinen Startbestand: Händler zeigen marktunabhängige Preise nicht frei bzw. untersagen die Übernahme durch KI-Werkzeuge.</p>
+  ${preisCodeVorschauHtml() || `<div class="karte preis-uebernahme"><h2 style="margin-top:0">Preise übernehmen</h2><p class="klein">Preis-Code (z. B. vom Laptop) oder Zeilen einfügen – du siehst zuerst eine Vorschau mit Abgleich gegen deine gespeicherten Preise.</p>
+    <div class="knopfreihe"><button class="haupt" data-a="preis-einfuegen">Aus Zwischenablage einfügen</button></div>
+    <details class="klein"><summary>Stattdessen von Hand einfügen</summary><textarea id="preis-import" rows="4" placeholder="FITOMAT-PREISE1:… oder: Magerquark; Milbona Magerquark 500 g; lidl; 1,19; 500; g; 2026-11-14; Kassenbon"></textarea><div class="knopfreihe"><button class="klein" data-a="preis-import">Vorschau zeigen</button></div>
+    <p class="leise klein">Eine Zeile je Preis: <code>Zutat; Produkt; Händler; Preis; Packung; Einheit; Datum; Quelle; Angebot bis (optional); Bedingung (optional); Pfand (optional)</code></p></details></div>`}
   <details class="karte" ${l.length ? '' : 'open'}><summary><b>Preis eintragen</b></summary><form id="preis-form">
     <div class="zeile"><label class="feld" style="flex:2 1 180px"><span>Zutat (aus der Liste)</span><input name="zutat" list="preis-zutaten" required placeholder="z. B. Magerquark"></label><label class="feld" style="flex:2 1 180px"><span>Genaues Produkt</span><input name="name" placeholder="z. B. Milbona Magerquark 500 g"></label>
     <label class="feld"><span>Händler</span><select name="haendler"><option value="lidl">Lidl</option><option value="rewe">REWE</option><option value="andere">anderer</option></select></label></div>
@@ -996,21 +1066,38 @@ function vPreise() {
     <div class="zeile"><label><input type="checkbox" name="angebot"> Angebot</label><label class="feld"><span>gültig bis</span><input name="gueltig_bis" type="date"></label><label class="feld" style="flex:1 1 160px"><span>Bedingung (Coupon, App, Karte)</span><input name="bedingung"></label><label class="feld" style="flex:1 1 160px"><span>Quelle</span><input name="quelle" placeholder="Kassenbon, Prospekt, App …"></label></div>
     <datalist id="preis-zutaten">${K.zutaten.filter(z => z.bls && Object.keys(z.bls).length).map(z => `<option value="${esc(z.name)}">`).join('')}</datalist>
     <button class="haupt" type="submit">Speichern</button></form></details>
-  <details class="karte"><summary><b>Mehrere Preise übernehmen</b> <span class="leise klein">– Zeilen oder Preis-Code einfügen</span></summary>
-    <p class="klein">Einen kopierten Preis-Code (beginnt mit <code>FITOMAT-PREISE1:</code>) einfach einfügen – oder eine Zeile je Preis: <code>Zutat; Produkt; Händler; Preis; Packung; Einheit; Datum; Quelle; Angebot bis (optional); Bedingung (optional); Pfand (optional)</code></p>
-    <textarea id="preis-import" rows="5" placeholder="Magerquark; Milbona Magerquark 500 g; lidl; 1,19; 500; g; 2026-11-14; Kassenbon"></textarea>
-    <div class="knopfreihe"><button class="klein" data-a="preis-import">Prüfen und übernehmen</button></div><p class="leise klein">Nur Zeilen mit bekannter Zutat, Preis, Packung und Datum werden übernommen; der Rest wird angezeigt.</p></details>
   <div class="karte"><label class="feld"><span>Deine Märkte / Region (privat, optional)</span><input id="preis-region" value="${esc(e.region || '')}" maxlength="80" placeholder="z. B. deine zwei Stammmärkte"></label><p class="leise klein">Hilft dir beim Notieren, weil Preise je Markt abweichen können. Bleibt auf diesem Gerät.</p></div>
   <h2>Hinterlegt (${l.length})</h2>${l.length ? `<ul class="eintraege">${l.map(zeile).join('')}</ul>` : '<p class="leer">Noch keine Preise. Ohne Preise schlägt die App trotzdem Gerichte vor, bestätigt aber kein Budget.</p>'}`;
 }
 /* Preise als Textzeilen „Zutat;Produkt;Händler;Preis;Packung;Einheit;Datum;Quelle;gültig bis;Bedingung;Pfand“ übernehmen (ohne Dubletten) */
+/* Abgleich vor dem Übernehmen: je Zeile neu · gleich (übersprungen) · aktualisiert (neuer als vorhandener Preis desselben Produkts)
+   · älter (nur als Verlauf) · Konflikt (gleiches Produkt und Datum, anderer Preis → der neue ersetzt den alten, der alte bleibt markiert) · fehlerhaft */
+function preisAbgleich(t) {
+  const erg = { neu: [], gleich: [], aktualisiert: [], aelter: [], konflikt: [], fehler: [] }; const vorh = preise().filter(x => !x.ersetzt);
+  String(t || '').split(/\r?\n/).map(z => z.trim()).filter(Boolean).forEach((z, i) => { const s = z.split(';').map(x => x.trim());
+    const { p, fehler } = preisAusFeldern({ zutat: s[0], name: s[1], haendler: s[2], preis: s[3], packung: s[4], einheit: s[5], datum: s[6], quelle: s[7], gueltig_bis: s[8], bedingung: s[9], pfand: s[10] });
+    if (fehler.length) { erg.fehler.push(`Zeile ${i + 1} (${s[0] || '?'}): ${fehler.join(', ')}`); return; }
+    const gl = vorh.filter(x => preisSchluessel(x) === preisSchluessel(p));
+    if (gl.some(x => x.datum === p.datum && Number(x.preis) === p.preis && Number(x.packung) === p.packung)) erg.gleich.push(p);
+    else if (gl.some(x => x.datum === p.datum)) erg.konflikt.push({ p, alt: gl.find(x => x.datum === p.datum) });
+    else if (gl.length && gl.every(x => String(x.datum) < p.datum)) erg.aktualisiert.push({ p, alt: gl.sort((a, b) => String(b.datum).localeCompare(String(a.datum)))[0] });
+    else if (gl.length) erg.aelter.push(p);
+    else erg.neu.push(p); });
+  return erg;
+}
 function preiseUebernehmen(t) {
-  const ok = [], schlecht = [];
-  String(t || '').split(/\r?\n/).map(z => z.trim()).filter(Boolean).forEach((z, i) => { const s = z.split(';').map(x => x.trim()); const { p, fehler } = preisAusFeldern({ zutat: s[0], name: s[1], haendler: s[2], preis: s[3], packung: s[4], einheit: s[5], datum: s[6], quelle: s[7], gueltig_bis: s[8], bedingung: s[9], pfand: s[10] }); if (fehler.length) schlecht.push(`Zeile ${i + 1}: ${fehler.join(', ')}`); else ok.push(p); });
-  if (!ok.length) { toast(schlecht.length ? schlecht[0] : 'Nichts zu übernehmen'); return; }
-  let doppelt = 0;
-  aendere(`${ok.length} Preise geprüft${schlecht.length ? `, ${schlecht.length} Zeilen übersprungen (${schlecht.slice(0, 2).join('; ')})` : ''} – Rückgängig möglich`, d => { d.preise = arr(d.preise); ok.forEach(p => { if (d.preise.some(x => x.zutat === p.zutat && x.haendler === p.haendler && x.datum === p.datum && x.packung === p.packung && x.preis === p.preis)) doppelt++; else d.preise.push(p); }); });
-  if (doppelt) setTimeout(() => toast(`${ok.length - doppelt} neu übernommen, ${doppelt} waren schon vorhanden`), 1200);
+  const a = preisAbgleich(t); const rein = [...a.neu, ...a.aktualisiert.map(x => x.p), ...a.aelter, ...a.konflikt.map(x => x.p)];
+  if (!rein.length) { toast(a.fehler.length ? a.fehler[0] : a.gleich.length ? `Alle ${a.gleich.length} Preise sind schon vorhanden` : 'Nichts zu übernehmen'); return; }
+  aendere(`Preise übernommen: ${a.neu.length} neu, ${a.aktualisiert.length} aktualisiert${a.konflikt.length ? `, ${a.konflikt.length} ersetzt` : ''}${a.aelter.length ? `, ${a.aelter.length} als Verlauf` : ''}${a.gleich.length ? `, ${a.gleich.length} schon vorhanden` : ''}${a.fehler.length ? `, ${a.fehler.length} Zeilen fehlerhaft` : ''} – Rückgängig möglich`, d => {
+    d.preise = arr(d.preise); a.konflikt.forEach(({ alt, p }) => { const x = d.preise.find(y => y.id === alt.id); if (x) { x.ersetzt = p.id; x.ersetzt_am = heute(); } }); rein.forEach(p => d.preise.push(p)); });
+}
+function preisAbgleichHtml(text) {
+  const a = preisAbgleich(text); const z = (p, extra = '') => `<li>${esc((Z[p.zutat] || {}).name || p.zutat)}: ${esc(p.name)} – ${euro(p.preis)} / ${zahlDE(p.packung)} ${esc(p.einheit)} · ${esc(datumDE(p.datum))}${extra}</li>`;
+  const block = (titel, liste, html, offen) => liste.length ? `<details class="klein"${offen ? ' open' : ''}><summary><b>${titel} (${liste.length})</b></summary><ul>${html}</ul></details>` : '';
+  return `<div class="abgleich">${block('Neu', a.neu, a.neu.map(p => z(p)).join(''))}${block('Aktualisiert – neuer als dein gespeicherter Preis', a.aktualisiert, a.aktualisiert.map(x => z(x.p, ` <span class="leise">(bisher ${euro(Number(x.alt.preis))} vom ${esc(datumDE(x.alt.datum))}, bleibt als Verlauf)</span>`)).join(''), true)}
+    ${block('Konflikt – gleiches Produkt und Datum, anderer Preis', a.konflikt, a.konflikt.map(x => z(x.p, ` <span class="chip warn">ersetzt ${euro(Number(x.alt.preis))}</span>`)).join(''), true)}
+    ${block('Älter als dein gespeicherter Preis – nur als Verlauf', a.aelter, a.aelter.map(p => z(p)).join(''))}${block('Schon vorhanden – wird übersprungen', a.gleich, a.gleich.map(p => z(p)).join(''))}
+    ${a.fehler.length ? `<details class="klein" open><summary><b>Nicht übernehmbar (${a.fehler.length})</b></summary><ul>${a.fehler.slice(0, 20).map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>` : ''}</div>`;
 }
 /* Private Preisübergabe ohne Datei: komprimierte Zeilen im Link-Fragment (#/preis-import/…) oder als Text „FITOMAT-PREISE1:…“.
    Das Fragment wird nicht an den Server gesendet; die App entfernt es sofort aus der Adresse. Übernommen wird erst nach Tippen. */
@@ -1031,11 +1118,11 @@ window.addEventListener('load', () => { if (location.hash.startsWith('#/preis-im
 function preisCodeVorschauHtml() {
   if (!preisImportVorschau) return ''; const zeilen = preisImportVorschau.split(/\r?\n/).filter(z => z.trim()); const hs = [...new Set(zeilen.map(z => z.split(';')[2]))].join(', '); const dat = [...new Set(zeilen.map(z => z.split(';')[6]))].join(', ');
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-  return `<section class="karte" id="preis-code"><h2 style="margin-top:0">Preise aus einem Übergabe-Code</h2>
-    <p class="klein">${zeilen.length} Preise · Händler: ${esc(hs)} · Stand: ${esc(dat)}. Nichts ist übernommen, bevor du tippst. Vorhandene gleiche Einträge werden nicht doppelt angelegt.</p>
-    <details class="klein"><summary>Zeilen ansehen</summary><ul>${zeilen.slice(0, 80).map(z => { const s = z.split(';'); return `<li>${esc(s[0])}: ${esc(s[1])} – ${esc(s[3])} € / ${esc(s[4])} ${esc(s[5])}${s[9] ? ` <span class="leise">(${esc(s[9])})</span>` : ''}</li>`; }).join('')}</ul></details>
-    ${standalone ? '' : '<p class="hinweis klein"><b>Nutzt du Fitomat vom Home-Bildschirm?</b> Dann hat diese Browser-Ansicht einen eigenen Speicher. Tippe „Code kopieren“, öffne Fitomat vom Home-Bildschirm und füge den Code unter Einkauf › Preise › „Mehrere Preise übernehmen“ ein.</p>'}
-    <div class="knopfreihe"><button class="haupt" data-a="preis-code-ok">Preise übernehmen</button><button data-a="preis-code-kopieren">Code kopieren</button><button class="still" data-a="preis-code-weg">Verwerfen</button></div></section>`;
+  return `<section class="karte" id="preis-code"><h2 style="margin-top:0">Vorschau: ${zeilen.length} Preise</h2>
+    <p class="klein">Händler: ${esc(hs)} · Stand: ${esc(dat)}. <b>Noch nichts ist übernommen.</b> Deine übrigen Daten bleiben unberührt – es werden nur Preise ergänzt.</p>
+    ${preisAbgleichHtml(preisImportVorschau)}
+    ${standalone || !preisImportCode ? '' : '<p class="hinweis klein"><b>Nutzt du Fitomat vom Home-Bildschirm?</b> Safari und die Home-Bildschirm-App haben auf dem iPhone getrennte Speicher, es gibt keinen automatischen Abgleich. Tippe „Code kopieren“, öffne Fitomat vom Home-Bildschirm und tippe dort unter Einkauf › Preise auf „Aus Zwischenablage einfügen“.</p>'}
+    <div class="knopfreihe"><button class="haupt" data-a="preis-code-ok">Preise übernehmen</button>${preisImportCode ? '<button data-a="preis-code-kopieren">Code kopieren</button>' : ''}<button class="still" data-a="preis-code-weg">Verwerfen</button></div></section>`;
 }
 function preisAusFeldern(o) {
   const z = K.zutaten.find(x => x.name.toLowerCase() === String(o.zutat || '').trim().toLowerCase()); const zahl = v => v === '' || v == null ? null : Number(String(v).replace(',', '.'));
@@ -1050,9 +1137,14 @@ document.addEventListener('change', ev => { if (ev.target.id === 'preis-region')
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
   if (a === 'preis-weg') aendere('Preis gelöscht – Rückgängig möglich', d => { d.preise = arr(d.preise).filter(p => p.id !== v); });
-  else if (a === 'preis-import') { (async () => { let t = document.getElementById('preis-import').value;
+  else if (a === 'preis-import' || a === 'preis-einfuegen') { (async () => {
+      let t = '';
+      if (a === 'preis-einfuegen') { try { t = await navigator.clipboard.readText(); } catch (e) { toast('Zwischenablage nicht lesbar – bitte „Stattdessen von Hand einfügen“ nutzen.'); const d0 = document.querySelector('.preis-uebernahme details'); if (d0) d0.open = true; return; } }
+      else t = (document.getElementById('preis-import') || {}).value || '';
+      if (!t.trim()) { toast('Nichts eingefügt'); return; }
+      preisImportCode = '';
       if (/FITOMAT-PREISE1:|preis-import\//.test(t)) { try { t = await preisCodeLesen(t); } catch (e) { toast('Preis-Code nicht lesbar: ' + e.message); return; } }
-      preiseUebernehmen(t); })(); }
+      preisImportVorschau = t; route(); const el = document.getElementById('preis-code'); if (el) el.scrollIntoView({ block: 'start' }); })(); }
   else if (a === 'preis-code-ok') { if (preisImportVorschau) { const t = preisImportVorschau; preisImportVorschau = null; preiseUebernehmen(t); } }
   else if (a === 'preis-code-weg') { preisImportVorschau = null; route(); }
   else if (a === 'preis-code-kopieren') (async () => { try { await navigator.clipboard.writeText(PREISCODE_PREFIX + preisImportCode); toast('Preis-Code kopiert – jetzt Fitomat vom Home-Bildschirm öffnen und unter Einkauf › Preise einfügen'); } catch (e) { toast('Kopieren nicht möglich'); } })();

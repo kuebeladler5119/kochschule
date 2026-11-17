@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.24.1';
-const APP_BUILD = '202611172221';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.25.0';
+const APP_BUILD = '202611180003';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -126,7 +126,7 @@ document.addEventListener('click', ev => { if (!ev.target.closest('#frage')) let
 function bestaetigt(text, opt = {}) {
   if (frageFreigabe === text) { frageFreigabe = null; return true; }
   const b = letzterKlick;
-  frageZeigen(text, () => { if (b && b.isConnected) { frageFreigabe = text; b.click(); frageFreigabe = null; } else toast('Die Ansicht hat sich geändert – bitte noch einmal tippen.'); }, opt);
+  frageZeigen(text, () => { if (b && b.isConnected) { frageFreigabe = text; try { b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); } finally { frageFreigabe = null; } } else toast('Die Ansicht hat sich geändert – bitte noch einmal tippen.'); }, opt);
   return false;
 }
 function frageZeigen(text, ja, { jaText = 'Ja, fortfahren', neinText = 'Abbrechen', gefahr = /lösch|verwerf|abbrech/i.test(text) } = {}) {
@@ -142,6 +142,13 @@ function frageZeigen(text, ja, { jaText = 'Ja, fortfahren', neinText = 'Abbreche
   el.querySelector('[data-frage="nein"]').addEventListener('click', e => { e.stopPropagation(); zu(); });
   el.onclick = e => { if (e.target === el) zu(); };
   el.querySelector('[data-frage="nein"]').focus();
+}
+
+// Fehlerhinweis direkt an einem Feld (app-weit nutzbar)
+function feldHinweis(el, text) {
+  if (!el) { toast(text); return; } const lab = el.closest('label') || el.parentNode; let k = lab.querySelector('.feld-fehler');
+  if (!k) { k = document.createElement('small'); k.className = 'feld-fehler'; k.setAttribute('role', 'alert'); lab.appendChild(k); }
+  k.textContent = text || ''; k.hidden = !text; if (text) { el.setAttribute('aria-invalid', 'true'); el.focus(); } else el.removeAttribute('aria-invalid');
 }
 
 let toastZeit;
@@ -445,7 +452,7 @@ const vorgeladen = new Set();
 function bilderVorladen() { if (!navigator.onLine) return; D.auswahl.forEach(a => { const r = R[a.rezept]; const b = r && r.meta.bild; if (b && !vorgeladen.has(b)) { vorgeladen.add(b); fetch('bilder/' + b).catch(() => vorgeladen.delete(b)); } }); }
 function navZaehler() { const n = D.auswahl.length; const el = $('#nav-auswahl'); if (el) { el.hidden = !n; el.textContent = n; } const teile = []; if (speicherFehler) teile.push('⚠ nicht gespeichert');
   if (PROFIL || profilListe().length > 1) teile.push(profilName(PROFIL));
-  const rp = D.restportionen.reduce((s, p) => s + (p.portionen > 0 ? p.portionen : 0), 0); if (rp) teile.push(`${zahlDE(rp, 1)} Restportionen`);
+  const rp = D.restportionen.reduce((s, p) => s + (p.portionen > 0 ? p.portionen : 0), 0); if (rp) teile.push(`${zahlDE(rp, 1)} Restportion${rp === 1 ? '' : 'en'}`);
   $('#kopf-info').textContent = teile.join(' · '); }
 
 /* ---------- Entdecken ---------- */
@@ -585,6 +592,7 @@ function vRezept(id) {
     <p class="leise klein">„Quellengeprüft“ heißt: auf Grundlage gelesener Quellen geschrieben – nicht, dass das Rezept in dieser Form schon gekocht wurde. Mit <span class="ug">ungeprüft</span> markierte Angaben sind eigene Vorschläge ohne direkt gelesene Quelle.</p></details></div>
   ${persoenlichLeisteHtml(r)}
   ${rueckmeldungHinweisHtml(r)}
+  ${lernBlockHtml(r)}
   ${ein.ueberblick.length ? `<div class="ueberblick">${md(ein.ueberblick.join('\n\n'))}</div>` : ''}
   ${vortagHinweisHtml(r)}
   ${aus.length ? `<div class="hinweis gefahr">Passt nicht zu deinem Profil: ${esc(aus.join(', '))}</div>` : ''}
@@ -679,6 +687,8 @@ function vFertig(id) {
       const dauer = fort.start ? Math.round((Date.now() - new Date(fort.start)) / 60000) : ''; const dauerOk = dauer && dauer > 0 && dauer < 600;
       return `<div class="zeile">${sel('nochmal', 'Wieder kochen?', [['ja', 'ja'], ['vielleicht', 'vielleicht'], ['nein', 'nein']])}${sel('geschmack', 'Geschmack', RM_GESCHMACK)}${sel('konsistenz', 'Konsistenz', RM_KONSISTENZ)}</div>
       <div class="zeile">${sel('portion', 'Portionsgröße', RM_PORTION)}${sel('schwierigkeit', 'Schwierigkeit', RM_SCHWER)}<label class="feld"><span>Tatsächliche Dauer (Min.)</span><input type="number" name="dauer" min="1" max="600" inputmode="numeric" value="${dauerOk ? dauer : ''}" style="width:6em"><small>${dauerOk ? 'seit Kochstart gemessen – bei Pausen anpassen' : ''}</small></label></div>
+      <fieldset class="rm-probleme"><legend>Probleme (freiwillig, mehrere möglich)</legend><div class="wahl">${RM_PROBLEME.map(([k, t]) => `<label class="wahl-chip"><input type="checkbox" name="problem" value="${k}"> ${esc(t)}</label>`).join('')}</div>
+        <label class="feld"><span>Was lief schief? (frei)</span><input name="problem_text" maxlength="200" placeholder="z. B. Sauce zu früh reduziert"></label></fieldset>
       <label class="feld"><span>Nächstes Mal ändern</span><input name="aenderung" maxlength="200" placeholder="z. B. weniger Honig, mehr Gemüse"></label>
       <label class="feld"><span>Notiz</span><textarea name="notiz" rows="2"></textarea></label>
       <p class="leise klein">Die Rückmeldung bleibt bei diesem Kochprotokoll. Das Rezept wird nicht automatisch geändert, und eine schlechte Bewertung wird nicht zur allgemeinen Abneigung. Beim nächsten Öffnen des Rezepts erscheint ein kurzer Hinweis.</p>`; })()}</details>
@@ -695,7 +705,7 @@ function restGrenze(r, lager) {
 }
 vFertig.danach = (id) => {
   const r = R[id]; const form = $('#fertig-form'); if (!form) return;
-  const info = () => { const g = Number(form.gekocht.value) || 0, e = Number(form.gegessen.value) || 0, rest = Math.max(0, g - e); const gr = restGrenze(r, form.lager.value); $('#rest-info').textContent = rest ? `${zahlDE(rest, 1)} Restportionen → ${LAGER[form.lager.value]}, ${gr.bis ? 'verbrauchen bis ' + datumDE(gr.bis) : 'Datum offen'} (${gr.beleg}).` : 'Keine Restportionen.'; };
+  const info = () => { const g = Number(form.gekocht.value) || 0, e = Number(form.gegessen.value) || 0, rest = Math.max(0, g - e); const gr = restGrenze(r, form.lager.value); $('#rest-info').textContent = rest ? `${zahlDE(rest, 1)} Restportion${rest === 1 ? '' : 'en'} → ${LAGER[form.lager.value]}, ${gr.bis ? 'verbrauchen bis ' + datumDE(gr.bis) : 'Datum offen'} (${gr.beleg}).` : 'Keine Restportionen.'; };
   form.addEventListener('input', info); info();
   form.addEventListener('submit', ev => {
     ev.preventDefault();
@@ -709,7 +719,7 @@ vFertig.danach = (id) => {
       abzug.forEach((z, ix) => { if (!form['abzug-an-' + ix] || !form['abzug-an-' + ix].checked) return; let rest = Number(form['abzug-' + ix].value) || 0; abgezogen.push({ zutat: z.zutat, menge: rest, einheit: z.einheit });
         for (const v of d.vorrat.filter(v => v.zutat === z.zutat && v.menge != null && v.menge !== '' && v.einheit === z.einheit).sort((a, b) => (b.geoeffnet ? 1 : 0) - (a.geoeffnet ? 1 : 0))) { const nimm = Math.min(rest, Number(v.menge)); v.menge = Math.round((Number(v.menge) - nimm) * 10) / 10; rest -= nimm; if (rest <= 0) break; }
         d.vorrat = d.vorrat.filter(v => !(v.zutat === z.zutat && v.menge !== null && v.menge !== '' && Number(v.menge) <= 0)); });
-      d.kochprotokolle.push({ id: kid, rezept: r.id, rezept_version: r.meta.version || 1, datum: heute(), portionen_gekocht: g, portionen_direkt_gegessen: e, vorrat_abzug: abgezogen.length ? 'bestaetigt' : 'keiner', abgezogen, nochmal: form.nochmal.value, geschmack: form.geschmack.value, konsistenz: form.konsistenz.value, portion: form.portion.value, schwierigkeit: form.schwierigkeit.value, dauer_min: Number(form.dauer.value) || null, aenderung: form.aenderung.value.trim(), notiz: form.notiz.value, variante: r.angepasst && r.angepasst.variante ? r.angepasst.variante : null, naehr_pro_portion: r.naehrwerte.pro_portion, naehr_status: r.naehrwerte.status, angepasst: r.angepasst ? { mengen: r.angepasst.mengen, portionen: r.angepasst.portionen, beschreibung: r.angepasst.beschreibung } : null });
+      d.kochprotokolle.push({ id: kid, rezept: r.id, rezept_version: r.meta.version || 1, datum: heute(), portionen_gekocht: g, portionen_direkt_gegessen: e, vorrat_abzug: abgezogen.length ? 'bestaetigt' : 'keiner', abgezogen, nochmal: form.nochmal.value, geschmack: form.geschmack.value, konsistenz: form.konsistenz.value, portion: form.portion.value, schwierigkeit: form.schwierigkeit.value, dauer_min: Number(form.dauer.value) || null, probleme: [...form.querySelectorAll('input[name="problem"]:checked')].map(x => x.value), problem_text: (form.problem_text ? form.problem_text.value.trim() : ''), aenderung: form.aenderung.value.trim(), notiz: form.notiz.value, variante: r.angepasst && r.angepasst.variante ? r.angepasst.variante : null, naehr_pro_portion: r.naehrwerte.pro_portion, naehr_status: r.naehrwerte.status, angepasst: r.angepasst ? { mengen: r.angepasst.mengen, portionen: r.angepasst.portionen, beschreibung: r.angepasst.beschreibung } : null });
       if (e > 0) { const ein = rezeptEintrag(r, e, 'frisch', { kochprotokoll: kid }); ein.datum = heute(); d.tagebuch.push(ein); }
       if (g - e > 0) { const gr = restGrenze(r, lager); d.restportionen.push({ id: uid('rest'), kochprotokoll: kid, rezept: r.id, rezept_version: r.meta.version || 1, titel: r.titel, portionen: g - e, lagerort: lager, gekocht_am: heute(), verbrauchen_bis: gr.bis, grenze_beleg: gr.beleg, naehr_pro_portion: r.naehrwerte.pro_portion, mikro_pro_portion: r.naehrwerte.mikro_pro_portion || null, status: r.naehrwerte.status }); }
       delete d.fortschritt[r.id];
@@ -781,6 +791,65 @@ function einkaufsPosten() {
     return p;
   });
 }
+/* ---------- Praktische Kaufeinheiten (zusätzlich zur präzisen Rezeptmenge) ----------
+   Nur mit belegter Grundlage (USDA FoodData Central, SR Legacy – Portionsgewichte, abgerufen 2026-11-17) oder eigenem Stückgewicht.
+   Schwankende Größen → Spanne bzw. „abwiegen“; keine Umrechnung zwischen Einheiten ohne Grundlage. */
+const STUECK_BELEG = {
+  'zut-ei': { min: 44, max: 56, wort: ['Ei', 'Eier'], quelle: 'USDA SR Legacy 171287: Ei ohne Schale M 44 g, L 50 g, XL 56 g' },
+  'zut-zwiebel': { min: 70, max: 150, wort: ['Zwiebel', 'Zwiebeln'], quelle: 'USDA SR Legacy 170000: klein 70 g, mittel 110 g, groß 150 g' },
+  'zut-knoblauch': { min: 3, max: 3, wort: ['Zehe', 'Zehen'], quelle: 'USDA SR Legacy 169230: 1 Zehe ca. 3 g – Zehen schwanken stark' }
+};
+const EI_TEIL = { 'zut-eigelb': { je: 17, rest: 'zut-eiweiss', restJe: 33, wort: 'Eigelb', restWort: 'Eiweiß' }, 'zut-eiweiss': { je: 33, rest: 'zut-eigelb', restJe: 17, wort: 'Eiweiß', restWort: 'Eigelb' } };
+const EI_TEIL_QUELLE = 'USDA SR Legacy 172184/172183: großes Ei – Eigelb 17 g, Eiweiß 33 g';
+const ZITRUS = { 'zut-zitrone': { saft: 48, frucht: [58, 84], wort: ['Zitrone', 'Zitronen'], quelle: 'USDA SR Legacy 167747/167746: Saft je Zitrone 48 g, Frucht ohne Schale 58–84 g' }, 'zut-limette': { saft: 44, frucht: [67, 67], wort: ['Limette', 'Limetten'], quelle: 'USDA SR Legacy 168156/168155: Saft je Limette 44 g, Frucht 67 g' } };
+const frischKraut = id => { const z = Z[id]; return !!z && z.kategorie === 'gewuerz_kraut' && /petersil|koriander$|basilikum|schnittlauch|minze|dill|kerbel|estragon|salbei|thymian|rosmarin|majoran|oregano frisch|zitronenmelisse/i.test(id + ' ' + z.name) && !/saat|gemahlen|getrocknet|pulver|wurzel/i.test(id + ' ' + z.name); };
+// Zutaten, die üblicherweise stückweise gekauft werden (nur dort ist ein eigenes Stückgewicht sinnvoll)
+const stueckware = id => { const z = Z[id]; if (!z || !['gemuese', 'obst', 'ei'].includes(z.kategorie)) return false; const n = id + ' ' + z.name;
+  return (id === 'zut-ei' || /zwiebel|schalotte|knoblauch|karotte|möhre|paprika|zucchini|aubergine|gurke|tomate|kartoffel|süßkartoffel|apfel|birne|banane|avocado|mango|lauch|porree|fenchel|kohlrabi|brokkoli|blumenkohl|kürbis|rote bete|pastinake|sellerieknolle|ingwer|chili|peperoni|pfirsich|nektarine|orange|grapefruit|kiwi/i.test(n)) && !/dose|passiert|tiefgek|getrocknet|mark|saft|püree|pulver|stück(e)? aus|konserve|eingelegt|cherry/i.test(n); };
+function eigenesStueck(zid) { const s = (D.stueckgewichte || {})[zid]; return s && s.g > 0 ? s : null; }
+// Rezepte zur Resteverwertung: enthalten die Zutat, sind nicht schon ausgewählt; wenige Zutaten zuerst
+function resteRezepte(zid, n = 3) {
+  const drin = new Set(D.auswahl.map(a => a.rezept));
+  return K.rezepte.map(r => R[r.id] || r).filter(r => !drin.has(r.id) && !ausgeschlossen(r).length && r.zutaten.some(z => z.zutat === zid && z.menge != null)).sort((a, b) => a.zutaten.length - b.zutaten.length).slice(0, n);
+}
+const resteLinks = l => l.map(r => `<a href="#/rezept/${esc(r.id)}">${esc(kurztitel(r.titel))}</a>`).join(', ');
+// Zitrusfrüchte: Saft, Scheiben/Spalten und Abrieb aus denselben Früchten planen (über alle ausgewählten Rezepte)
+function zitrusPlan(zid) {
+  const c = ZITRUS[zid]; if (!c) return null; let saft = 0, stueckG = 0, abrieb = 0, offen = 0;
+  for (const a of D.auswahl) { const r = R[a.rezept]; if (!r) continue; const f = faktor(r, a.jetzt + a.vorkochen);
+    r.zutaten.filter(z => z.zutat === zid).forEach(z => { const t = (z.text || '') + ' ' + (z.zustand || '');
+      if (z.menge == null) { offen++; return; } const m = z.menge * f;
+      if (z.einheit === 'ml' || /saft/i.test(t)) saft += m; else if (/abrieb|schale/i.test(t) && z.einheit === 'g') abrieb += m; else if (z.einheit === 'g') stueckG += m; else offen++; }); }
+  const ausSaft = saft ? Math.ceil(saft / c.saft - 0.05) : 0; const ausStueckMin = stueckG ? Math.ceil(stueckG / c.frucht[1]) : 0; const ausStueckMax = stueckG ? Math.ceil(stueckG / c.frucht[0]) : 0;
+  const min = Math.max(ausSaft + ausStueckMin, abrieb || offen ? 1 : 0), max = Math.max(ausSaft + ausStueckMax, abrieb || offen ? 1 : 0);
+  return { saft, stueckG, abrieb, offen, min, max, c };
+}
+function kaufHinweis(p, alle) {
+  const h = []; const zid = p.zutat; const f = p.fehlt; if (!(f > 0) && !p.texte.length) return '';
+  // 1) Bruchteile von Stück/Schote/Stängel → ganze Einheiten kaufen
+  if (['Stück', 'Schote', 'Stängel', 'Zweig', 'Blatt'].includes(p.einheit) && f > 0 && Math.abs(f - Math.round(f)) > 0.01) h.push(`kaufen: ${Math.ceil(f)} ${esc(p.einheit)} (Rezept braucht ${fmtMenge(f, p.einheit)} – Rest bleibt übrig)`);
+  // 2) Eigelb/Eiweiß → ganze Eier, mit Resteverwertung des anderen Teils
+  if (zid && EI_TEIL[zid] && p.einheit === 'g' && f > 0) { const t = EI_TEIL[zid]; const n = Math.ceil(f / t.je - 0.05); const rr = resteRezepte(t.rest);
+    h.push(`≈ ${n} ${n === 1 ? 'Ei' : 'Eier'} für ${fmtMenge(f, 'g')} g ${t.wort} (je großes Ei ca. ${t.je} g; bei kleineren Eiern eher eins mehr – ${esc(EI_TEIL_QUELLE)}). Übrig: ca. ${n * t.restJe} g ${t.restWort}${rr.length ? ` – passt z. B. zu ${resteLinks(rr)}` : ' – im Katalog gibt es dafür noch kein weiteres passendes Rezept'}.${alle.some(x => x.zutat === 'zut-ei') ? ' Zusammen mit dem Posten „Ei“ einkaufen.' : ''}`); }
+  // 3) Stückgewicht: eigenes (Vorrang) oder belegtes → Spanne
+  const eig = zid && eigenesStueck(zid); const sb = zid && STUECK_BELEG[zid];
+  if ((eig || sb) && p.einheit === 'g' && f > 0) {
+    const [lo, hi] = eig ? [eig.g, eig.g] : [sb.min, sb.max]; const a = Math.ceil(f / hi - 0.05), b = Math.ceil(f / lo - 0.05); const w = sb ? sb.wort : ['Stück', 'Stück'];
+    h.push(`≈ ${a === b ? a : a + '–' + b} ${b === 1 ? w[0] : w[1]} ${eig ? `(dein Stückgewicht ${zahlDE(eig.g)} g)` : `(${esc(sb.quelle)})`} – bei Bedarf abwiegen`);
+  }
+  // 4) Zitrusfrüchte: einmal pro Frucht planen (Saft + Abrieb + Scheiben aus denselben Früchten)
+  if (zid && ZITRUS[zid] && alle.find(x => x.zutat === zid) === p) { const z = zitrusPlan(zid);
+    if (z && z.max) { const teile = [z.saft ? `Saft ${fmtMenge(z.saft, 'ml')} ml/g` : '', z.stueckG ? `Scheiben/Spalten ${fmtMenge(z.stueckG, 'g')} g` : '', z.abrieb ? `Abrieb ${fmtMenge(z.abrieb, 'g')} g (Schale derselben Frucht, unbehandelt kaufen)` : '', z.offen ? 'ohne Mengenangabe zum Servieren' : ''].filter(Boolean);
+      h.push(`${esc(z.c.wort[1])} insgesamt: ca. ${z.min === z.max ? z.min : z.min + '–' + z.max} Stück für ${teile.join(', ')} – nicht doppelt kaufen (${esc(z.c.quelle)}; Saftmenge schwankt, lieber eine mehr).`); } }
+  // 5) Frische Kräuter in kleinen Mengen → kleinste Kaufeinheit, Rest einplanen
+  if (zid && frischKraut(zid) && p.einheit === 'g' && f > 0 && f < 40) { const rr = resteRezepte(zid); h.push(`kleinste Kaufeinheit (Bund oder Topf) – Gewicht je Bund ist nicht belegt, also abwiegen oder schätzen.${rr.length ? ` Rest z. B. für ${resteLinks(rr)}.` : ''}`); }
+  // 6) Gleiche Zutat in anderen Einheiten: nicht zusammenrechnen
+  if (zid) { const andere = alle.filter(x => x !== p && x.zutat === zid && x.einheit !== p.einheit && !(ZITRUS[zid])); if (andere.length && alle.find(x => x.zutat === zid) === p) h.push(`auch als ${andere.map(x => x.menge ? fmtMenge(x.fehlt, x.einheit) + ' ' + esc(x.einheit || '') : esc(x.texte.join(', '))).join(' und ')} – ohne belegte Umrechnung nicht zusammengerechnet`); }
+  // Eigenes Stückgewicht eintragen (Obst, Gemüse, Eier in g) – wird ab dann für die Spanne verwendet
+  const stkFeld = zid && p.einheit === 'g' && f > 0 && stueckware(zid) && !ZITRUS[zid]
+    ? `<details class="stk-eigen"><summary>${eig ? `eigenes Stückgewicht: ${zahlDE(eig.g)} g – ändern` : 'eigenes Stückgewicht eintragen'}</summary><label class="feld"><span>1 Stück wiegt (g)</span><input type="number" inputmode="decimal" min="1" max="5000" data-stk-g="${esc(zid)}" value="${eig ? esc(eig.g) : ''}" style="width:6em"></label> <button type="button" class="klein" data-a="stk-speichern" data-v="${esc(zid)}">Speichern</button>${eig ? ` <button type="button" class="klein still" data-a="stk-weg" data-v="${esc(zid)}">entfernen</button>` : ''}<p class="leise klein">Einmal abwiegen genügt. Gilt nur auf diesem Gerät.</p></details>` : '';
+  return h.length || stkFeld ? `<br><span class="kaufhinweis klein">${h.map(x => `<span>${x}</span>`).join('')}${stkFeld}</span>` : '';
+}
 function vEinkauf() {
   if (!D.auswahl.length) return `<h1>Einkauf</h1>${planTabs('einkauf')}<p class="leer">Die Einkaufsliste entsteht aus deiner <a href="#/auswahl">Auswahl</a>.</p>`;
   const posten = einkaufsPosten(); const gv = D.einstellungen.grundvorrat;
@@ -790,7 +859,7 @@ function vEinkauf() {
   const optional = posten.filter(p => p.bedarf === 'optional' && !(p.vorrat && p.vorrat.vorhanden && !p.pruefen && p.fehlt <= 0));
   const da = posten.filter(p => p.vorrat && p.vorrat.vorhanden && !p.pruefen && p.fehlt <= 0);
   const zeile = p => { const k = D.einkauf.abgehakt[p.key]; const menge = p.menge ? `${fmtMenge(p.fehlt, p.einheit)} ${esc(p.einheit)}` : ''; const txt = p.texte.length ? esc(p.texte.join(' + ')) : '';
-    return `<li class="${k ? 'erledigt' : ''}"><input type="checkbox" data-a="abhaken" data-v="${esc(p.key)}" ${k ? 'checked' : ''} aria-label="${esc(p.name)} abhaken"><span>${esc(p.name)}<br><span class="leise klein">${esc(p.rezepte.join(', '))}${p.pruefen ? ' · im Vorrat, Menge prüfen' : ''}${p.vorrat && p.vorrat.vorhanden && p.fehlt < p.menge && !p.pruefen ? ` · ${fmtMenge(p.menge - p.fehlt, p.einheit)} ${esc(p.einheit)} schon da` : ''}</span>${packungsText(p)}</span><span class="ekmenge">${menge}${menge && txt ? ' + ' : ''}${txt}</span></li>`; };
+    return `<li class="${k ? 'erledigt' : ''}"><input type="checkbox" data-a="abhaken" data-v="${esc(p.key)}" ${k ? 'checked' : ''} aria-label="${esc(p.name)} abhaken"><span>${esc(p.name)}<br><span class="leise klein">${esc(p.rezepte.join(', '))}${p.pruefen ? ' · im Vorrat, Menge prüfen' : ''}${p.vorrat && p.vorrat.vorhanden && p.fehlt < p.menge && !p.pruefen ? ` · ${fmtMenge(p.menge - p.fehlt, p.einheit)} ${esc(p.einheit)} schon da` : ''}</span>${packungsText(p)}${kaufHinweis(p, posten)}</span><span class="ekmenge">${menge}${menge && txt ? ' + ' : ''}${txt}</span></li>`; };
   const gruppiert = liste => LADEN.map((n, ix) => { const g = liste.filter(p => (p.zutat ? ladenbereich(p.zutat) : 10) === ix); return g.length ? `<h3>${esc(n)}</h3><ul>${g.map(zeile).join('')}</ul>` : ''; }).join('');
   const abgehakt = kaufen.concat(optional).filter(p => D.einkauf.abgehakt[p.key]).length;
   return `<h1>Einkauf</h1>${planTabs('einkauf')}<p class="leise">Aus ${D.auswahl.length} Gericht(en), inklusive Vorkoch-Portionen. Vorrat ist abgezogen, wo Einheit und Menge bekannt sind.</p>${einkaufKostenHtml(kaufen.concat(optional))}
@@ -1019,6 +1088,11 @@ document.addEventListener('click', ev => {
     case 'farbe': farbeSetzen(v); route(); break;
     case 'intro-zeigen': try { sessionStorage.removeItem('fitomat-intro'); localStorage.removeItem(INTRO_AUS); } catch (e) { /* */ } logoIntro(); break;
     case 'update-jetzt': updateAnwenden(); break;
+    case 'stk-speichern': { const inp = document.querySelector(`[data-stk-g="${CSS.escape(v)}"]`); const g = Number(String(inp && inp.value || '').replace(',', '.'));
+      if (!(g >= 1 && g <= 5000)) { feldHinweis(inp, 'Bitte ein Gewicht zwischen 1 und 5000 g eintragen.'); return; }
+      aendere(`Stückgewicht für ${Z[v] ? Z[v].name : 'Zutat'} gespeichert`, d => { (d.stueckgewichte = d.stueckgewichte || {})[v] = { g, datum: heute() }; }); break; }
+    case 'hilfen-umschalten': aendere(null, d => { d.einstellungen.hilfen_offen = !d.einstellungen.hilfen_offen; }); toast(D.einstellungen.hilfen_offen ? 'Anfängerhilfen werden aufgeklappt angezeigt' : 'Kompakte Ansicht – Hilfen bleiben antippbar'); break;
+    case 'stk-weg': aendere('Eigenes Stückgewicht entfernt', d => { if (d.stueckgewichte) delete d.stueckgewichte[v]; }); break;
     case 'update-suchen': updateSuchen(true); break;
     case 'bereich': f.bereich = v; route(); break;
     case 'filter-panel': filterOffen = !filterOffen; route(); if (!filterOffen) { const k = $('#kb-ergebnis'); if (k) k.scrollIntoView({ block: 'start' }); } break;

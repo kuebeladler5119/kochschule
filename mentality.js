@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611172221 */
+/* Fitomat-Build 202611180003 */
 /* Fitomat – Mentality: kurze, sachliche Übungen für konkrete Situationen. Alles lokal; nichts wird gesendet.
    Grundlagen, Belege und Grenzen: Vault „70 Mentality/Mentality – Grundlagen“. Keine Diagnosen, keine Heilversprechen. */
 

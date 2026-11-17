@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611172221 */
+/* Fitomat-Build 202611180003 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -321,12 +321,30 @@ function tagWerte(tag) {
   D.tagebuch.filter(e => e.datum === tag).forEach(e => { s.eintraege++; for (const k of ['kcal', 'protein', 'kh', 'fett', 'ballaststoffe', 'zucker', 'salz']) { const v = e.naehr ? e.naehr[k] : null; if (v == null) s.fehlend[k] = (s.fehlend[k] || 0) + 1; else s[k] += v; } });
   return s;
 }
+/* Mikronährstoffe eines Tages. Je Nährstoff:
+   mit/ohne = Einträge mit bzw. ohne Wert; abdeckung = Mittel der Zutatenmengen-Abdeckung (nur Einträge mit Wert);
+   minAbd = schlechteste Abdeckung innerhalb eines zusammengesetzten Gerichts; etikett/allgemein = Herkunft der Werte;
+   ohneTitel = welche Einträge keinen Wert liefern. „100 % der Einträge“ heißt also nicht „alle Zutaten erfasst“. */
+/* Tagesbilanz: Energie als Ring (nur mit Ziel), Makros als Kacheln. „mind.“, wenn Einträge ohne Wert dabei sind.
+   Neutral formuliert: kein Lob, keine Schuld – „noch“ bzw. „über dem Ziel“. */
+function bilanzHtml(s, ziele) {
+  const z = k => ziele && ziele[k] != null && ziele[k] !== '' ? Number(ziele[k]) : null; const mind = k => s.fehlend[k] ? 'mind. ' : '';
+  const zk = z('kcal'); const anteil = zk ? Math.min(1, s.kcal / zk) : 0; const R0 = 52, U = 2 * Math.PI * R0;
+  const ring = zk ? `<svg class="bilanz-ring" viewBox="0 0 120 120" role="img" aria-label="${esc(mind('kcal') + zahlDE(s.kcal) + ' von ' + zahlDE(zk) + ' kcal')}"><circle cx="60" cy="60" r="${R0}" class="ring-grund"/><circle cx="60" cy="60" r="${R0}" class="ring-wert${s.kcal > zk ? ' ueber' : ''}" stroke-dasharray="${(anteil * U).toFixed(1)} ${U.toFixed(1)}" transform="rotate(-90 60 60)"/></svg>` : '';
+  const rest = zk ? (s.kcal <= zk ? `noch ${zahlDE(zk - s.kcal)} kcal` : `${zahlDE(s.kcal - zk)} kcal über dem Ziel`) : 'kein Energieziel gesetzt';
+  const kachel = (k, name, einh) => { const zz = z(k); const p = zz ? Math.min(100, Math.round(s[k] / zz * 100)) : null;
+    return `<div class="makro-kachel"><span class="mk-name">${name}</span><span class="mk-wert"><b>${mind(k)}${zahlDE(s[k])}</b><small> ${einh}</small></span><span class="mk-ziel">${zz ? 'von ' + zahlDE(zz) + ' ' + einh : 'kein Ziel'}</span>${p != null ? `<span class="spur mini" aria-hidden="true"><i style="width:${p}%"></i></span>` : ''}</div>`; };
+  return `<div class="bilanz${zk ? '' : ' ohne-ziel'}">
+    <div class="bilanz-energie">${ring}<div class="bilanz-zahl"><span class="bz-wert">${mind('kcal')}${zahlDE(s.kcal)}</span><span class="bz-einheit">kcal${zk ? ' von ' + zahlDE(zk) : ' heute'}</span><span class="bz-rest">${rest}</span></div></div>
+    <div class="bilanz-makros">${kachel('protein', 'Protein', 'g')}${kachel('kh', 'Kohlenh.', 'g')}${kachel('fett', 'Fett', 'g')}</div></div>
+    <p class="leise klein bilanz-fuss">Ballaststoffe ${mind('ballaststoffe')}${zahlDE(s.ballaststoffe, 1)}${z('ballaststoffe') ? ' / ' + zahlDE(z('ballaststoffe')) : ''} g${!ziele ? ' · <a href="#/ziele">Ziele festlegen (optional)</a>' : ''}</p>`;
+}
 function tagMikro(tag) {
   const ein = D.tagebuch.filter(e => e.datum === tag); const erg = {};
   for (const k of Object.keys(K.naehrstoffe || {})) {
-    let w = 0, mit = 0, ohne = 0, abd = 0;
-    ein.forEach(e => { const m = e.mikro && e.mikro[k]; if (m && m.w != null) { w += m.w; mit++; abd += (m.abdeckung ?? 100); } else ohne++; });
-    erg[k] = { w, mit, ohne, abdeckung: mit ? Math.round(abd / mit) : 0 };
+    let w = 0, mit = 0, ohne = 0, abd = 0, minAbd = 100, etikett = 0, allgemein = 0; const ohneTitel = [];
+    ein.forEach(e => { const m = e.mikro && e.mikro[k]; if (m && m.w != null) { w += m.w; mit++; const a = m.abdeckung ?? 100; abd += a; minAbd = Math.min(minAbd, a); if (m.quelle === 'etikett') etikett++; else allgemein++; } else { ohne++; ohneTitel.push(kurztitel(e.titel || '')); } });
+    erg[k] = { w, mit, ohne, abdeckung: mit ? Math.round(abd / mit) : 0, minAbd: mit ? minAbd : 0, etikett, allgemein, ohneTitel };
   }
   return { erg, n: ein.length };
 }
@@ -359,7 +377,23 @@ const markeName = p => `${p.marke ? p.marke + ' ' : ''}${p.name}${p.variante ? '
 const PRODUKT = id => (K.produkte || []).find(p => p.id === id);
 function markenEintrag(p, menge) {
   const e = eigenerEintrag({ id: p.id, name: markeName(p), naehr: p.naehr || {}, bezug: p.bezug, quelle: { hersteller: 'Herstellerangabe', haendler: 'Händlerangabe', verpackung: 'Verpackungsangabe' }[p.quelle_art] || 'Produktangabe', quelle_datum: p.abgerufen, pruefstatus: 'katalog-' + (p.zuordnung || 'wahrscheinlich') }, menge);
-  e.quelle = 'marke'; e.produkt = p.id; delete e.lebensmittel; return e;
+  e.quelle = 'marke'; e.produkt = p.id; delete e.lebensmittel;
+  const mk = markenMikro(p); if (mk) { Object.values(mk).forEach(v => { if (v.w != null) v.w = Math.round(v.w * menge * 1000) / 1000; }); e.mikro = mk; }
+  return e;
+}
+/* Mikronährstoffe eines Markenprodukts NUR aus Etikettangaben (z. B. „vitamin_b6_mg|0.29“ je 100 g/ml) – nichts wird ergänzt.
+   Nicht angegebene Nährstoffe bleiben unbekannt (w: null). Einheiten werden auf die App-Einheit umgerechnet (z. B. mg → µg). */
+function markenMikro(p) {
+  const m = p && p.mikro; if (!m || !Object.keys(m).length || !K.naehrstoffe) return null;
+  const faktor = (von, nach) => von === nach ? 1 : von === 'mg' && nach === 'µg' ? 1000 : von === 'µg' && nach === 'mg' ? 0.001 : von === 'g' && nach === 'mg' ? 1000 : null;
+  const out = {}; Object.keys(K.naehrstoffe).forEach(k => { out[k] = { w: null, abdeckung: 0 }; }); let treffer = 0;
+  for (const [schl, wert] of Object.entries(m)) {
+    const x = String(schl).match(/^(.+)_(mg|ug|µg|g)$/); if (!x || wert == null || !isFinite(Number(wert))) continue;
+    const k = x[1].replace(/^vitamin_/, 'vit_'); if (!K.naehrstoffe[k]) continue;
+    const f = faktor(x[2] === 'ug' ? 'µg' : x[2], K.naehrstoffe[k].einheit); if (f == null) continue;
+    out[k] = { w: Number(wert) * f / 100, abdeckung: 100, quelle: 'etikett' }; treffer++;
+  }
+  return treffer ? out : null;
 }
 // Mengen-Schnellwahl: nur belegte Mengen (Packung, Abtropfgewicht, Herstellerportionen)
 function mengenWahlHtml(id, typ, p) {
@@ -408,8 +442,7 @@ function vTagebuch2(datum) {
     <button class="klein" data-a="tb-tag" data-v="1" aria-label="Nächster Tag" ${tag >= heute() ? 'disabled' : ''}>${ico('weiter', 'klein')}</button></div>
   ${tag === heute() ? trainingRueckfrageHtml(true) : ''}
   <button class="haupt gross-plus" data-a="tb-fokus">${ico('plus')} Essen hinzufügen</button>
-  <div class="flaeche tb-kompakt"><div class="balken">${MAKROS.filter(([k]) => k === 'kcal' || k === 'protein').map(zeileBalken).join('')}</div>
-    <p class="klein" style="margin:4px 0 0">${MAKROS.filter(([k]) => k !== 'kcal' && k !== 'protein').map(([k, n, einh]) => `${n} <b>${zahlDE(s[k], 1)}</b>${ziele && ziele[k] ? ' / ' + zahlDE(ziele[k]) : ''} ${einh}`).join(' · ')}</p>
+  <div class="flaeche tb-kompakt">${bilanzHtml(s, ziele)}
     <details class="klein"><summary class="leise">Grundlage und Vollständigkeit</summary><p class="leise klein" style="margin:4px 0">Laut protokollierten Einträgen (${s.eintraege}). ${ziele ? `Ziele: ${esc(ziele.herkunft)}.` : '<a href="#/ziele">Ziele festlegen</a> (optional).'} Fehlende Einträge heißen nicht, dass nichts gegessen wurde.</p></details>
     <label style="margin-top:6px"><input type="checkbox" data-a="tb-vollstaendig" ${info.vollstaendig ? 'checked' : ''}> Tag vollständig protokolliert</label></div>
   <h2 id="tb-hinzufuegen">Essen hinzufügen</h2>

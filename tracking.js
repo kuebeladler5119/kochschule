@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611172221 */
+/* Fitomat-Build 202611180003 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -171,19 +171,31 @@ function mikroHtml(tag) {
   const mk = tagMikro(tag); const p = refPerson(); const tr = mikroTrend(tag); const fmt = (w, k) => zahlDE(w, w < 10 ? 1 : 0) + ' ' + esc(K.naehrstoffe[k].einheit);
   const ARTEN = { empfehlung: 'Empfehlung', schaetzwert: 'Schätzwert', richtwert: 'Richtwert' };
   if (!mk.n) return '<p class="leise">Noch keine Einträge an diesem Tag.</p>';
-  const zeilen = Object.entries(mk.erg).filter(([k]) => k !== 'gesfs').map(([k, v]) => {
+  /* Datenlage des Tages in Worten: Einträge ohne Mikrodaten, Rezepte mit Teilabdeckung, Etikett vs. allgemeine Werte */
+  const alleK = Object.keys(mk.erg).filter(k => k !== 'gesfs'); const tb = D.tagebuch.filter(e => e.datum === tag);
+  const ohneMikro = tb.filter(e => !e.mikro || !Object.values(e.mikro).some(m => m && m.w != null));
+  const rezTeil = tb.filter(e => e.rezept && e.mikro && Object.values(e.mikro).some(m => m && m.w != null && (m.abdeckung ?? 100) < 100));
+  const mitEtikett = tb.filter(e => e.mikro && Object.values(e.mikro).some(m => m && m.quelle === 'etikett'));
+  const datenlage = `<div class="mikro-datenlage klein"><b>Datenlage heute</b> (${tb.length} Einträge):<ul>
+    <li>${tb.length - ohneMikro.length} mit Mikronährstoffwerten, ${ohneMikro.length} ganz ohne${ohneMikro.length ? ` (${esc(ohneMikro.slice(0, 4).map(e => kurztitel(e.titel || '')).join(', '))}${ohneMikro.length > 4 ? ' …' : ''} – meist Markenprodukte oder eigene Produkte ohne Angaben)` : ''}.</li>
+    ${rezTeil.length ? `<li>${rezTeil.length} Gericht${rezTeil.length === 1 ? '' : 'e'} nur teilweise erfasst: Nicht für alle Zutaten gibt es Werte – angezeigt wird dann „mind.“.</li>` : ''}
+    ${mitEtikett.length ? `<li>${mitEtikett.length} Markenprodukt${mitEtikett.length === 1 ? '' : 'e'} mit einzelnen Etikettwerten; alle anderen Nährstoffe dieses Produkts sind unbekannt.</li>` : ''}
+    <li>Lebensmittel und Rezepte: allgemeine Werte (BLS/USDA, meist roh) – keine Garverluste eingerechnet.</li></ul></div>`;
+  const zeilen = alleK.map(k => { const v = mk.erg[k];
     const r = refWert(k, p); const o = obergrenzeWert(k); const mind = v.ohne || v.abdeckung < 100;
     const anteil = r && v.mit ? Math.round(v.w / r.max * 100) : null;   // bei zwei Werten gegen den höheren – nichts schönrechnen
     const ueber = o && v.mit && o.gilt_fuer === 'gesamtzufuhr' && v.w > o.wertApp;
-    return `<tr><td>${esc(K.naehrstoffe[k].name)}</td>
-      <td>${v.mit ? (mind ? 'mind. ' : '') + fmt(v.w, k) : 'unbekannt'}<br><span class="leise">${v.mit}/${v.mit + v.ohne} Einträge${v.mit ? ' · ' + v.abdeckung + ' %' : ''}</span></td>
-      <td>${r ? `${r.mehrere ? zahlDE(r.min, 1) + '–' : ''}${fmt(r.max, k)}<br><span class="leise">${esc(ARTEN[r.art] || r.art)}</span>` : '<span class="leise">–</span>'}</td>
-      <td>${anteil != null ? `<span class="spur mini"><i style="width:${Math.min(100, anteil)}%"></i></span>${mind ? 'mind. ' : ''}${anteil} %` : '<span class="leise">–</span>'}${ueber ? '<br><span class="chip warn">über EFSA-Höchstmenge laut Protokoll</span>' : ''}</td>
-      <td>${tr.werte ? (tr.werte[k].unvollstaendig ? 'mind. ' : '') + fmt(tr.werte[k].w, k) : '<span class="leise">–</span>'}</td></tr>`;
+    const wert = v.mit ? (mind ? 'mind. ' : '') + fmt(v.w, k) : 'unbekannt';
+    const lage = v.mit ? `Werte aus ${v.mit} von ${v.mit + v.ohne} Einträgen${v.ohne ? ` (ohne Wert: ${esc(v.ohneTitel.slice(0, 3).join(', '))}${v.ohneTitel.length > 3 ? ' …' : ''})` : ''}${v.minAbd < 100 ? `; in mindestens einem Gericht nur ${v.minAbd} % der Zutatenmenge mit Wert` : ''}.${v.etikett ? ` ${v.etikett}× Etikettwert, ${v.allgemein}× allgemeiner Wert.` : ''}` : 'Kein Eintrag dieses Tages liefert hierfür einen Wert – unbekannt, nicht 0.';
+    return `<details class="mikro-zeile${v.mit ? '' : ' unbekannt'}"><summary><span class="mz-name">${esc(K.naehrstoffe[k].name)}</span><span class="mz-wert">${wert}</span><span class="mz-anteil">${anteil != null ? `<span class="spur mini" aria-hidden="true"><i style="width:${Math.min(100, anteil)}%"></i></span><span>${mind ? '≥ ' : ''}${anteil} %</span>` : '<span class="leise">–</span>'}</span>${ueber ? '<span class="chip warn mz-chip">über EFSA-Höchstmenge laut Protokoll</span>' : ''}</summary>
+      <dl class="mz-details"><dt>Referenz pro Tag</dt><dd>${r ? `${r.mehrere ? zahlDE(r.min, 1) + '–' : ''}${fmt(r.max, k)} (${esc(ARTEN[r.art] || r.art)})${anteil != null ? ` – Anteil gegen den ${r.mehrere ? 'höheren ' : ''}Wert` : ''}` : (p ? 'kein Referenzwert hinterlegt' : 'Profilangaben fehlen (Alter, Geschlecht)')}</dd>
+      <dt>Ø vollständige Tage</dt><dd>${tr.werte ? (tr.werte[k].unvollstaendig ? 'mind. ' : '') + fmt(tr.werte[k].w, k) + ` (${tr.n} Tage)` : `erst ab 3 vollständigen Tagen (bisher ${tr.n})`}</dd>
+      <dt>Datenlage</dt><dd>${lage}</dd>${o && o.gilt_fuer !== 'gesamtzufuhr' ? `<dt>Höchstmenge</dt><dd>EFSA-Höchstmenge gilt hier nur für Nahrungsergänzung bzw. eine bestimmte Form – kein Vergleich mit dem Protokoll.</dd>` : ''}</dl></details>`;
   }).join('');
-  return `<p class="leise klein"><b>Schätzung</b> aus allgemeinen BLS-Werten der Zutaten (meist Rohzustand) – Verluste beim Garen sind nicht eingerechnet, eigene Produkte ohne Angaben fehlen. Unbekannt ist nicht 0.</p>
+  return `<p class="leise klein"><b>Schätzung</b>, keine Messung. „mind.“ bzw. „≥“ heißt: Es fehlen Werte, die echte Zufuhr ist vermutlich höher. Unbekannt ist nicht 0. Zeile antippen für Referenz, Wochenschnitt und Datenlage.</p>
     ${p ? '' : '<p class="hinweis klein">Für passende Referenzwerte bitte Alter (ab 19) und Geschlecht im <a href="#/einrichtung/1">Profil</a> eintragen. Bei Schwangerschaft, Stillzeit oder Erkrankungen zeigt die App keine Referenzwerte.</p>'}
-    <div class="tabelle-wrap"><table class="mikro"><thead><tr><th>Nährstoff</th><th>Heute protokolliert</th><th>Referenz pro Tag</th><th>Anteil</th><th>Ø vollständige Tage</th></tr></thead><tbody>${zeilen}</tbody></table></div>
+    ${datenlage}
+    <div class="mikro-liste">${zeilen}</div>
     <p class="leise klein">${tr.werte ? `Durchschnitt über ${tr.n} als vollständig markierte Tage der letzten Woche.` : `Durchschnitt erst ab 3 als vollständig markierten Tagen (bisher ${tr.n}).`}
     Referenzwerte: DGE/ÖGE (2025) für gesunde Erwachsene nach Alter und Geschlecht – sie gelten für Bevölkerungsgruppen, der Bedarf einzelner Menschen liegt meist darunter. <b>Eine niedrige protokollierte Zufuhr ist keine Diagnose eines Mangels</b>, und die App empfiehlt keine Nahrungsergänzung. Vitamin D: Schätzwert für fehlende Eigensynthese; über Lebensmittel kommen laut DGE nur wenige µg. Zink: Wert bei mittlerer Phytatzufuhr. Eisen bei Frauen 25–64: je nach Menopause 14–16 mg. Höchstmengen (EFSA) werden nur verglichen, wo sie für die Gesamtzufuhr gelten; bei Magnesium, Folsäure und Niacin betreffen sie nur Nahrungsergänzungen, bei Vitamin A nur vorgeformtes Vitamin A.</p>`;
 }
