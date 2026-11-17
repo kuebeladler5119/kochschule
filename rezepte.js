@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131313 */
+/* Fitomat-Build 202611172221 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
@@ -562,7 +562,7 @@ document.addEventListener('click', ev => {
       varEditor.ersatz = varEditor.ersatz.filter(x => x.i !== Number(i)).concat([{ i: Number(i), text: z ? z.name : txt, zutat: z ? z.id : null, gramm: g }]); route(); const el = document.getElementById('var-form'); if (el) el.scrollIntoView({ block: 'start' }); break; }
     case 'var-ersatz-weg': varFormLesen(); varEditor.ersatz.splice(Number(b.dataset.ix), 1); route(); break;
     case 'anp-var-an': { const x = D.varianten[v][Number(b.dataset.ix)]; portionenWahl[v] = x.portionen; delete originalAnsicht[v]; aendere(`Variante „${x.name}“ angewendet – Rückgängig möglich`, d => { d.anpassungen = d.anpassungen || {}; d.anpassungen[v] = varianteAlsAnpassung(x); }, { mitUndo: true }); break; }
-    case 'anp-var-weg': { const ix = Number(b.dataset.ix); const x = D.varianten[v][ix]; if (!confirm(`Variante „${x.name}“ löschen?`)) return; varEditor = null;
+    case 'anp-var-weg': { const ix = Number(b.dataset.ix); const x = D.varianten[v][ix]; if (!bestaetigt(`Variante „${x.name}“ löschen?`)) return; varEditor = null;
       aendere('Variante gelöscht – Rückgängig möglich', d => { d.varianten[v].splice(ix, 1); const s = ((d.kochbuch || {}).variante_standard || {}); if (s[v] === ix) delete s[v]; else if (s[v] > ix) s[v] -= 1; if (d.anpassungen && d.anpassungen[v] && d.anpassungen[v].variante === x.name) delete d.anpassungen[v]; }, { mitUndo: true }); break; }
   }
 });
@@ -810,7 +810,7 @@ document.addEventListener('click', ev => {
     aendere(drin ? (a === 'kb-fav' ? 'Aus Favoriten entfernt' : 'Nicht mehr vorgemerkt') : (a === 'kb-fav' ? 'Als Favorit gemerkt' : 'Vorgemerkt: will ich kochen'), d => { kb(); d.kochbuch[feld] = drin ? d.kochbuch[feld].filter(x => x !== v) : [v, ...d.kochbuch[feld]]; }); }
   else if (a === 'kb-s-neu') sammlungNeu(null);
   else if (a === 'kb-s-umbenennen') { const s = kb().sammlungen.find(x => x.id === v); const n = (prompt('Neuer Name:', s.name) || '').trim().slice(0, 40); if (n) aendere('Sammlung umbenannt', d => { d.kochbuch.sammlungen.find(x => x.id === v).name = n; }); }
-  else if (a === 'kb-s-weg') { const s = kb().sammlungen.find(x => x.id === v); if (!confirm(`Sammlung „${s.name}“ löschen? Die Rezepte bleiben erhalten.`)) return; aendere('Sammlung gelöscht – Rückgängig möglich', d => { d.kochbuch.sammlungen = d.kochbuch.sammlungen.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/meinkochbuch/sammlungen'; }
+  else if (a === 'kb-s-weg') { const s = kb().sammlungen.find(x => x.id === v); if (!bestaetigt(`Sammlung „${s.name}“ löschen? Die Rezepte bleiben erhalten.`)) return; aendere('Sammlung gelöscht – Rückgängig möglich', d => { d.kochbuch.sammlungen = d.kochbuch.sammlungen.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/meinkochbuch/sammlungen'; }
   else if (a === 'kb-s-auswahl') { const s = kb().sammlungen.find(x => x.id === v); const ids = arr(s.rezepte).filter(id => R[id]);
     aendere(`${ids.length} Rezepte in der Einkaufsauswahl – gekauft ist noch nichts`, d => { ids.forEach(id => { if (!d.auswahl.some(x => x.rezept === id)) d.auswahl.push({ rezept: id, jetzt: Math.max(1, Math.round(standardPortionen(R[id]))), vorkochen: 0 }); }); }); }
 });
@@ -947,7 +947,7 @@ document.addEventListener('change', ev => { const h = ev.target.closest('[data-a
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v;
   if (a === 'ablauf-start') aendere('Ablauf gestartet – Häkchen werden gespeichert', d => { d.ablauf = { ids: v.split(','), start: new Date().toISOString(), erledigt: {} }; });
-  else if (a === 'ablauf-ende') { if (!confirm('Ablauf beenden? Die Häkchen werden verworfen; Rezepte, Vorrat und Tagebuch bleiben unverändert.')) return; aendere('Ablauf beendet – Rückgängig möglich', d => { delete d.ablauf; }); }
+  else if (a === 'ablauf-ende') { if (!bestaetigt('Ablauf beenden? Die Häkchen werden verworfen; Rezepte, Vorrat und Tagebuch bleiben unverändert.')) return; aendere('Ablauf beendet – Rückgängig möglich', d => { delete d.ablauf; }); }
 });
 /* ---------- Preise: kleiner, belegter, PRIVATER Bestand (nie im öffentlichen Katalog). Unbekannte Preise zählen nie als 0. ---------- */
 function preise() { D.preise = arr(D.preise); return D.preise; }

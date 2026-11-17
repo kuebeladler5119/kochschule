@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.24.0';
-const APP_BUILD = '202611131313';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.24.1';
+const APP_BUILD = '202611172221';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -112,10 +112,37 @@ function aendere(text, fn, { neuZeichnen = true } = {}) {
   undoStapel.push(JSON.stringify(D)); if (undoStapel.length > 25) undoStapel.shift();
   const zs = zwischenstaende(); if (!zs.length || zs[0].zeit.slice(0, 10) !== heute()) zwischenstand('automatisch: erste Änderung des Tages');
   fn(D); speichern();
-  if (text) toast(text, true);
-  if (neuZeichnen) route();
+  /* Erfolg erst melden, wenn die Ansicht tatsächlich aufgebaut wurde (route() liefert false bei einem Darstellungsfehler) */
+  const ok = neuZeichnen ? route() !== false : true;
+  if (text && ok && !speicherFehler) toast(text, true);
 }
 function rueckgaengig() { const s = undoStapel.pop(); if (!s) return; D = JSON.parse(s); speichern(); toast('Rückgängig gemacht'); route(); }
+
+/* ---------- Rückfragen in der App statt Browser-Dialog (confirm) ----------
+   bestaetigt(text): beim ersten Aufruf erscheint eine Rückfrage in der App und es wird false geliefert.
+   Nach „Ja“ wird derselbe Knopf erneut ausgelöst; dieser zweite Durchlauf bekommt true. So bleibt der Ablauf jeder Aktion unverändert. */
+let letzterKlick = null; let frageFreigabe = null;
+document.addEventListener('click', ev => { if (!ev.target.closest('#frage')) letzterKlick = ev.target.closest('button, a, [data-a], input[type="checkbox"]'); }, true);
+function bestaetigt(text, opt = {}) {
+  if (frageFreigabe === text) { frageFreigabe = null; return true; }
+  const b = letzterKlick;
+  frageZeigen(text, () => { if (b && b.isConnected) { frageFreigabe = text; b.click(); frageFreigabe = null; } else toast('Die Ansicht hat sich geändert – bitte noch einmal tippen.'); }, opt);
+  return false;
+}
+function frageZeigen(text, ja, { jaText = 'Ja, fortfahren', neinText = 'Abbrechen', gefahr = /lösch|verwerf|abbrech/i.test(text) } = {}) {
+  let el = $('#frage'); if (!el) { el = document.createElement('div'); el.id = 'frage'; document.body.appendChild(el); }
+  const vorher = document.activeElement;
+  el.setAttribute('role', 'alertdialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'frage-text');
+  el.innerHTML = `<div class="frage-karte"><p id="frage-text">${esc(text).replace(/\n/g, '<br>')}</p><div class="knopfreihe"><button type="button" class="haupt${gefahr ? ' gefahr' : ''}" data-frage="ja">${esc(jaText)}</button><button type="button" data-frage="nein">${esc(neinText)}</button></div></div>`;
+  el.hidden = false; document.body.classList.add('frage-offen');
+  const zu = () => { el.hidden = true; el.innerHTML = ''; document.body.classList.remove('frage-offen'); document.removeEventListener('keydown', taste, true); if (vorher && vorher.isConnected) try { vorher.focus(); } catch (e) { /* */ } };
+  const taste = e => { if (e.key === 'Escape') { e.preventDefault(); zu(); } };
+  document.addEventListener('keydown', taste, true);
+  el.querySelector('[data-frage="ja"]').addEventListener('click', e => { e.stopPropagation(); zu(); ja(); });
+  el.querySelector('[data-frage="nein"]').addEventListener('click', e => { e.stopPropagation(); zu(); });
+  el.onclick = e => { if (e.target === el) zu(); };
+  el.querySelector('[data-frage="nein"]').focus();
+}
 
 let toastZeit;
 function toast(text, mitUndo = false) {
@@ -399,8 +426,15 @@ function route() {
   const app = $('#app');
   const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, mentality: vMentality, planung: vPlanung, meinkochbuch: vMeinKochbuch, date: vDate, ablauf: vAblauf, preise: vPreise, jetzt: vJetzt };
   const fn = views[seite] || vEntdecken;
-  app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
-  if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
+  try {
+    app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
+    if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
+  } catch (err) {
+    console.error('Ansicht', seite, err);
+    app.innerHTML = `<div class="karte warnkarte"><h2>Diese Ansicht konnte nicht aufgebaut werden</h2><p>Deine Eingaben sind gespeichert. Das ist ein Programmfehler in Fitomat, nicht in deinen Daten.</p><p class="klein leise">Fehler: ${esc(String(err && err.message || err))} (Version ${esc(APP_VERSION)})</p><p><a class="knopf" href="#/${esc(haupt || 'entdecken')}">Zur Übersicht</a></p></div>`;
+    route.letzte = location.hash; navZaehler();
+    return false;
+  }
   if (location.hash !== route.letzte) { route.letzte = location.hash; const zurueck = ['entdecken', 'training', 'produkte', 'vorrat'].includes(seite) ? scrollPos[location.hash] : 0; window.scrollTo(0, zurueck || 0); }   // neue Seite oben beginnen, Neuzeichnen derselben Seite behält die Position
   ungespeichert = false;
   navZaehler(); zeichneTimer(); updateLeiste();
@@ -940,7 +974,7 @@ vDaten.danach = async () => {
   try { const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; const pers = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null;
     $('#speicher-info').textContent = `Belegt: ca. ${Math.round(JSON.stringify(D).length / 1024)} KB persönliche Daten. Dauerhafter Speicher: ${pers == null ? 'unbekannt' : pers ? 'ja' : 'nein (Browser darf bei Platzmangel löschen)'}.${est ? '' : ''}`; } catch (e) { /* */ }
 };
-function importAnwenden(obj) { const plan = importiere(obj); if (!confirm(plan.text + '\n\nFortfahren?')) return; zwischenstand('vor Import'); aendere('Import übernommen', plan.anwenden); }
+function importAnwenden(obj) { const plan = importiere(obj); frageZeigen(plan.text + '\n\nFortfahren?', () => { zwischenstand('vor Import'); aendere('Import übernommen', plan.anwenden); }, { jaText: 'Ja, übernehmen' }); }
 function vInfo() {
   const n = K.rezepte.length;
   return `<h1>Über diese App</h1><div class="karte"><p>Katalog ${esc(K.version)} (${esc(K.erstellt)}) · ${n} Rezepte · ${K.techniken.length} Techniken · ${K.zutaten.length} Zutaten · App ${APP_VERSION}</p>
@@ -1013,7 +1047,7 @@ document.addEventListener('click', ev => {
     case 'tage': break;
     case 'vorrat-fokus': vorratFokus = v || null; route(); break;
     case 'vorrat-weg': aendere('Aus dem Vorrat entfernt', d => { d.vorrat = d.vorrat.filter(x => x.id !== v); }); break;
-    case 'rest-essen': { const p = D.restportionen.find(x => x.id === v); if (p.verbrauchen_bis && tageBis(p.verbrauchen_bis) < 0 && !confirm('Die Aufbewahrungsgrenze ist überschritten. Trotzdem als gegessen eintragen?')) break;
+    case 'rest-essen': { const p = D.restportionen.find(x => x.id === v); if (p.verbrauchen_bis && tageBis(p.verbrauchen_bis) < 0 && !bestaetigt('Die Aufbewahrungsgrenze ist überschritten. Trotzdem als gegessen eintragen?')) break;
       const menge = Math.min(Number(b.dataset.p) || 1, p.portionen); aendere(`${zahlDE(menge, 2)} Restportion gegessen und eingetragen – Zutaten wurden beim Kochen schon abgezogen`, d => { const q = d.restportionen.find(x => x.id === v); q.portionen = Math.max(0, Math.round((q.portionen - menge) * 100) / 100); d.tagebuch.push({ id: uid('mz'), datum: (location.hash.startsWith('#/tagebuch') && typeof tbDatum === 'string' && tbDatum) ? tbDatum : heute(), zeit: new Date().toTimeString().slice(0, 5), quelle: 'restportion', mahlzeit: typeof neuerEintragSlot === 'function' ? neuerEintragSlot() : undefined, restportion: q.id, rezept: q.rezept, titel: q.titel, portionen: menge, einheit: 'Portion', naehr: mal(q.naehr_pro_portion, menge), mikro: q.mikro_pro_portion ? JSON.parse(JSON.stringify(q.mikro_pro_portion)) : null, status: q.status }); if (menge !== 1 && d.tagebuch[d.tagebuch.length - 1].mikro) { const e = d.tagebuch[d.tagebuch.length - 1]; e.mikro = Object.fromEntries(Object.entries(e.mikro).map(([k, x]) => [k, { w: x.w == null ? null : Math.round(x.w * menge * 1000) / 1000, abdeckung: x.abdeckung }])); } }); break; }
     case 'rest-weg': aendere('Restportion als verworfen markiert', d => { const q = d.restportionen.find(x => x.id === v); q.verworfen = q.portionen; q.portionen = 0; }); break;
     case 'rest-tk': aendere('Als eingefroren markiert', d => { const q = d.restportionen.find(x => x.id === v); const r = R[q.rezept]; q.lagerort = 'tiefkuehler'; q.eingefroren_am = heute(); const gr = r ? restGrenze(r, 'tiefkuehler') : { bis: null, beleg: 'Tiefkühl-Dauer nicht belegt' }; q.verbrauchen_bis = gr.bis; q.grenze_beleg = gr.beleg; }); break;
@@ -1024,8 +1058,8 @@ document.addEventListener('click', ev => {
     case 'export-kopie': navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(exportDaten())).then(() => { aendere('Export als Text kopiert', d => { d.letzter_export = new Date().toISOString(); }); }, () => toast('Kopieren nicht erlaubt')); break;
     case 'import-text': try { importAnwenden(JSON.parse($('#import-text').value)); } catch (e) { toast('Import fehlgeschlagen: ' + e.message); } break;
     case 'persist': navigator.storage && navigator.storage.persist ? navigator.storage.persist().then(ok => { toast(ok ? 'Dauerhafter Speicher gewährt' : 'Browser hat abgelehnt – regelmäßig exportieren'); route(); }) : toast('Nicht unterstützt'); break;
-    case 'zs-zurueck': { const z = zwischenstaende()[Number(v)]; if (z && confirm('Diesen Zwischenstand wiederherstellen? Der aktuelle Stand wird vorher ebenfalls als Zwischenstand gesichert.')) { let alt; try { alt = aufSchemaBringen(JSON.parse(z.daten)); } catch (e) { alt = null; } if (!alt) { toast('Dieser Zwischenstand passt nicht zu dieser App-Version.'); break; } zwischenstand('vor Wiederherstellung'); aendere('Zwischenstand wiederhergestellt', d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), alt); }); } break; }
-    case 'alles-loeschen': if (confirm('Wirklich alle persönlichen Daten auf diesem Gerät löschen? Vorher wird ein Zwischenstand angelegt (unter „Zwischenstände“ wiederherstellbar, solange der Browser-Speicher nicht gelöscht wird).')) zwischenstand('vor Alles löschen'), aendere('Alle Daten gelöscht', d => { const n = leer(); Object.keys(d).forEach(k => delete d[k]); Object.assign(d, n); }); break;
+    case 'zs-zurueck': { const z = zwischenstaende()[Number(v)]; if (z && bestaetigt('Diesen Zwischenstand wiederherstellen? Der aktuelle Stand wird vorher ebenfalls als Zwischenstand gesichert.')) { let alt; try { alt = aufSchemaBringen(JSON.parse(z.daten)); } catch (e) { alt = null; } if (!alt) { toast('Dieser Zwischenstand passt nicht zu dieser App-Version.'); break; } zwischenstand('vor Wiederherstellung'); aendere('Zwischenstand wiederhergestellt', d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), alt); }); } break; }
+    case 'alles-loeschen': if (bestaetigt('Wirklich alle persönlichen Daten auf diesem Gerät löschen? Vorher wird ein Zwischenstand angelegt (unter „Zwischenstände“ wiederherstellbar, solange der Browser-Speicher nicht gelöscht wird).')) zwischenstand('vor Alles löschen'), aendere('Alle Daten gelöscht', d => { const n = leer(); Object.keys(d).forEach(k => delete d[k]); Object.assign(d, n); }); break;
   }
 });
 document.addEventListener('change', ev => {
@@ -1090,7 +1124,7 @@ async function updateSuchen(manuell = false) {
 }
 function updateAnwenden() {
   if (!UP.wartend || UP.still) return;
-  if (ungespeichert && !confirm('Auf dieser Seite gibt es noch nicht gespeicherte Eingaben. Sie gehen beim Aktualisieren verloren.\n\nTrotzdem jetzt aktualisieren?')) return;
+  if (ungespeichert && !bestaetigt('Auf dieser Seite gibt es noch nicht gespeicherte Eingaben. Sie gehen beim Aktualisieren verloren.\n\nTrotzdem jetzt aktualisieren?')) return;
   UP.wechsel = true;
   UP.wartend.postMessage({ typ: 'aktivieren' });
   setTimeout(() => { if (UP.wechsel) location.reload(); }, 4000);   // falls controllerchange ausbleibt

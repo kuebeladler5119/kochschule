@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131313 */
+/* Fitomat-Build 202611172221 */
 /* Fitomat – Mentality: kurze, sachliche Übungen für konkrete Situationen. Alles lokal; nichts wird gesendet.
    Grundlagen, Belege und Grenzen: Vault „70 Mentality/Mentality – Grundlagen“. Keine Diagnosen, keine Heilversprechen. */
 
@@ -236,7 +236,7 @@ document.addEventListener('click', ev => {
     case 'mt-regel': { const w = (($('#mt-r-wenn') || {}).value || '').trim(), dn = (($('#mt-r-dann') || {}).value || '').trim(); if (!w || !dn) { toast('Bitte beide Teile ausfüllen'); return; } aendere('Regel gespeichert', d => { mtDaten(); d.mentality.regeln.push({ id: uid('mr'), wenn: w.slice(0, 100), dann: dn.slice(0, 100) }); }); break; }
     case 'mt-regel-weg': aendere('Regel gelöscht – Rückgängig möglich', d => { d.mentality.regeln = d.mentality.regeln.filter(r => r.id !== v); }); break;
     case 'mt-export': { const blob = new Blob([JSON.stringify({ art: 'fitomat-mentality', exportiert: new Date().toISOString(), daten: mtDaten() }, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const ln = document.createElement('a'); ln.href = url; ln.download = 'fitomat-mentality-' + heute() + '.json'; document.body.appendChild(ln); ln.click(); ln.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); break; }
-    case 'mt-loeschen': if (!confirm('Alle Mentality-Daten (Journal, Check-ins, Regeln, Verlauf, Gespeichert) löschen? Direkt danach ist Rückgängig möglich.')) return; aendere('Mentality-Daten gelöscht – Rückgängig möglich', d => { d.mentality = { favoriten: [], verlauf: [], journal: [], checkins: [], regeln: [], fokus: [] }; }); break;
+    case 'mt-loeschen': if (!bestaetigt('Alle Mentality-Daten (Journal, Check-ins, Regeln, Verlauf, Gespeichert) löschen? Direkt danach ist Rückgängig möglich.')) return; aendere('Mentality-Daten gelöscht – Rückgängig möglich', d => { d.mentality = { favoriten: [], verlauf: [], journal: [], checkins: [], regeln: [], fokus: [] }; }); break;
   }
 });
 document.addEventListener('submit', ev => { const f = ev.target; if (f.id !== 'mt-journal') return; ev.preventDefault();

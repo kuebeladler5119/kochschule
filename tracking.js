@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131313 */
+/* Fitomat-Build 202611172221 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -585,8 +585,8 @@ document.addEventListener('click', ev => {
       aendere('Eigene Mahlzeit gespeichert', d => { (d.mahlzeiten = d.mahlzeiten || []).push({ id: uid('mzv'), name: name.slice(0, 40), slot: v, eintraege: quelle.map(e => { const n = JSON.parse(JSON.stringify(e)); delete n.id; delete n.datum; delete n.kochprotokoll; return n; }), erstellt: heute() }); }); break; }
     case 'tb-mz-buchen': { const m = (D.mahlzeiten || []).find(x => x.id === v); if (!m) return; const slot = tbSlot || m.slot;
       aendere(`${m.name} eingetragen (${m.eintraege.length} Teile)`, d => { m.eintraege.forEach(e => d.tagebuch.push(eintragKopie(e, tbDatum || heute(), slot))); }); break; }
-    case 'tb-mz-weg': { const m = (D.mahlzeiten || []).find(x => x.id === v); if (!m || !confirm(`Eigene Mahlzeit „${m.name}“ löschen? Gebuchte Einträge bleiben.`)) return; aendere('Eigene Mahlzeit gelöscht', d => { d.mahlzeiten = d.mahlzeiten.filter(x => x.id !== v); }); break; }
-    case 'produkt-weg': { const p = (D.lebensmittel || []).find(x => x.id === v); if (!p || !confirm(`„${p.name}“ aus deinen Produkten entfernen? Gebuchte Einträge behalten ihre Werte; Rückgängig ist möglich.`)) return; aendere('Produkt entfernt', d => { d.lebensmittel = d.lebensmittel.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/produkte'; break; }
+    case 'tb-mz-weg': { const m = (D.mahlzeiten || []).find(x => x.id === v); if (!m || !bestaetigt(`Eigene Mahlzeit „${m.name}“ löschen? Gebuchte Einträge bleiben.`)) return; aendere('Eigene Mahlzeit gelöscht', d => { d.mahlzeiten = d.mahlzeiten.filter(x => x.id !== v); }); break; }
+    case 'produkt-weg': { const p = (D.lebensmittel || []).find(x => x.id === v); if (!p || !bestaetigt(`„${p.name}“ aus deinen Produkten entfernen? Gebuchte Einträge behalten ihre Werte; Rückgängig ist möglich.`)) return; aendere('Produkt entfernt', d => { d.lebensmittel = d.lebensmittel.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/produkte'; break; }
   }
 });
 document.addEventListener('input', ev => { const i = ev.target.dataset ? ev.target.dataset.korb : undefined; if (i != null && tbKorb[i]) tbKorb[i].menge = Number(String(ev.target.value).replace(',', '.')) || 0; });

@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611131313 */
+/* Fitomat-Build 202611172221 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -132,12 +132,14 @@ function trRoutineHtml(id) {
   const opt = alleUebungen().map(u => `<option value="${esc(u.id)}">${esc(u.name)}${u.quelle === 'eigen' ? ' (eigene)' : ''}</option>`).join('');
   return `<p class="klein"><a class="knopf still klein" href="#/training">${ico('zurueck', 'klein')} Training</a></p>
   <label class="feld"><span>Name der Routine</span><input data-tr-routine-name="${esc(r.id)}" value="${esc(r.name)}"></label>
+  <div id="tr-r-probleme" aria-live="polite">${(() => { const p = routineProbleme(r); return p.length ? `<div class="hinweis warn klein"><b>Gespeicherte Routine ist unvollständig</b> – so lässt sie sich nicht starten:<ul>${p.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''; })()}</div>
+  <p class="leise klein">Pflicht: Arbeitssätze und ${'Wdh. bzw. Sek.'} von/bis. Änderungen werden sofort gespeichert – ungültige Eingaben nicht, das steht dann direkt am Feld.</p>
   ${r.beispiel ? '<p class="hinweis klein">Allgemeines Beispiel, kein persönlicher Trainingsplan. 3 Sätze à 8–12 Wiederholungen entsprechen der allgemeinen Empfehlung für Einsteiger (ACSM); Übungen, Sätze und Pausen bitte an Erfahrung, Geräte und Beschwerden anpassen.</p>' : ''}
   ${r.historisch ? '<p class="hinweis klein"><b>Historische Vorlage:</b> unverändert aus deinen früheren Angaben übernommen. Referenzgewichte sind alte Geräteangaben, keine aktuell geschafften Leistungen. Für Änderungen am besten den Plan als eigene Variante kopieren – die Vorlage bleibt dann erhalten.</p>' : ''}
   <ol class="tr-liste">${r.uebungen.map((x, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between"><b><a href="#/training/uebung/${esc(x.uebung)}">${esc(ueb(x.uebung).name)}</a>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}</b>
       <span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</span></div>
     <div class="reihen-knoepfe"><button class="still" data-a="tr-r-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="${esc(ueb(x.uebung).name)} nach oben">▲ nach oben</button><button class="still" data-a="tr-r-runter" data-v="${i}" ${i < r.uebungen.length - 1 ? '' : 'disabled'} aria-label="${esc(ueb(x.uebung).name)} nach unten">▼ nach unten</button><button class="still" data-a="tr-r-weg" data-v="${i}">✕ entfernen</button></div>
-    <div class="zeile">${[['aufwaerm', 'Aufwärmsätze', 0, 5, 1], ['saetze', 'Arbeitssätze', 1, 10, 1], ...(istZeit(x) ? [['sek_von', 'Sek. von', 5, 600, 5], ['sek_bis', 'Sek. bis', 5, 600, 5]] : [['wdh_von', 'Wdh. von', 1, 50, 1], ['wdh_bis', 'Wdh. bis', 1, 50, 1]]), ['pause_s', 'Pause (Sek.)', 0, 600, 15], ['referenz_kg', r.historisch ? 'Startwert kg (historisch)' : 'Startgewicht kg', 0, 500, 0.25], ['schritt_kg', 'Gewichtsschritt kg', 0, 50, 0.25]].map(([k, n, mi, ma, st]) => `<label class="feld"><span>${n}</span><input type="number" inputmode="decimal" min="${mi}" max="${ma}" step="${st}" value="${esc(x[k] ?? '')}" placeholder="${k === 'saetze' && x.saetze_offen ? 'offen' : ''}" data-tr-r-feld="${k}" data-i="${i}" style="width:5.5em"></label>`).join('')}
+    <div class="zeile">${[['aufwaerm', 'Aufwärmsätze', 0, 5, 1], ['saetze', 'Arbeitssätze', 1, 10, 1], ...(istZeit(x) ? [['sek_von', 'Sek. von', 5, 600, 5], ['sek_bis', 'Sek. bis', 5, 600, 5]] : [['wdh_von', 'Wdh. von', 1, 50, 1], ['wdh_bis', 'Wdh. bis', 1, 50, 1]]), ['pause_s', 'Pause s (optional)', 0, 600, 15], ['referenz_kg', r.historisch ? 'Startwert kg (historisch, optional)' : 'Startgewicht kg (optional)', 0, 500, 0.25], ['schritt_kg', 'Gewichtsschritt kg (optional)', 0, 50, 0.25]].map(([k, n, mi, ma, st]) => { const fe = zielFehlerAlle(x)[k]; return `<label class="feld"><span>${n}</span><input type="number" inputmode="decimal" min="${mi}" max="${ma}" step="${st}" value="${esc(x[k] ?? '')}" placeholder="${k === 'saetze' && x.saetze_offen ? 'offen' : ''}" data-tr-r-feld="${k}" data-i="${i}" ${fe ? 'aria-invalid="true"' : ''} style="width:5.5em">${feldFehlerHtml(fe)}</label>`; }).join('')}
       <label class="feld"><span>Ziel-RIR</span><input value="${esc(x.ziel_rir ?? '')}" data-tr-r-text="ziel_rir" data-i="${i}" placeholder="z. B. 1–2" style="width:6em"></label>
       <label class="feld" style="flex:1 1 160px"><span>Gerät/Variante</span><input value="${esc(x.variante ?? '')}" data-tr-r-text="variante" data-i="${i}" placeholder="z. B. Kabelturm 1. Stock"></label></div>
     <label><input type="checkbox" data-tr-r-check="je_seite" data-i="${i}" ${x.je_seite ? 'checked' : ''}> einseitig: Wiederholungen und Sätze je Seite</label>
@@ -256,6 +258,48 @@ function neuerEintrag(id, extra) {
 }
 // Sekundenziel: eigene Angabe, sonst die Spanne aus der Bibliothek (z. B. „20–45 s“), sonst offen
 function sekZiel(x) { if (x.sek_von || x.sek_bis) return { von: x.sek_von, bis: x.sek_bis }; const z = zeitBereich(x.uebung); return z || { von: null, bis: null }; }
+/* ---------- Gemeinsame Prüfung der Zielangaben (Planer-Entwurf, Routine, Log) ----------
+   Regel je Feld: [min, max, Name, Pflicht, ganzzahlig]. Pflicht hängt von der Messart ab: Zeitübung → Sekunden von UND bis,
+   sonst Wiederholungen von UND bis (für ein festes Ziel denselben Wert zweimal). Optionale Felder sind in der Oberfläche als „optional“ beschriftet.
+   Ungültige Werte werden nie still korrigiert oder durch alte Werte ersetzt. */
+const ZIEL_REGEL = { saetze: [1, 10, 'Sätze', true, true], aufwaerm: [0, 5, 'Aufwärmsätze', false, true], wdh_von: [1, 50, 'Wdh. von', true, true], wdh_bis: [1, 50, 'Wdh. bis', true, true], sek_von: [5, 600, 'Sek. von', true, true], sek_bis: [5, 600, 'Sek. bis', true, true], pause_s: [0, 600, 'Pause', false, true], referenz_kg: [0, 500, 'Startgewicht', false, false], schritt_kg: [0, 50, 'Gewichtsschritt', false, false] };
+const zielZahl = roh => { const s = String(roh ?? '').replace(',', '.').trim(); return s === '' ? null : Number(s); };
+function zielFeldFehler(feld, roh, x) {
+  const r = ZIEL_REGEL[feld]; if (!r) return ''; const zeit = istZeit(x);
+  if ((feld.startsWith('sek_') && !zeit) || (feld.startsWith('wdh_') && zeit)) return '';
+  const n = zielZahl(roh);
+  if (n === null) return r[3] && !(feld === 'saetze' && x.saetze_offen) ? (feld.startsWith('sek_') || feld.startsWith('wdh_') ? 'Pflichtfeld: von und bis ausfüllen (für ein festes Ziel zweimal denselben Wert).' : 'Pflichtfeld.') : '';
+  if (!isFinite(n)) return 'Bitte eine Zahl eingeben.';
+  if (r[4] && !Number.isInteger(n)) return 'Bitte eine ganze Zahl.';
+  if (n < r[0]) return n < 0 ? 'Keine negativen Werte.' : `Mindestens ${r[0]}${feld.startsWith('sek_') ? ' s' : ''}.`;
+  if (n > r[1]) return `Höchstens ${r[1]}${feld.startsWith('sek_') ? ' s' : ''}.`;
+  return '';
+}
+// von > bis: Fehler wird am „bis“-Feld angezeigt
+function zielPaarFehler(x) { const [a, b] = istZeit(x) ? ['sek_von', 'sek_bis'] : ['wdh_von', 'wdh_bis']; const va = zielZahl(x[a]), vb = zielZahl(x[b]); return va != null && vb != null && isFinite(va) && isFinite(vb) && va > vb ? { feld: b, text: '„von“ ist größer als „bis“.' } : null; }
+function zielFehlerAlle(x, felder) {
+  const f = {}; (felder || Object.keys(ZIEL_REGEL)).forEach(k => { const t = zielFeldFehler(k, x[k], x); if (t) f[k] = t; });
+  const p = zielPaarFehler(x); if (p && !f[p.feld]) f[p.feld] = p.text; return f;
+}
+// Fehlertext direkt am Feld (unter dem Eingabefeld, per aria-describedby verknüpft)
+function feldFehlerZeigen(el, text) {
+  if (!el) return; const lab = el.closest('label') || el.parentNode; let k = lab.querySelector('.feld-fehler');
+  if (!k) { k = document.createElement('small'); k.className = 'feld-fehler'; k.id = 'ff-' + Math.random().toString(36).slice(2, 8); k.setAttribute('role', 'alert'); lab.appendChild(k); }
+  k.textContent = text || ''; k.hidden = !text; if (text) { el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-describedby', k.id); } else { el.removeAttribute('aria-invalid'); }
+}
+const feldFehlerHtml = t => t ? `<small class="feld-fehler" role="alert">${esc(t)}</small>` : '';
+// Geloggte Satzwerte: leer ist erlaubt (Satz noch offen), sonst Zahl im plausiblen Bereich – ein Satz mit ungültigem Wert wird nicht abgeschlossen
+const SATZ_GRENZE = { kg: [0, 1000, false, 'Gewicht'], wdh: [0, 200, true, 'Wiederholungen'], sek: [0, 3600, true, 'Sekunden'] };
+function satzFeldFehler(k, roh) {
+  const g = SATZ_GRENZE[k]; if (!g || roh === '' || roh == null) return ''; const n = zielZahl(roh);
+  if (!isFinite(n)) return 'Bitte eine Zahl eingeben.'; if (g[2] && !Number.isInteger(n)) return 'Bitte eine ganze Zahl.';
+  if (n < g[0]) return 'Keine negativen Werte.'; if (n > g[1]) return `Höchstens ${g[1]}.`; return '';
+}
+function satzFehlerText(s) {
+  const l = [['kg', s.kg], ['wdh', s.wdh], ['sek', s.sek]]; const sd = s.seiten || {};
+  ['l', 'r'].forEach(x => { if (sd[x]) { l.push(['kg', sd[x].kg], ['wdh', sd[x].wdh], ['sek', sd[x].sek]); } });
+  for (const [k, w] of l) { const f = satzFeldFehler(k, w); if (f) return `${SATZ_GRENZE[k][3]}: ${f}`; } return '';
+}
 // Ziel kurz: „8–12“, „30–45 s“, „Haltezeit“ oder „Wdh. offen“ – nie ein nacktes Fragezeichen
 function zielKurz(x) {
   const sp = (a, b) => a && b && a !== b ? a + '–' + b : String(b || a || '');
@@ -404,9 +448,9 @@ function entwurfAlternativen(id, imTag) {
 }
 function entwurfPruefen(ew) {
   const p = []; if (!ew.einheiten.length) p.push('Der Plan hat keine Einheit.');
-  ew.einheiten.forEach((e, i) => { if (!e.uebungen.length) p.push(`Einheit ${i + 1} (${e.name || 'ohne Namen'}) hat keine Übung – Übung hinzufügen oder Einheit entfernen.`); if (e.uebungen.some(x => !(x.saetze >= 1))) p.push(`Einheit ${i + 1}: jede Übung braucht mindestens 1 Satz.`);
-    e.uebungen.forEach(x => { const n = ueb(x.uebung).name; if (istZeit(x) && !(x.sek_von > 0 || x.sek_bis > 0)) p.push(`Einheit ${i + 1}, ${n}: Haltezeit in Sekunden fehlt.`); if (!istZeit(x) && !(x.wdh_von > 0 || x.wdh_bis > 0)) p.push(`Einheit ${i + 1}, ${n}: Wiederholungsziel fehlt.`);
-      if ((x.sek_von && x.sek_bis && x.sek_von > x.sek_bis) || (!istZeit(x) && x.wdh_von && x.wdh_bis && x.wdh_von > x.wdh_bis)) p.push(`Einheit ${i + 1}, ${n}: „von“ ist größer als „bis“.`); }); });
+  ew.einheiten.forEach((e, i) => { if (!e.uebungen.length) p.push(`Einheit ${i + 1} (${e.name || 'ohne Namen'}) hat keine Übung – Übung hinzufügen oder Einheit entfernen.`);
+    e.uebungen.forEach(x => { const n = ueb(x.uebung).name; const f = zielFehlerAlle(x, ENTWURF_ZAHLEN);
+      Object.keys(f).forEach(k => p.push(`Einheit ${i + 1}, ${n}: ${ZIEL_REGEL[k][2]} – ${f[k]}`)); }); });
   const tage = ew.einheiten.map(e => e.tag).filter(Boolean); const doppelt = tage.filter((t, i) => tage.indexOf(t) !== i);
   if (doppelt.length) p.push(`Zwei Einheiten am selben Tag (${[...new Set(doppelt)].map(k => (WOCHENTAGE.find(w => w[0] === k) || [])[1]).join(', ')}) – Tag ändern oder „flexibel“ wählen.`);
   return p;
@@ -420,7 +464,8 @@ function entwurfSummeHtml(ew) {
 function entwurfHtml() {
   const ew = trPlanEntwurf; if (!ew) return ''; const c = trDaten().einrichtung || {}; const { ger, nein } = entwurfGeraete(); const probleme = entwurfPruefen(ew);
   const opt = (l, sel) => l.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}${istTechnik(x) ? ' (Technikübung)' : ''}</option>`).join('');
-  const zahl = (te, ei, ui, wert, ext) => `<input type="number" inputmode="numeric" data-te="${te}" data-e="${ei}" data-u="${ui}" value="${wert == null ? '' : esc(wert)}" ${ext}>`;
+  const zahl = (te, ei, ui, wert, ext) => { const x = (ew.einheiten[ei] || { uebungen: [] }).uebungen[ui] || {}; const fe = zielFehlerAlle(x, ENTWURF_ZAHLEN)[te];
+    return `<input type="number" inputmode="numeric" data-te="${te}" data-e="${ei}" data-u="${ui}" value="${wert == null ? '' : esc(wert)}" ${fe ? 'aria-invalid="true"' : ''} ${ext}>${feldFehlerHtml(fe)}`; };
   return `<section class="karte entwurf" id="tr-entwurf"><h2 style="margin-top:0">Vorschau bearbeiten</h2>
     <p class="leise klein">Noch nichts ist gespeichert. Tausche Übungen, ändere Sätze, Tage und Pausen – erst „Als neuen Plan anlegen“ speichert. Bestehende Pläne bleiben unverändert.</p>
     <div id="te-summe" class="flaeche" aria-live="polite">${entwurfSummeHtml(ew)}</div>
@@ -435,11 +480,11 @@ function entwurfHtml() {
         return `<li class="te-ueb"><div class="te-kopf"><b>${esc(ueb(x.uebung).name)}</b>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</div>
         ${istTechnik(ueb(x.uebung)) ? '<p class="hinweis klein" style="margin:.2em 0">Technikübung: gut zum Lernen und Aufwärmen, für Geübte kaum Muskelaufbaureiz.</p>' : ''}${arr(ueb(x.uebung).voraussetzung).length ? `<p class="leise klein" style="margin:.2em 0">Braucht: ${esc(arr(ueb(x.uebung).voraussetzung).map(vorausName).join(', '))}</p>` : ''}
         ${x._getauscht ? `<p class="leise klein" style="margin:.2em 0">${esc(tauschUnterschied(x._getauscht, x.uebung))}</p>` : ''}
-        ${istZeit(x) && zeitStart(x.uebung).vorschlag ? `<p class="leise klein" style="margin:.2em 0">Haltezeit: Startvorschlag ${ZEIT_START.von}–${ZEIT_START.bis} s${x.je_seite ? ' je Seite' : ''} (die Quellen nennen keine Zeit; abgeleitet aus 20–45 s bei ähnlichen Halteübungen). Nur so lange halten, wie die Ausführung sauber bleibt.</p>` : ''}
+        ${istZeit(x) && zeitStart(x.uebung).vorschlag ? `<p class="leise klein" style="margin:.2em 0">Haltezeit: allgemeiner Startvorschlag ${ZEIT_START.von}–${ZEIT_START.bis} s${x.je_seite ? ' je Seite' : ''} – nicht für dich ermittelt (die Quellen nennen keine Zeit; abgeleitet aus 20–45 s bei ähnlichen Halteübungen). Nur so lange halten, wie die Ausführung sauber bleibt.</p>` : ''}
         <div class="te-felder"><label class="feld"><span>Sätze</span>${zahl('saetze', ei, ui, x.saetze, 'min="1" max="10" step="1"')}</label>
         ${zeit ? `<label class="feld"><span>Sek.${x.je_seite ? ' je Seite' : ''} von</span>${zahl('sek_von', ei, ui, x.sek_von, 'min="5" max="600" step="5"')}</label><label class="feld"><span>bis</span>${zahl('sek_bis', ei, ui, x.sek_bis, 'min="5" max="600" step="5"')}</label>`
           : `<label class="feld"><span>Wdh. von</span>${zahl('wdh_von', ei, ui, x.wdh_von, 'min="1" max="50"')}</label><label class="feld"><span>bis</span>${zahl('wdh_bis', ei, ui, x.wdh_bis, 'min="1" max="50"')}</label>`}
-        <label class="feld"><span>Pause (s)</span>${zahl('pause_s', ei, ui, x.pause_s, 'min="0" max="600" step="15"')}</label></div>
+        <label class="feld"><span>Pause s (optional)</span>${zahl('pause_s', ei, ui, x.pause_s, 'min="0" max="600" step="15"')}</label></div>
         <div class="te-aktion"><label class="feld"><span>Tauschen gegen</span><select data-te="tausch" data-e="${ei}" data-u="${ui}"><option value="">${alt.gleich.length + alt.muskel.length + alt.eigen.length ? '– Alternative wählen –' : 'keine weitere Alternative mit deiner Ausstattung'}</option>${alt.gleich.length ? `<optgroup label="Gleiches Bewegungsmuster">${opt(alt.gleich)}</optgroup>` : ''}${alt.muskel.length ? `<optgroup label="Gleiche Muskelgruppe – anderer Schwerpunkt">${opt(alt.muskel)}</optgroup>` : ''}${alt.eigen.length ? `<optgroup label="Eigene Übungen">${opt(alt.eigen)}</optgroup>` : ''}</select></label>
           <label class="wahl-chip"><input type="checkbox" data-te="zeit" data-e="${ei}" data-u="${ui}" ${zeit ? 'checked' : ''}> nach Zeit</label>
           <button class="klein still" data-a="tr-te-weg" data-v="${ei}:${ui}">Entfernen</button></div></li>`; }).join('')}</ol>
@@ -453,7 +498,15 @@ function entwurfHtml() {
 }
 // Zahlenfelder: schon beim Tippen nachrechnen (ohne die Felder neu zu zeichnen) und beim Verlassen noch einmal
 const ENTWURF_ZAHLEN = ['saetze', 'wdh_von', 'wdh_bis', 'sek_von', 'sek_bis', 'pause_s'];
-function entwurfZahlUebernehmen(el, x, te, ei) { const roh = String(el.value).replace(',', '.').trim(); const v = roh === '' || isNaN(Number(roh)) ? null : Math.max(0, Math.round(Number(roh))); x[te] = te === 'saetze' ? (v || 0) : v; entwurfZahlAktualisieren(ei); }
+/* Sichtbarer Wert = gespeicherter Entwurfswert: nichts wird gerundet, begrenzt oder durch einen alten Wert ersetzt.
+   Ein leeres Feld ist leer (null); ungültige Werte bleiben stehen und sperren „Als neuen Plan anlegen“. */
+function entwurfZahlUebernehmen(el, x, te, ei) {
+  const roh = String(el.value).replace(',', '.').trim(); x[te] = roh === '' ? null : Number(roh);
+  if (el.validity && el.validity.badInput) x[te] = NaN;   // z. B. „1e“ – Browser liefert value '' trotz Eingabe
+  const f = zielFehlerAlle(x, ENTWURF_ZAHLEN); const li = el.closest('.te-ueb');
+  if (li) li.querySelectorAll('input[data-te]').forEach(i2 => { if (ENTWURF_ZAHLEN.includes(i2.dataset.te)) feldFehlerZeigen(i2, f[i2.dataset.te] || ''); });
+  entwurfZahlAktualisieren(ei);
+}
 document.addEventListener('input', ev => { const el = ev.target; const te = el && el.dataset && el.dataset.te; if (!te || !trPlanEntwurf || !ENTWURF_ZAHLEN.includes(te)) return;
   const ei = Number(el.dataset.e); const e = trPlanEntwurf.einheiten[ei]; const x = e && e.uebungen[Number(el.dataset.u)]; if (x) entwurfZahlUebernehmen(el, x, te, ei); });
 // Was sich beim Tausch ändert: Bewegungsmuster und Hauptmuskeln aus den Übungsnotizen – „gleichwertig“ ist ein Tausch nur bei gleichem Muster
@@ -918,11 +971,13 @@ function trCardioHtml() {
 /* Passender Ersatz = gleiches Bewegungsmuster bzw. bei Isolation gleicher Hauptmuskel, und mindestens ein gemeinsamer Hauptmuskel.
    Eine gemeinsame Muskelgruppe allein (z. B. „Rücken“ bei Latzug und Kreuzheben) reicht nicht. Freie Auswahl ist davon getrennt. */
 const MUSKEL_NAME = { brust: 'Brust', latissimus: 'Latissimus', oberer_ruecken: 'oberer Rücken', rueckenstrecker: 'Rückenstrecker', vordere_schulter: 'vordere Schulter', seitliche_schulter: 'seitliche Schulter', hintere_schulter: 'hintere Schulter', bizeps: 'Bizeps', trizeps: 'Trizeps', quadrizeps: 'Quadrizeps', beinbeuger: 'Beinbeuger', waden: 'Waden', gesaess: 'Gesäß', rumpf: 'Rumpf', adduktoren: 'Adduktoren', unterarme: 'Unterarme' };
-const UEB_GERAET_NAME = { langhantel: 'Langhantel', kurzhantel: 'Kurzhantel', kabel: 'Kabel', maschine: 'Maschine', koerpergewicht: 'Körpergewicht', klimmzugstange: 'Klimmzugstange', rack: 'Rack', bank: 'Bank', band: 'Band', kettlebell: 'Kettlebell' };
+/* Gerätenamen: EINE zentrale Zuordnung für Bibliothek, Ersatzvorschläge und Anzeige. „rack“ ist bei Langhantel-Übungen Teil der Langhantel-Station. */
+const GERAET_LESBAR = { langhantel: 'Langhantel', rack: 'Rack/Hantelständer', kurzhantel: 'Kurzhanteln', kabel: 'Kabelzug', maschine: 'Maschine', klimmzugstange: 'Klimmzugstange', bank: 'Bank', band: 'Widerstandsband', kettlebell: 'Kettlebell', koerpergewicht: 'Körpergewicht' };
+const geraetName = g => GERAET_LESBAR[g] || g;
 function ersatzVorschlaege(info, ohne) {
   const ein = trDaten().einrichtung || {}; const ger = arr(ein.geraete); const nein = arr(ein.unerwuenscht);
   const haupt = arr(info.muskeln_haupt); const iso = !info.bewegungsmuster || info.bewegungsmuster === 'isolation';
-  const geraete = x => arr(x.geraet).filter(g => g !== 'bank').map(g => GERAET_NAME[g] || g);
+  const geraete = x => arr(x.geraet).filter(g => g !== 'bank').map(geraetName);
   return alleUebungen().filter(x => x.id !== info.id && !arr(ohne).includes(x.id) && !nein.includes(x.id)).map(x => {
     const gemein = arr(x.muskeln_haupt).filter(m => haupt.includes(m)); const hinterlegt = arr(info.alternativen).includes(x.id);
     const gleichesMuster = !iso && x.bewegungsmuster === info.bewegungsmuster; const gleicheRolle = iso && x.bewegungsmuster === 'isolation' && arr(x.muskeln_haupt)[0] === haupt[0];
@@ -934,9 +989,14 @@ function ersatzVorschlaege(info, ohne) {
   }).filter(Boolean).sort((a, b) => b.punkte - a.punkte).slice(0, 6);
 }
 function tauschHtml(u, ui, info) {
-  const vs = ersatzVorschlaege(info);
+  /* Ersatzvorschläge sind eine Zusatzhilfe: ein Fehler darin darf die Satzansicht nie blockieren */
+  let vs = [];
+  try { vs = ersatzVorschlaege(info || {}); } catch (err) { console.error('Ersatzvorschläge', err); return '<p class="leise klein">Alternativen können gerade nicht berechnet werden. Du kannst trotzdem frei eine andere Übung wählen:</p>' + tauschFreiHtml(u, ui); }
   return `${vs.length ? `<p class="klein" style="margin:.4em 0 .2em"><b>Passende Alternativen</b></p><ul class="ersatz-liste">${vs.map(v => `<li><button type="button" class="klein" data-a="tr-tausch" data-u="${ui}" data-v="${esc(v.u.id)}">${esc(v.u.name)}</button><span class="leise klein">${esc(v.warum)}${v.unterschied ? '. Anders: ' + esc(v.unterschied) : ''}${v.verfuegbar ? '' : ' · laut deiner Einrichtung evtl. nicht verfügbar'}</span></li>`).join('')}</ul>` : '<p class="leise klein">Keine passende Alternative in der Bibliothek.</p>'}
-    <details class="klein"><summary>Andere Übung frei wählen</summary><select data-tr-tausch="${ui}" aria-label="Beliebige andere Übung"><option value="">– beliebige Übung –</option>${alleUebungen().filter(x => x.id !== u.uebung).map(x => `<option value="${esc(x.id)}">${esc(x.name)}${x.quelle === 'eigen' ? ' (eigene)' : ''}</option>`).join('')}</select><p class="leise klein">Bewusst freie Wahl – nicht unbedingt gleichwertig.</p></details>
+    ${tauschFreiHtml(u, ui)}`;
+}
+function tauschFreiHtml(u, ui) {
+  return `<details class="klein"><summary>Andere Übung frei wählen</summary><select data-tr-tausch="${ui}" aria-label="Beliebige andere Übung"><option value="">– beliebige Übung –</option>${alleUebungen().filter(x => x.id !== u.uebung).map(x => `<option value="${esc(x.id)}">${esc(x.name)}${x.quelle === 'eigen' ? ' (eigene)' : ''}</option>`).join('')}</select><p class="leise klein">Bewusst freie Wahl – nicht unbedingt gleichwertig.</p></details>
     <p class="leise klein">Gewichte werden nicht übertragen – jede Übung hat einen eigenen Verlauf. Bereits abgeschlossene Sätze bleiben bei der bisherigen Übung.</p>`;
 }
 // Tausch: erledigte Sätze bleiben bei der alten Übung; offene Sätze wandern in einen neuen Eintrag direkt dahinter
@@ -1126,6 +1186,14 @@ function stepperHtml(id, label, wert, schritt, einheit) {
   return `<div class="fz-feld"><label for="${id}">${label}${einheit ? ` <span class="leise">(${esc(einheit)})</span>` : ''}</label><div class="fz-stepper"><button type="button" data-a="tr-f-plus" data-feld="${id}" data-d="${-schritt}" aria-label="${label} verringern">−</button><input id="${id}" data-tr-f-feld="${id}" type="number" inputmode="decimal" step="any" min="0" value="${esc(wert ?? '')}"><button type="button" data-a="tr-f-plus" data-feld="${id}" data-d="${schritt}" aria-label="${label} erhöhen">+</button></div></div>`;
 }
 const chipsHtml = (feld, liste, wert, unbekannt) => `<div class="fz-chips" role="group">${unbekannt ? `<button type="button" class="filterchip" data-a="tr-f-wert" data-feld="${feld}" data-v="" aria-pressed="${wert == null || wert === ''}">${unbekannt}</button>` : ''}${liste.map(([k, n]) => `<button type="button" class="filterchip" data-a="tr-f-wert" data-feld="${feld}" data-v="${esc(k)}" aria-pressed="${String(wert) === String(k)}">${esc(n)}</button>`).join('')}</div>`;
+/* Routine-Prüfung: dieselben Regeln wie im Planer; ungültige Routinen lassen sich nicht starten */
+function routineProbleme(r) {
+  const p = []; r.uebungen.forEach(x => { const f = zielFehlerAlle(x); Object.keys(f).forEach(k => p.push(`${ueb(x.uebung).name}: ${ZIEL_REGEL[k][2]} – ${f[k]}`)); }); return p;
+}
+function routineHinweisAktualisieren(rid) {
+  const el = $('#tr-r-probleme'); const r = trDaten().routinen.find(x => x.id === rid); if (!el || !r) return; const p = routineProbleme(r);
+  el.innerHTML = p.length ? `<div class="hinweis warn klein"><b>Gespeicherte Routine ist unvollständig</b> – so lässt sie sich nicht starten:<ul>${p.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : '';
+}
 function trStartHtml(rid) {
   const r = trDaten().routinen.find(x => x.id === decodeURIComponent(rid || '')); if (!r) return '<p class="leer">Einheit nicht gefunden. <a href="#/training">Zum Training</a></p>';
   const ohneVerlauf = r.uebungen.filter(x => (x.referenz_kg || x.start_kg) && !vergleichbareEinheiten(x.uebung, x.variante, null).length);
@@ -1134,12 +1202,14 @@ function trStartHtml(rid) {
     ...r.uebungen.filter(x => x.gewicht_hinweis).map(x => `<li><b>${esc(ueb(x.uebung).name)}:</b> ${esc(x.gewicht_hinweis)}</li>`),
     ...r.uebungen.filter(x => /offen/i.test(x.variante || '')).map(x => `<li><b>${esc(ueb(x.uebung).name)}:</b> Variante „${esc(x.variante)}“ – bei Bedarf in der Routine genauer eintragen.</li>`)].filter(Boolean);
   const min = Math.round(r.uebungen.reduce((s, x) => s + (Number(x.aufwaerm) || 0) * 105 + (Number(x.saetze) || 0) * (45 + (Number(x.pause_s) || 90)), 0) / 60);
+  const fehler = routineProbleme(r);
   return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><h1>${esc(r.name)}</h1>
   <p class="leise klein">${r.uebungen.length} Übungen · ca. ${min} Min. (grob geschätzt)</p>
+  ${fehler.length ? `<div class="hinweis warn klein"><b>Start nicht möglich – Angaben unvollständig:</b><ul>${fehler.map(t => `<li>${esc(t)}</li>`).join('')}</ul><a class="knopf klein" href="#/training/routine/${esc(r.id)}">Routine korrigieren</a></div>` : ''}
   ${pruefen.length ? `<div class="hinweis klein"><b>Vor dem ersten Start prüfen</b><ul>${pruefen.join('')}</ul></div>` : ''}
   <ol class="fz-vorschau">${r.uebungen.map(x => { const n = Number(x.saetze) || 0; const kg = x.start_kg || x.referenz_kg; return `<li><span><b>${esc(ueb(x.uebung).name)}</b>${x.variante ? ` <span class="leise klein">· ${esc(x.variante)}</span>` : ''}${x.optional ? ' <span class="chip">optional</span>' : ''}<br><span class="klein">${x.aufwaerm ? x.aufwaerm + ' Aufwärm + ' : ''}${n ? n + ' × ' : 'Sätze offen × '}${esc(zielKurz(x))}${x.je_seite ? ' je Seite' : ''}${kg ? ` · Start ${esc(kgText(kg))}` : ''}${x.ziel_rir && !istZeit(x) ? ` · Ziel-RIR ${esc(x.ziel_rir)}` : ''}</span></span>${anleitungsKnopf('tr', x.uebung, x.variante, true)}</li>`; }).join('')}</ol>
-  <button class="haupt fz-ok" data-a="tr-f-start" data-v="${esc(r.id)}">▶ Training starten</button>
-  <div class="knopfreihe"><a class="knopf still klein" href="#/training/routine/${esc(r.id)}">Übungen und Startwerte bearbeiten</a><button class="still klein" data-a="tr-start-tabelle" data-v="${esc(r.id)}">Ohne Führung (Tabelle)</button></div>`;
+  <button class="haupt fz-ok" data-a="tr-f-start" data-v="${esc(r.id)}" ${fehler.length ? 'disabled' : ''}>▶ Training starten</button>
+  <div class="knopfreihe"><a class="knopf still klein" href="#/training/routine/${esc(r.id)}">Übungen und Startwerte bearbeiten</a><button class="still klein" data-a="tr-start-tabelle" data-v="${esc(r.id)}" ${fehler.length ? 'disabled' : ''}>Ohne Führung (Tabelle)</button></div>`;
 }
 function trFuehrungHtml() {
   const e = trEinheit(); if (!e) return '<p class="leer">Keine Einheit aktiv. <a href="#/training">Zum Training</a></p>';
@@ -1245,6 +1315,8 @@ document.addEventListener('click', ev => {
       const seiten = u.je_seite && ent.getrennt ? { l: { kg: ent.kgL, wdh: ent.wdhL }, r: { kg: ent.kgR, wdh: ent.wdhR } } : null;
       const wdh = seiten ? Math.min(Number(seiten.l.wdh) || 0, Number(seiten.r.wdh) || 0) : ent.wdh; const kg = seiten ? (Number(seiten.l.wdh) <= Number(seiten.r.wdh) ? seiten.l.kg : seiten.r.kg) : ent.kg;
       if (wdh === '' || wdh == null || !(Number(wdh) >= 0)) { toast(istZeit(u) ? 'Bitte die gehaltenen Sekunden eintragen' : 'Bitte die tatsächlichen Wiederholungen eintragen'); return; }
+      { const zk = istZeit(u) ? 'sek' : 'wdh'; const pr = [['kg', kg], [zk, wdh]]; if (seiten) ['l', 'r'].forEach(x => pr.push(['kg', seiten[x].kg], [zk, seiten[x].wdh]));
+        for (const [k, w] of pr) { const f0 = satzFeldFehler(k, w); if (f0) { toast(`Satz nicht abgeschlossen – ${SATZ_GRENZE[k][3]}: ${f0}`); return; } } }
       trFSperre = Date.now(); b.disabled = true;
       aendere(null, d => { const e2 = trEinheit(); const f2 = e2.fuehrung; const u2 = e2.uebungen[f2.ui]; const s2 = u2.saetze[f2.si];
         Object.assign(s2, { soll: { kg: so.kg, wdh: so.wdh, ziel: so.ziel, rir: so.rir }, kg: kg === '' ? '' : Number(kg), wdh: Number(wdh), rir: ent.rir == null ? '' : ent.rir, erledigt: true, zeit: new Date().toISOString() });
@@ -1277,10 +1349,10 @@ document.addEventListener('click', ev => {
     case 'tr-f-vorschlag': aendere(`Für heute: ${kgText(Number(b.dataset.v))} – du bestätigst jeden Satz selbst`, () => { const u = e.uebungen[f.ui]; u.soll_kg = Number(b.dataset.v); u.vorschlag = { art: 'steigern', entscheidung: 'uebernommen', kg: Number(b.dataset.v), zeit: new Date().toISOString() }; f.entwurf = null; }); break;
     case 'tr-f-tausch': { const v = b.dataset.v; if (!v) return; aendere(`Ersetzt durch ${ueb(v).name} – Gewichte nicht übernommen`, d => { const geteilt = e.uebungen[f.ui].saetze.some(s => s.erledigt); trTausche(d, f.ui, v); const e2 = trEinheit(); const i = geteilt ? f.ui + 1 : f.ui; e2.fuehrung.ui = i; e2.fuehrung.si = e2.uebungen[i].saetze.findIndex(trOffen); e2.fuehrung.phase = 'satz'; e2.fuehrung.entwurf = null; }); break; }
     case 'tr-f-ende': { const offen = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => trOffen(x) && x.art === 'arbeit').length, 0);
-      if (offen && !confirm(`${offen} Arbeitssätze sind nicht bestätigt. Trotzdem beenden? Sie werden nicht gezählt.`)) return;
+      if (offen && !bestaetigt(`${offen} Arbeitssätze sind nicht bestätigt. Trotzdem beenden? Sie werden nicht gezählt.`)) return;
       timer = timer.filter(t0 => !(t0.art === 'pause' && t0.einheit === e.id)); timerSpeichern(); zeichneTimer(); const id = e.id;
       aendere('Training gespeichert', d => { const e2 = trEinheit(); e2.ende = new Date().toISOString(); delete e2.pausiert; if (e2.fuehrung) e2.fuehrung.phase = 'beendet'; d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training/zusammenfassung/' + id; break; }
-    case 'tr-f-verwerfen': if (!confirm('Training abbrechen? Alle Sätze dieser Einheit werden verworfen (direkt danach rückgängig machbar).')) return; timer = timer.filter(t0 => t0.art !== 'pause'); timerSpeichern(); zeichneTimer();
+    case 'tr-f-verwerfen': if (!bestaetigt('Training abbrechen? Alle Sätze dieser Einheit werden verworfen (direkt danach rückgängig machbar).')) return; timer = timer.filter(t0 => t0.art !== 'pause'); timerSpeichern(); zeichneTimer();
       aendere('Training abgebrochen – nichts gespeichert; Rückgängig möglich', d => { d.training.einheiten = d.training.einheiten.filter(x => x.id !== d.training.aktiv); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break;
   }
 });
@@ -1409,8 +1481,7 @@ function trUebungHtml(id) {
 const MUSTER_NAME = { horizontal_druecken: 'Drücken nach vorn', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben', kniebeuge: 'Kniebeuge', ausfallschritt: 'Ausfallschritt', hueftbeuge: 'Hüftstreckung', isolation: 'Isolation', rumpf: 'Rumpf' };
 const istEinseitig = u => u.einseitig === true || /einarmig|einbeinig|einseitig|ausfallschritt|step-up|pistol|seitstütz|kickback|konzentrationscurl|split squat/i.test(String(u.name) + ' ' + arr(u.alias).join(' '));
 let trBib = { q: '', gruppe: '', muster: '', ger: '', seite: '' };
-// Geräte lesbar: Alternativen mit „oder“; „rack“ ist bei Langhantel-Übungen Teil der Langhantel-Station
-const GERAET_LESBAR = { langhantel: 'Langhantel', rack: 'Rack/Hantelständer', kurzhantel: 'Kurzhanteln', kabel: 'Kabelzug', maschine: 'Maschine', klimmzugstange: 'Klimmzugstange', bank: 'Bank', band: 'Widerstandsband', kettlebell: 'Kettlebell', koerpergewicht: 'Körpergewicht' };
+// Geräte lesbar (Zuordnung GERAET_LESBAR oben bei den Ersatzvorschlägen): Alternativen mit „oder“
 function geraetText(u) { const g = arr(u.geraet); const mitRack = g.includes('rack') && g.includes('langhantel');
   return g.filter(x => !(x === 'rack' && mitRack)).map(x => x === 'langhantel' && mitRack ? 'Langhantel mit Rack' : (GERAET_LESBAR[x] || x)).join(' oder '); }
 function trBibListe() {
@@ -1492,13 +1563,13 @@ document.addEventListener('click', ev => {
     case 'tr-wahl': { const u = ueb(v); const x = neuerEintrag(v);
       trWahl.offen = b.dataset.ziel;
       if (b.dataset.ziel === 'routine') { const rid = location.hash.split('/')[3]; aendere(`${u.name} hinzugefügt`, d => { d.training.routinen.find(r => r.id === rid).uebungen.push(x); }); }
-      else aendere(`${u.name} hinzugefügt`, d => { trEinheit().uebungen.push(Object.assign({ uebung: v, wdh_von: x.wdh_von, wdh_bis: x.wdh_bis, pause_s: x.pause_s }, x.messung ? { messung: x.messung, sek_von: x.sek_von, sek_bis: x.sek_bis } : {}, { saetze: trNeueSaetze(x), notiz: '', beschwerde: false })); });
+      else aendere(`${u.name} hinzugefügt`, d => { trEinheit().uebungen.push(Object.assign({ uebung: v, wdh_von: x.wdh_von, wdh_bis: x.wdh_bis, pause_s: x.pause_s }, x.messung ? { messung: x.messung, sek_von: x.sek_von, sek_bis: x.sek_bis } : {}, x.je_seite ? { je_seite: true } : {}, { saetze: trNeueSaetze(x), notiz: '', beschwerde: false })); });
       break; }
     case 'tr-beispiele': { const vorhanden = new Set(trDaten().routinen.map(r => r.name)); const neu = BEISPIEL_ROUTINEN.filter(([n, l]) => !vorhanden.has(n) && l.every(id => (K.uebungen || []).some(u => u.id === id)));
       if (!neu.length) { toast('Beispielroutinen sind schon da'); return; }
       aendere(`${neu.length} Beispielroutinen übernommen – bitte an dich anpassen`, d => { neu.forEach(([n, l]) => d.training.routinen.push({ id: uid('rou'), name: n, beispiel: true, uebungen: l.map(id => ({ uebung: id, aufwaerm: id === 'ueb-plank' ? 0 : 1, saetze: 3, wdh_von: id === 'ueb-plank' ? null : 8, wdh_bis: id === 'ueb-plank' ? null : 12, pause_s: 120 })) })); }); break; }
     case 'tr-routine-neu': { const id = uid('rou'); aendere(null, d => { trDaten(); d.training.routinen.push({ id, name: 'Neue Routine', uebungen: [] }); }, { neuZeichnen: false }); location.hash = '#/training/routine/' + id; break; }
-    case 'tr-routine-weg': { const r = trDaten().routinen.find(x => x.id === v); if (!r || !confirm(`Routine „${r.name}“ löschen? Bisherige Einheiten bleiben erhalten.`)) return; aendere('Routine gelöscht', d => { d.training.routinen = d.training.routinen.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/training'; break; }
+    case 'tr-routine-weg': { const r = trDaten().routinen.find(x => x.id === v); if (!r || !bestaetigt(`Routine „${r.name}“ löschen? Bisherige Einheiten bleiben erhalten.`)) return; aendere('Routine gelöscht', d => { d.training.routinen = d.training.routinen.filter(x => x.id !== v); }, { neuZeichnen: false }); location.hash = '#/training'; break; }
     case 'tr-r-add': { const sel = $('#tr-r-neu'); if (!sel || !sel.value) { toast('Bitte eine Übung wählen'); return; }
       aendere(null, d => { d.training.routinen.find(x => x.id === v).uebungen.push(neuerEintrag(sel.value)); }); break; }
     case 'tr-r-weg': { const rid = location.hash.split('/')[3]; aendere(null, d => { d.training.routinen.find(x => x.id === rid).uebungen.splice(Number(v), 1); }); break; }
@@ -1507,13 +1578,15 @@ document.addEventListener('click', ev => {
       // Mit Routine: zuerst die kurze Vorschau, dann geführt starten. Freie Einheit ohne Routine: Tabellenansicht.
       if (v) { trStartWahl = { rid: v, plan, pe }; location.hash = '#/training/start/' + encodeURIComponent(v); break; }
       aendere(null, d => { trEinheitAnlegen(d, null, null, null, false); }, { neuZeichnen: false }); location.hash = '#/training/einheit'; break; }
-    case 'tr-start-tabelle': case 'tr-f-start': { if (trDaten().aktiv) { toast('Es läuft schon eine Einheit'); return; } const r = trDaten().routinen.find(x => x.id === v); if (!r) return; const w = trStartWahl && trStartWahl.rid === v ? trStartWahl : { plan: null, pe: null };
+    case 'tr-start-tabelle': case 'tr-f-start': { if (trDaten().aktiv) { toast('Es läuft schon eine Einheit'); return; } const r = trDaten().routinen.find(x => x.id === v); if (!r) return;
+      if (routineProbleme(r).length) { location.hash = '#/training/start/' + encodeURIComponent(v); route(); return; } const w = trStartWahl && trStartWahl.rid === v ? trStartWahl : { plan: null, pe: null };
       aendere(null, d => { trEinheitAnlegen(d, r, w.plan, w.pe, a === 'tr-f-start'); }, { neuZeichnen: false }); trStartWahl = null;
       location.hash = a === 'tr-f-start' ? '#/training/fuehrung' : '#/training/einheit'; break; }
     case 'tr-vz-zeit': trVZeit = v; route(); break;
     case 'tr-vz-var': trVVar[b.dataset.u] = v; route(); break;
     case 'tr-tausch': { if (!v) return; aendere(`Ersetzt durch ${ueb(v).name} – Gewichte nicht übernommen`, d => { trTausche(d, ui, v); }); break; }
     case 'tr-satz-ok': { const e = trEinheit(); const u = e.uebungen[ui]; const s = u.saetze[si]; const fertig = !s.erledigt;
+      if (fertig) { const sf = satzFehlerText(s); if (sf) { toast('Satz nicht abgeschlossen – ' + sf); return; } }
       if (fertig && s.art === 'arbeit' && istZeit(u) && (s.sek === '' || s.sek == null)) { const vs0 = trVorher(u, letzteLeistung(u.uebung, e.id, u.variante), si, 'sek'); if (vs0 === '') { toast('Bitte zuerst die gehaltenen Sekunden eintragen'); return; } s.sek = Number(vs0); }
       else if (fertig && s.art === 'arbeit' && !istZeit(u) && (s.wdh === '' || s.wdh == null)) { const l0 = letzteLeistung(u.uebung, e.id, u.variante); const vw = trVorher(u, l0, si, 'wdh'); if (vw === '') { toast('Bitte zuerst die Wiederholungen eintragen'); return; } s.wdh = Number(vw); if (s.kg === '' || s.kg == null) { const vk = trVorher(u, l0, si, 'kg'); if (vk !== '') s.kg = Number(vk); } }
       aendere(null, d => { const s2 = trEinheit().uebungen[ui].saetze[si]; s2.erledigt = fertig; s2.zeit = fertig ? new Date().toISOString() : null; });
@@ -1525,10 +1598,10 @@ document.addEventListener('click', ev => {
       trPlanEntwurf = { name: vs.name + ' – Vorschlag', key: vs.key, hinweise: vs.hinweise.slice(), einheiten: vs.einheiten.map(e => ({ name: e.name, tag: e.tag, uebungen: JSON.parse(JSON.stringify(e.uebungen)) })) };
       route(); setTimeout(() => { const el = $('#tr-entwurf'); if (el) el.scrollIntoView({ block: 'start' }); }, 30); break; }
     case 'tr-te-weg': { if (!trPlanEntwurf) return; const [ei, ui] = String(v).split(':').map(Number); const e = trPlanEntwurf.einheiten[ei]; if (e) e.uebungen.splice(ui, 1); if (e && e.uebungen.length && !e.uebungen.some(x => x.aufwaerm)) e.uebungen[0].aufwaerm = 2; entwurfNeuZeichnen(); break; }
-    case 'tr-te-einheit-weg': { if (!trPlanEntwurf) return; const e = trPlanEntwurf.einheiten[Number(v)]; if (e && e.uebungen.length && !confirm(`Einheit „${e.name}“ aus dem Entwurf entfernen?`)) return; trPlanEntwurf.einheiten.splice(Number(v), 1); entwurfNeuZeichnen(); break; }
-    case 'tr-te-verwerfen': if (trPlanEntwurf && !confirm('Entwurf verwerfen? Gespeichert war noch nichts.')) return; trPlanEntwurf = null; route(); break;
+    case 'tr-te-einheit-weg': { if (!trPlanEntwurf) return; const e = trPlanEntwurf.einheiten[Number(v)]; if (e && e.uebungen.length && !bestaetigt(`Einheit „${e.name}“ aus dem Entwurf entfernen?`)) return; trPlanEntwurf.einheiten.splice(Number(v), 1); entwurfNeuZeichnen(); break; }
+    case 'tr-te-verwerfen': if (trPlanEntwurf && !bestaetigt('Entwurf verwerfen? Gespeichert war noch nichts.')) return; trPlanEntwurf = null; route(); break;
     case 'tr-te-anlegen': { const ew = trPlanEntwurf; if (!ew) return; const p0 = entwurfPruefen(ew); if (p0.length) { toast(p0[0]); return; }
-      if (!confirm(`Plan „${ew.name}“ mit ${ew.einheiten.length} Einheit${ew.einheiten.length === 1 ? '' : 'en'} als neuen, inaktiven Plan anlegen? Bestehende Pläne und Routinen bleiben unverändert.`)) return; let pid;
+      if (!bestaetigt(`Plan „${ew.name}“ mit ${ew.einheiten.length} Einheit${ew.einheiten.length === 1 ? '' : 'en'} als neuen, inaktiven Plan anlegen? Bestehende Pläne und Routinen bleiben unverändert.`)) return; let pid;
       const sauber = x => { const y = JSON.parse(JSON.stringify(x)); Object.keys(y).forEach(k => { if (k[0] === '_') delete y[k]; }); if (y.messung !== 'zeit') { delete y.sek_von; delete y.sek_bis; if (y.messung === 'wdh') delete y.messung; } else { y.wdh_von = null; y.wdh_bis = null; } return y; };
       aendere('Plan angelegt (inaktiv) – unten aktivierbar', d => { trDaten(); const ids = ew.einheiten.map(e => { const id = uid('rou'); d.training.routinen.push({ id, name: e.name, uebungen: e.uebungen.map(sauber) }); return id; }); pid = uid('plan'); d.training.plaene.push({ id: pid, name: ew.name, art: 'eigen', hinweis: 'aus Planvorschlag erstellt ' + heute(), aktiv: false, erstellt: heute(), einheiten: ids.map((r, i) => ({ routine: r, tag: ew.einheiten[i].tag || '' })) }); }, { neuZeichnen: false });
       trPlanEntwurf = null; location.hash = '#/training/plan/' + pid; break; }
@@ -1570,7 +1643,7 @@ document.addEventListener('click', ev => {
     case 'tr-satz-art': aendere(null, d => { const s = trEinheit().uebungen[ui].saetze[si]; s.art = s.art === 'aufwaerm' ? 'arbeit' : 'aufwaerm'; }); break;
     case 'tr-e-add': { const sel = $('#tr-e-neu'); if (!sel || !sel.value) { toast('Bitte eine Übung wählen'); return; } aendere(null, d => { trEinheit().uebungen.push({ uebung: sel.value, pause_s: 120, saetze: trNeueSaetze({ aufwaerm: 1, saetze: 3 }), notiz: '', beschwerde: false }); }); break; }
     case 'tr-ende': { const e = trEinheit(); const offen = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => !x.erledigt && x.art === 'arbeit').length, 0);
-      if (offen && !confirm(`${offen} Arbeitssätze sind nicht als fertig markiert. Trotzdem beenden? (Sie werden nicht gezählt.)`)) return;
+      if (offen && !bestaetigt(`${offen} Arbeitssätze sind nicht als fertig markiert. Trotzdem beenden? (Sie werden nicht gezählt.)`)) return;
       aendere('Einheit gespeichert', d => { trEinheit().ende = new Date().toISOString(); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break; }
     case 'tr-verwerfen': aendere('Training abgebrochen – nichts gespeichert; Rückgängig möglich', d => { d.training.einheiten = d.training.einheiten.filter(x => x.id !== d.training.aktiv); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break;
     case 'tr-kg-weg': aendere('Eintrag gelöscht', d => { d.training.koerpergewicht = d.training.koerpergewicht.filter(x => x.datum !== v); }); break;
@@ -1582,11 +1655,20 @@ document.addEventListener('input', ev => {
   if (d.trTeil) { trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s.teil_wdh = el.value === '' ? '' : Number(el.value); }); return; }
   if (d.trBib === 'q') { trBib.q = el.value; const li = $('#tr-bib-liste'); if (li) li.innerHTML = trBibListe(); return; }
   if (d.trWahlQ) { trWahl.q = el.value; const li = $('#tr-wahl-liste'); if (li) li.innerHTML = uebungsWahlListe(d.trWahlQ); return; }
-  if (d.trSatz) trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s[d.trSatz] = el.value === '' ? '' : (d.trSatz === 'rir' ? el.value : Number(el.value)); });
+  if (d.trSatz) { const bad = el.validity && el.validity.badInput; trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s[d.trSatz] = bad ? NaN : el.value === '' ? '' : (d.trSatz === 'rir' ? el.value : Number(String(el.value).replace(',', '.'))); }); if (d.trSatz !== 'rir') feldFehlerZeigen(el, bad ? 'Bitte eine Zahl eingeben.' : satzFeldFehler(d.trSatz, el.value)); }
   else if (d.trUFeld) trSpeichernStill(() => { trEinheit().uebungen[Number(d.u)][d.trUFeld] = el.value; });
   else if (d.trENotiz) trSpeichernStill(() => { trEinheit().notiz = el.value; });
   else if (d.trRoutineName) trSpeichernStill(() => { trDaten().routinen.find(x => x.id === d.trRoutineName).name = el.value || 'Routine'; });
-  else if (d.trRFeld) { const rid = location.hash.split('/')[3]; trSpeichernStill(() => { const x = trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)]; x[d.trRFeld] = el.value === '' ? null : Number(String(el.value).replace(',', '.')); if (d.trRFeld === 'saetze' && x.saetze > 0) delete x.saetze_offen; }); }
+  else if (d.trRFeld) {
+    /* Routine ist gespeichert: nur gültige Werte übernehmen. Ungültige bleiben sichtbar stehen, am Feld steht, was gespeichert bleibt. */
+    const rid = location.hash.split('/')[3]; const x = trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)]; const k = d.trRFeld;
+    const roh = el.validity && el.validity.badInput ? NaN : el.value; const probe = Object.assign({}, x, { [k]: zielZahl(roh) });
+    const f = zielFehlerAlle(probe); const li = el.closest('li');
+    if (f[k]) { const alt = x[k] == null || x[k] === '' ? 'leer' : zahlDE(x[k], 2); feldFehlerZeigen(el, `${f[k]} Nicht gespeichert – gespeichert bleibt: ${alt}.`); routineHinweisAktualisieren(rid); return; }
+    trSpeichernStill(() => { x[k] = zielZahl(roh); if (k === 'saetze' && x.saetze > 0) delete x.saetze_offen; });
+    if (li) li.querySelectorAll('input[data-tr-r-feld]').forEach(i2 => feldFehlerZeigen(i2, zielFehlerAlle(x)[i2.dataset.trRFeld] || ''));
+    routineHinweisAktualisieren(rid);
+  }
   else if (d.trRText) { const rid = location.hash.split('/')[3]; trSpeichernStill(() => { trDaten().routinen.find(r => r.id === rid).uebungen[Number(d.i)][d.trRText] = el.value.trim() || null; }); }
   else if (d.trPlanName) trSpeichernStill(() => { trDaten().plaene.find(x => x.id === d.trPlanName).name = el.value || 'Plan'; });
 });
