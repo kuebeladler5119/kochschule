@@ -758,3 +758,23 @@ button[data-a="mt-situation"]::after, button[data-a="mt-frage"]::after { content
 .kosten-liste { display: grid; grid-template-columns: minmax(0, 13rem) 1fr; gap: .25rem .8rem; margin: .2rem 0 .5rem; }
 .kosten-liste dt { color: var(--leise); } .kosten-liste dd { margin: 0; font-variant-numeric: tabular-nums; }
 @media (max-width: 480px) { .kosten-liste { grid-template-columns: 1fr; } .kosten-liste dd { margin-bottom: .35rem; } }
+/* Weitermachen: Kochvorgang als Karte statt abgeschnittenem Einzeiler (2.25.1) */
+.weitermachen { flex-wrap: wrap; overflow-x: visible; }
+.weiter-karte { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; min-width: 0; background: var(--akzent-hell); border-radius: var(--r); padding: 6px 6px 6px 4px; }
+.weiter-haupt { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px 8px; color: var(--tinte); text-decoration: none; min-height: 44px; }
+.weiter-haupt .ico { color: var(--akzent); }
+.weiter-text { display: flex; flex-direction: column; min-width: 0; }
+.weiter-titel { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.3; }
+.weiter-abbruch { flex: none; min-height: 44px; padding: 8px 14px; background: var(--flaeche); border-color: color-mix(in srgb, var(--akzent) 40%, transparent); }
+/* Timerleiste verdeckt keine Knöpfe mehr: Inhalt unten um ihre Höhe verlängern */
+.inhalt { padding-bottom: calc(var(--nav-h) + 96px + var(--timer-h, 0px) + env(safe-area-inset-bottom)); }
+@media (min-width: 900px) { .inhalt { padding-bottom: calc(120px + var(--timer-h, 0px)); } }
+.weiter-titel { font-weight: 600; }
+.mk-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Kochen lernen: Technikliste */
+.technik-liste { list-style: none; padding: 0; margin: 0 0 .6rem; }
+.technik-liste li { padding: .55rem 0; border-bottom: 1px solid var(--linie); }
+.technik-liste li:last-child { border-bottom: 0; }
+.technik-liste a { color: var(--tinte); text-decoration: none; }
+.technik-liste a b::after { content: ' ›'; color: var(--leise); font-weight: 400; }
+.lern-start ol { margin: .3rem 0 0; padding-left: 1.2rem; } .lern-start li { margin: .25rem 0; }

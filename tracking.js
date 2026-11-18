@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611180003 */
+/* Fitomat-Build 202611181314 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -353,6 +353,11 @@ function offNormalisieren(p) {
   const fehlt = [['kcal', 'Energie'], ['protein', 'Eiweiß'], ['kh', 'Kohlenhydrate'], ['fett', 'Fett']].filter(([k]) => naehr[k] == null).map(x => x[1]); if (fehlt.length) hinweise.push('fehlt: ' + fehlt.join(', '));
   if (p.nutrition_data_per === 'serving') hinweise.push('Etikettangabe je Portion – Werte je 100 von OFF umgerechnet');
   if (n['energy-kcal_prepared_100g'] != null || n['energy_prepared_100g'] != null) hinweise.push('auch „zubereitet“-Werte vorhanden – verwendet werden die Werte wie verkauft (z. B. Pulver)');
+  // Weitere Widersprüche: nur benennen, nichts korrigieren
+  const kjAng = z('energy-kj'); if (kcal != null && kjAng != null && !hinweise.includes('kcal aus kJ umgerechnet') && Math.abs(kjAng / 4.184 - kcal) > Math.max(10, kcal * 0.08)) hinweise.push(`kcal (${kcal}) und kJ (${kjAng}) passen nicht zusammen – Etikett prüfen`);
+  if (naehr.zucker != null && naehr.kh != null && naehr.zucker > naehr.kh + 0.5) hinweise.push('mehr Zucker als Kohlenhydrate angegeben – Werte widersprüchlich');
+  if (naehr.gesfs != null && naehr.fett != null && naehr.gesfs > naehr.fett + 0.5) hinweise.push('mehr gesättigte Fettsäuren als Fett angegeben – Werte widersprüchlich');
+  if (['protein', 'kh', 'fett', 'zucker', 'ballaststoffe', 'salz'].some(k => naehr[k] != null && naehr[k] > 100) || (kcal != null && kcal > 900)) hinweise.push('Wert über dem physikalisch Möglichen je 100 g – Daten fehlerhaft, Etikett prüfen');
   if (kcal != null && naehr.protein != null && naehr.protein * 4 > kcal * 1.15 + 5) hinweise.push('mehr Energie aus Eiweiß als angegebene Energie – Werte widersprüchlich, Etikett prüfen');
   else if (kcal != null && naehr.protein != null && naehr.kh != null && naehr.fett != null) { const r = naehr.protein * 4 + naehr.kh * 4 + naehr.fett * 9; if (Math.abs(r - kcal) > Math.max(40, kcal * 0.3)) hinweise.push('Energie passt nicht zu Eiweiß/Kohlenhydraten/Fett – Etikett prüfen'); }
   const menge = String(p.quantity || '').trim(); const ml = /\d\s*(ml|cl|l)\b/i.test(menge) || p.product_quantity_unit === 'ml';
@@ -368,8 +373,8 @@ function offOnlineSuche(q, sofort) {
   if (offOnline.ctrl) { try { offOnline.ctrl.abort(); } catch (e) { /* */ } offOnline.ctrl = null; }   // veraltete Anfrage abbrechen
   offOnline.q = qn; offOnline.treffer = []; offOnline.fehler = ''; offOnline.art = ''; offOnline.alt = null; offOnline.cache = false;
   if (qn.length < 3 && !istBarcode(qn)) { offOnline.status = 'leer'; offOnlineZeichnen(); return; }
-  const code = istBarcode(qn); const key = (code ? 'c:' : 'q:') + suchNorm(qn); const c = offCache(key);
-  if (c) { offOnline.status = 'ok'; offOnline.treffer = c; offOnline.cache = true; offOnlineZeichnen(); return; }   // frischer Zwischenspeicher: keine Anfrage
+  const code = istBarcode(qn); const key = (code ? 'c:' : 'q:') + suchNorm(qn); const c = sofort === 'neu' ? null : offCache(key);
+  if (c) { const ct = offCache(key, undefined, true); offOnline.status = 'ok'; offOnline.treffer = c; offOnline.cache = ct ? 'heute ' + new Date(ct.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : true; offOnlineZeichnen(); return; }   // frischer Zwischenspeicher (< 24 h): keine Anfrage; „neu abfragen“ umgeht ihn
   if (!code && !sofort) { offOnline.status = 'bereit'; offOnlineZeichnen(); return; }   // Namenssuche wartet auf den Knopf
   if (!navigator.onLine) { offOnlineFehler('offline', '', key); return; }
   offOnline.timer = setTimeout(() => offOnlineAbfrage(qn, key, code, seq), sofort ? 0 : 400);
@@ -428,7 +433,7 @@ const OFF_FEHLER_TEXT = {
 };
 function offOnlineHtml() {
   const o = offOnline; if (o.status === 'leer') return '';
-  const kopf = `<h4 class="tg-titel">Online: Open Food Facts${typeof o.cache === 'string' ? ` <span class="leise">(gespeicherter Stand vom ${esc(o.cache)} – kann veraltet sein)</span>` : o.cache ? ' <span class="leise">(zwischengespeichert)</span>' : ''}</h4>`;
+  const kopf = `<h4 class="tg-titel">Online: Open Food Facts${typeof o.cache === 'string' ? ` <span class="leise">(gespeicherter Stand ${/^heute/.test(o.cache) ? 'von ' : 'vom '}${esc(o.cache)} – Community-Daten, kann veraltet sein)</span>` : o.cache ? ' <span class="leise">(gespeicherter Stand)</span>' : ''}</h4>${o.cache ? `<p class="klein" style="margin:0 0 .4rem"><button class="klein still" data-a="off-neu">Neu abfragen</button> <span class="leise">– eine Anfrage, wird nicht automatisch wiederholt</span></p>` : ''}`;
   const fuss = `<p class="leise klein">Produktdaten aus <a href="https://de.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>), von Freiwilligen erfasst – kein garantiert aktuelles Etikett. Gesendet wird nur dein Suchbegriff.</p>`;
   // Zustände klar getrennt: wartet · lädt · Treffer · ohne Treffer · Fehler · offline · Grenze erreicht – nie „gibt es nicht“, solange gesucht wird
   const anlegen = `<p class="klein"><button class="klein" data-a="produkt-neu-vorbelegt">${istBarcode(o.q) ? `Produkt mit Barcode ${esc(o.q)} anlegen` : `Produkt „${esc(o.q)}“ selbst anlegen`}</button> <span class="leise">Werte vom Etikett, optional mit Foto als Beleg.</span></p>`;
@@ -565,10 +570,13 @@ document.addEventListener('click', ev => {
       if (!k) return; tbKorb.push(Object.assign({ typ: t, id: v }, k)); korbNeuZeichnen(); toast(`${k.name} auf der Sammelliste`); break; }
     case 'off-jetzt': { if (offOnline.status === 'fehler' && !istBarcode(String(tbSuche || '').trim())) offOnline.host++;   // manuell: anderer Server
       offOnlineSuche(tbSuche, true); break; }
+    case 'off-neu': offOnlineSuche(tbSuche, 'neu'); break;
     case 'off-alt': { const a = offOnline.alt; if (!a) break; offOnline.status = 'ok'; offOnline.treffer = a.d; offOnline.cache = new Date(a.t).toLocaleDateString('de-DE'); offOnlineZeichnen(); break; }
     case 'tr-art-bestaetigen': { if (!['kraft', 'ausdauer'].includes(v)) break; const tr = trainingAngaben(D.einstellungen.person || {});
       aendere(v === 'kraft' ? 'Als Krafttraining gespeichert – Rückgängig möglich' : 'Als Ausdauer gespeichert – Rückgängig möglich', d => { const pp = Object.assign({}, d.einstellungen.person); pp.training_art = v; pp.training_einheiten = tr.n; pp.training_minuten = tr.min || 60; if (v === 'kraft') pp.kraft = true; d.einstellungen.person = pp; }, { mitUndo: true }); break; }
-    case 'off-eintragen': case 'off-liste': case 'off-merken': { const p = offOnline.treffer.find(x => x.code === v); if (!p) return; const inp = $(`[data-gramm="off-${v}"]`); const menge = Number(String((inp || {}).value || '').replace(',', '.')) || p.portion || 100; let l;
+    case 'off-eintragen': case 'off-liste': case 'off-merken': { const p = offOnline.treffer.find(x => x.code === v); if (!p) return;
+      // Sehr unplausible Community-Daten: erst nach ausdrücklicher Bestätigung übernehmen (Werte bleiben unverändert, der Hinweis wird mitgespeichert)
+      const krit = arr(p.hinweise).filter(h => /widersprüchlich|fehlerhaft|passen nicht/.test(h)); if (krit.length && !bestaetigt(`Die Online-Daten zu „${p.name || p.code}“ sind widersprüchlich: ${krit.join('; ')}.\n\nTrotzdem übernehmen? Besser: Werte vom Etikett als eigenes Produkt eintragen.`, { jaText: 'Trotzdem übernehmen' })) return; const inp = $(`[data-gramm="off-${v}"]`); const menge = Number(String((inp || {}).value || '').replace(',', '.')) || p.portion || 100; let l;
       if (a === 'off-eintragen') { if (!(menge > 0)) { toast('Bitte eine Menge eingeben'); return; } aendere(`${p.name} eingetragen – Produkt mit Quelle gespeichert`, d => { l = offProduktUebernehmen(d, p); d.tagebuch.push(eigenerEintrag(l, menge)); }); break; }
       aendere(null, d => { l = offProduktUebernehmen(d, p); }, { neuZeichnen: false });
       if (a === 'off-liste') { tbKorb.push({ typ: 'eigen', id: l.id, name: l.name + (l.marke ? ' (' + l.marke + ')' : ''), menge, einheit: l.bezug === '100ml' ? 'ml' : 'g' }); korbNeuZeichnen(); toast(`${l.name} auf der Sammelliste`); }

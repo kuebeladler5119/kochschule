@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611180003 */
+/* Fitomat-Build 202611181314 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -967,6 +967,18 @@ function mobFolge(r) {
   for (let k = 2; k <= n; k++) l.forEach(e => { const u = mobUeb(String(e).split('|')[0].trim()); if (u.art !== 'statisch') out.push({ e, runde: k }); });
   return out;
 }
+/* Pausentimer gehören zu einer Einheit (und ggf. einem Satz). Verwaiste Timer werden im ZUSTAND entfernt, nicht nur ausgeblendet:
+   – keine aktive Einheit oder andere Einheit → weg (Verwerfen, Beenden, Neuladen nach Abbruch);
+   – zugehöriger Satz nicht mehr bestätigt (Korrektur, Rückgängig) → weg.
+   Läuft bei jedem Zeichnen der Timer; liefert true, wenn etwas entfernt wurde. */
+function trTimerAufraeumen() {
+  if (!Array.isArray(timer) || !timer.length) return false; const t = (D && D.training) || {}; const akt = t.aktiv ? arr(t.einheiten).find(e => e.id === t.aktiv) : null;
+  const vorher = timer.length;
+  timer = timer.filter(x => { if (x.art !== 'pause') return true; if (!akt) return false; if (x.einheit && x.einheit !== akt.id) return false;
+    if (x.satz) { const [ui, si] = String(x.satz).split('-').map(Number); const s = akt.uebungen[ui] && akt.uebungen[ui].saetze[si]; if (!s || !s.erledigt) return false; }
+    return true; });
+  if (timer.length !== vorher) { timerSpeichern(); return true; } return false;
+}
 const mobTimerStopp = () => { const vorher = timer.length; timer = timer.filter(t => t.quelle !== 'mob'); if (timer.length !== vorher) { timerSpeichern(); zeichneTimer(); } };
 function mobPlanHtml() {
   const c = mobDaten().einrichtung || {}; const v = c.ziel ? mobVorschlag(c) : null;
@@ -1628,7 +1640,7 @@ document.addEventListener('click', ev => {
       aendere(null, d => { const s2 = trEinheit().uebungen[ui].saetze[si]; s2.erledigt = fertig; s2.zeit = fertig ? new Date().toISOString() : null; });
       // Pause nur nach Arbeitssätzen und nur, wenn eingeschaltet; spätere Sätze werden nie automatisch abgeschlossen
       const einst = trDaten().einstellungen;
-      if (fertig && s.art === 'arbeit' && u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
+      if (fertig && s.art === 'arbeit' && u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', einheit: trEinheit().id, satz: ui + '-' + si, name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
       break; }
     case 'tr-vorschlag-entwurf': { const vs = vorschlagsOptionen(trDaten().einrichtung || {}).ok[Number(v)]; if (!vs) return;
       trPlanEntwurf = { name: vs.name + ' – Vorschlag', key: vs.key, hinweise: vs.hinweise.slice(), einheiten: vs.einheiten.map(e => ({ name: e.name, tag: e.tag, uebungen: JSON.parse(JSON.stringify(e.uebungen)) })) };
@@ -1649,7 +1661,7 @@ document.addEventListener('click', ev => {
     case 'tr-v-ok': { const e = trEinheit(); const u = e.uebungen[ui]; const vs = progressionsVorschlag(u, e.id);
       aendere(vs.kg != null ? `Vorschlag übernommen: ${kgText(vs.kg)} für die offenen Arbeitssätze dieser Einheit` : 'Vorschlag übernommen', d => { const u2 = trEinheit().uebungen[ui]; if (vs.kg != null) u2.saetze.forEach(s => { if (s.art === 'arbeit' && !s.erledigt) s.kg = vs.kg; }); if (vs.pause_s) u2.pause_s = vs.pause_s; u2.vorschlag = { art: vs.art, entscheidung: 'uebernommen', kg: vs.kg ?? null, zeit: new Date().toISOString() }; }); break; }
     case 'tr-v-nein': case 'tr-v-selbst': { const e = trEinheit(); const vs = progressionsVorschlag(e.uebungen[ui], e.id); aendere(null, d => { trEinheit().uebungen[ui].vorschlag = { art: vs.art, entscheidung: a === 'tr-v-nein' ? 'beibehalten' : 'selbst', zeit: new Date().toISOString() }; }); break; }
-    case 'tr-pause-start': { const e = trEinheit(); const u = e.uebungen[ui]; const einst = trDaten().einstellungen; timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', name: 'Pause', naechstes: naechsterSatzText(e, ui, -1), ton: einst.ton !== false, ende: Date.now() + (u.pause_s || 120) * 1000 }); timerSpeichern(); zeichneTimer(); break; }
+    case 'tr-pause-start': { const e = trEinheit(); const u = e.uebungen[ui]; const einst = trDaten().einstellungen; timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', einheit: e.id, name: 'Pause', naechstes: naechsterSatzText(e, ui, -1), ton: einst.ton !== false, ende: Date.now() + (u.pause_s || 120) * 1000 }); timerSpeichern(); zeichneTimer(); break; }
     case 'tr-r-runter': { const rid = location.hash.split('/')[3]; const i = Number(v); aendere(null, d => { const l = d.training.routinen.find(x => x.id === rid).uebungen; [l[i + 1], l[i]] = [l[i], l[i + 1]]; }); break; }
     case 'tr-plan-neu': { const id = uid('plan'); aendere(null, d => { trDaten(); d.training.plaene.push({ id, name: 'Neuer Plan', art: 'eigen', aktiv: !d.training.plaene.some(p => p.aktiv), erstellt: heute(), einheiten: [] }); }, { neuZeichnen: false }); location.hash = '#/training/plan/' + id; break; }
     case 'tr-plan-aktiv': aendere('Plan aktiv', d => { d.training.plaene.forEach(p => { p.aktiv = p.id === v; }); }); break;
@@ -1681,7 +1693,7 @@ document.addEventListener('click', ev => {
     case 'tr-ende': { const e = trEinheit(); const offen = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => !x.erledigt && x.art === 'arbeit').length, 0);
       if (offen && !bestaetigt(`${offen} Arbeitssätze sind nicht als fertig markiert. Trotzdem beenden? (Sie werden nicht gezählt.)`)) return;
       aendere('Einheit gespeichert', d => { trEinheit().ende = new Date().toISOString(); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break; }
-    case 'tr-verwerfen': aendere('Training abgebrochen – nichts gespeichert; Rückgängig möglich', d => { d.training.einheiten = d.training.einheiten.filter(x => x.id !== d.training.aktiv); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break;
+    case 'tr-verwerfen': if (!bestaetigt('Training verwerfen? Alle Sätze dieser Einheit werden nicht gespeichert (direkt danach rückgängig machbar).')) return; timer = timer.filter(t0 => t0.art !== 'pause'); timerSpeichern(); zeichneTimer(); aendere('Training abgebrochen – nichts gespeichert; Rückgängig möglich', d => { d.training.einheiten = d.training.einheiten.filter(x => x.id !== d.training.aktiv); d.training.aktiv = null; }, { neuZeichnen: false }); location.hash = '#/training'; break;
     case 'tr-kg-weg': aendere('Eintrag gelöscht', d => { d.training.koerpergewicht = d.training.koerpergewicht.filter(x => x.datum !== v); }); break;
   }
 });

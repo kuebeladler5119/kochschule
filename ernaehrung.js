@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611180003 */
+/* Fitomat-Build 202611181314 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -336,7 +336,7 @@ function bilanzHtml(s, ziele) {
     return `<div class="makro-kachel"><span class="mk-name">${name}</span><span class="mk-wert"><b>${mind(k)}${zahlDE(s[k])}</b><small> ${einh}</small></span><span class="mk-ziel">${zz ? 'von ' + zahlDE(zz) + ' ' + einh : 'kein Ziel'}</span>${p != null ? `<span class="spur mini" aria-hidden="true"><i style="width:${p}%"></i></span>` : ''}</div>`; };
   return `<div class="bilanz${zk ? '' : ' ohne-ziel'}">
     <div class="bilanz-energie">${ring}<div class="bilanz-zahl"><span class="bz-wert">${mind('kcal')}${zahlDE(s.kcal)}</span><span class="bz-einheit">kcal${zk ? ' von ' + zahlDE(zk) : ' heute'}</span><span class="bz-rest">${rest}</span></div></div>
-    <div class="bilanz-makros">${kachel('protein', 'Protein', 'g')}${kachel('kh', 'Kohlenh.', 'g')}${kachel('fett', 'Fett', 'g')}</div></div>
+    <div class="bilanz-makros">${kachel('protein', 'Protein', 'g')}${kachel('kh', 'KH', 'g')}${kachel('fett', 'Fett', 'g')}</div></div>
     <p class="leise klein bilanz-fuss">Ballaststoffe ${mind('ballaststoffe')}${zahlDE(s.ballaststoffe, 1)}${z('ballaststoffe') ? ' / ' + zahlDE(z('ballaststoffe')) : ''} g${!ziele ? ' · <a href="#/ziele">Ziele festlegen (optional)</a>' : ''}</p>`;
 }
 function tagMikro(tag) {
@@ -355,7 +355,7 @@ function rezeptEintrag(r, portionen, quelle = 'rezept', extra = {}) {
   eintragSkalieren(e, portionen); return e;
 }
 /* Datenquelle eines allgemeinen Werts: BLS 4.0 (Vorrang) oder USDA FoodData Central, wo der BLS keinen passenden Eintrag hat */
-const quelleText = code => !code ? 'keine Nährwerte' : /^USDA-/.test(code) ? 'USDA FoodData Central ' + code.slice(5) : 'BLS ' + code;
+const quelleText = code => !code ? 'keine Nährwerte' : /^USDA-/.test(code) ? 'USDA FoodData Central ' + code.slice(5) : /^ETIKETT-/.test(code) ? 'Etikettwert eines konkreten Produkts (Näherung) ' + code.slice(8) : /^DEF-/.test(code) ? 'Definition (z. B. reines Salz)' : 'BLS ' + code;
 const istFluessig = z => !!(z && (z.fluessig || z.dichte));
 /* Menge in g oder ml; ml wird über die belegte Dichte (sonst Näherung 1 g/ml, gekennzeichnet) in g umgerechnet – Werte gelten je 100 g */
 function lebensmittelEintrag(z, menge, einheit = 'g') {

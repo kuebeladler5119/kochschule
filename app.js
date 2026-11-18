@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.25.0';
-const APP_BUILD = '202611180003';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.26.0';
+const APP_BUILD = '202611181314';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -21,6 +21,13 @@ const datumDE = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('de-
 const uid = p => p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const zahlDE = (n, st = 0) => n == null || isNaN(n) ? '–' : Number(n).toLocaleString('de-DE', { maximumFractionDigits: st, minimumFractionDigits: 0 });
 
+/* Katalog besteht aus drei Dateien desselben Builds. Fehlt ein Teil oder stammt er aus einem anderen Build,
+   wird das unten im Kopf verständlich gemeldet (statt einer stillen, leeren Rezeptliste). Persönliche Daten sind davon nicht betroffen. */
+const KATALOG_PROBLEM = (() => { const t = window.KATALOG_TEILE || {}; const p = [];
+  if (!window.KATALOG) p.push('Grunddaten'); if (!K.rezepte || !K.rezepte.length) p.push('Rezepte'); if (!K.zutaten || !K.zutaten.length) p.push('Zutaten');
+  ['rezepte', 'zutaten'].forEach(k => { if (t[k] && K.version && t[k] !== K.version && !p.includes(k === 'rezepte' ? 'Rezepte' : 'Zutaten')) p.push((k === 'rezepte' ? 'Rezepte' : 'Zutaten') + ' (anderer Stand)'); });
+  return p.length ? p : null; })();
+if (!K.rezepte) K.rezepte = []; if (!K.zutaten) K.zutaten = [];
 /* ---------- Katalog-Indizes ---------- */
 const R = {}; K.rezepte.forEach(r => { R[r.id] = r; });
 const RN = {}; K.rezepte.forEach(r => { RN[r.datei] = r; });
@@ -151,6 +158,9 @@ function feldHinweis(el, text) {
   k.textContent = text || ''; k.hidden = !text; if (text) { el.setAttribute('aria-invalid', 'true'); el.focus(); } else el.removeAttribute('aria-invalid');
 }
 
+// Navigation während einer offenen Rückfrage: Rückfrage schließen (entspricht „Abbrechen“), nichts wird ausgeführt
+window.addEventListener('hashchange', () => { const el = document.getElementById('frage'); if (el && !el.hidden) { el.hidden = true; el.innerHTML = ''; document.body.classList.remove('frage-offen'); frageFreigabe = null; } });
+
 let toastZeit;
 function toast(text, mitUndo = false) {
   const el = $('#toast'); el.innerHTML = `<span>${esc(text)}</span>` + (mitUndo ? '<button data-a="undo">Rückgängig</button>' : '');
@@ -228,8 +238,11 @@ function md(text) {
 }
 
 /* ---------- Mengen ---------- */
+const BRUCH = [[0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [2 / 3, '⅔'], [0.75, '¾']];
 function fmtMenge(m, einheit) {
   if (m == null) return '';
+  // Löffel, Stück, Bund usw.: Brüche lesbar (½ TL, 1 ¼ EL) statt „0,50“
+  if (einheit && !/^(g|ml|kg|l)$/.test(einheit) && m > 0 && m < 20) { const g = Math.floor(m + 1e-9), r = m - g; if (r < 0.02) return String(g); const b = BRUCH.find(([w]) => Math.abs(r - w) < 0.02); if (b) return (g ? g + ' ' : '') + b[1]; }
   let st = 0; if (m < 10 && einheit !== 'g' && einheit !== 'ml') st = 1; if (m < 1) st = 2;
   if ((einheit === 'g' || einheit === 'ml') && m >= 50) m = Math.round(m / 5) * 5;
   return zahlDE(m, st);
@@ -326,7 +339,8 @@ function weitermachenHtml(haupt) {
   if (haupt !== 'food') { const n = Object.keys(D.fortschritt || {}).filter(id => R[id]).length; if (n) fremd.push(`<a href="#/kochen/${esc(Object.keys(D.fortschritt).find(id => R[id]))}">${n === 1 ? 'Kochvorgang' : n + ' Kochvorgänge'}</a>`); }
   if (haupt !== 'training' && D.training && D.training.aktiv) fremd.push(`<a href="#/training/einheit">Training</a>`);
   if (haupt !== 'mobility' && D.mobility && D.mobility.lauf) fremd.push(`<a href="#/mobility/lauf">Mobility-Routine</a>`);
-  if (haupt === 'food') Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<span class="weiter-gruppe"><a class="weiter-chip" href="#/kochen/${esc(rid)}">${ico('flamme', 'klein')} Weiter kochen: ${esc(kurztitel(r.titel))} · Schritt ${fo.schritt + 1}/${r.schritte.length}</a><button class="weiter-x" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">✕ abbrechen</button></span>`); });
+  // Laufender Kochvorgang als Karte: Name darf umbrechen (max. 2 Zeilen), „Abbrechen“ bleibt als eigener, gut treffbarer Knopf sichtbar
+  if (haupt === 'food') Object.entries(D.fortschritt || {}).forEach(([rid, fo]) => { const r = R[rid]; if (r) teile.push(`<div class="weiter-karte"><a class="weiter-haupt" href="#/kochen/${esc(rid)}">${ico('flamme')}<span class="weiter-text"><span class="leise klein">Weiter kochen · Schritt ${fo.schritt + 1} von ${r.schritte.length}</span><span class="weiter-titel">${esc(kurztitel(r.titel))}</span></span></a><button class="weiter-abbruch" data-a="fortschritt-weg" data-v="${esc(rid)}" aria-label="Kochvorgang ${esc(kurztitel(r.titel))} abbrechen">Abbrechen</button></div>`); });
   if (haupt === 'training' && D.training && D.training.aktiv) { const e = (D.training.einheiten || []).find(x => x.id === D.training.aktiv); teile.push(`<a class="weiter-chip" href="#/training/${e && e.fuehrung ? 'fuehrung' : 'einheit'}">${ico('hantel', 'klein')} Training fortsetzen</a>`); }
   if (haupt === 'mobility' && D.mobility && D.mobility.lauf) teile.push(`<a class="weiter-chip" href="#/mobility/lauf">${ico('dehnen', 'klein')} Mobility-Routine fortsetzen</a>`);
   if (haupt === 'food') D.restportionen.filter(p => p.portionen > 0 && p.verbrauchen_bis && tageBis(p.verbrauchen_bis) <= 1 && tageBis(p.verbrauchen_bis) >= 0).forEach(p => teile.push(`<a class="weiter-chip" href="#/vorrat">${ico('portion', 'klein')} ${esc(kurztitel(p.titel))}: ${tageBis(p.verbrauchen_bis) === 0 ? 'heute' : 'bis morgen'} essen</a>`));
@@ -337,16 +351,16 @@ function planTabs(akt) { return `<div class="segment" role="tablist" aria-label=
 const FOOD_SEITEN = ['entdecken', 'jetzt', 'meinkochbuch', 'date', 'ablauf', 'preise', 'rezept', 'kochen', 'fertig', 'auswahl', 'einkauf', 'planung', 'vorrat', 'tagebuch', 'ziele', 'produkte', 'zutat', 'technik'];
 function hauptBereich(seite) { return FOOD_SEITEN.includes(seite) ? 'food' : seite === 'training' ? 'training' : seite === 'mobility' ? 'mobility' : seite === 'mentality' ? 'mentality' : ''; }
 const UNTERREITER = {
-  food: [['entdecken', '#/entdecken', 'Kochbuch'], ['tagebuch', '#/tagebuch', 'Tagebuch'], ['einkauf', '#/auswahl', 'Einkauf'], ['vorrat', '#/vorrat', 'Vorrat']],
+  food: [['entdecken', '#/entdecken', 'Kochbuch'], ['lernen', '#/meinkochbuch/lernen', 'Lernen'], ['tagebuch', '#/tagebuch', 'Tagebuch'], ['einkauf', '#/auswahl', 'Einkauf'], ['vorrat', '#/vorrat', 'Vorrat']],
   training: [['', '#/training', 'Übersicht'], ['plaene', '#/training/plaene', 'Pläne'], ['uebungen', '#/training/uebungen', 'Übungen'], ['verlauf', '#/training/verlauf', 'Verlauf'], ['cardio', '#/training/cardio', 'Cardio']],
   mobility: [['', '#/mobility', 'Routinen'], ['plan', '#/mobility/plan', 'Mein Plan'], ['verlauf', '#/mobility/verlauf', 'Verlauf']],
   mentality: [['', '#/mentality', 'Start'], ['werkzeuge', '#/mentality/werkzeuge', 'Werkzeuge'], ['journal', '#/mentality/journal', 'Journal'], ['verlauf', '#/mentality/verlauf', 'Verlauf']]
 };
 function kopfLeiste(seite, a) {
   const haupt = hauptBereich(seite);
-  const zeigeReiter = (haupt === 'food' && ['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'planung', 'vorrat'].includes(seite)) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a))) || (haupt === 'mentality' && (!a || ['werkzeuge', 'journal', 'verlauf'].includes(a)));
+  const zeigeReiter = (haupt === 'food' && (['entdecken', 'tagebuch', 'auswahl', 'einkauf', 'planung', 'vorrat'].includes(seite) || (seite === 'meinkochbuch' && a === 'lernen'))) || (haupt === 'training' && (!a || ['plaene', 'uebungen', 'verlauf', 'cardio'].includes(a))) || (haupt === 'mobility' && (!a || ['plan', 'verlauf'].includes(a))) || (haupt === 'mentality' && (!a || ['werkzeuge', 'journal', 'verlauf'].includes(a)));
   if (!zeigeReiter) return '';
-  const akt = haupt === 'food' ? (seite === 'auswahl' || seite === 'planung' ? 'einkauf' : seite) : (a || '');
+  const akt = haupt === 'food' ? (seite === 'auswahl' || seite === 'planung' ? 'einkauf' : seite === 'meinkochbuch' ? 'lernen' : seite) : (a || '');
   const nAusw = D.auswahl.length;
   return `${seite === 'kochen' ? '' : weitermachenHtml(haupt)}<nav class="unterreiter" aria-label="${{ food: 'Food', training: 'Training', mobility: 'Mobility', mentality: 'Mentality' }[haupt]}">${UNTERREITER[haupt].map(([k, href, n]) => `<a href="${href}" ${k === akt ? 'aria-current="page"' : ''}>${n}${k === 'einkauf' && nAusw ? ` <b class="zaehl">${nAusw}</b>` : ''}</a>`).join('')}</nav>`;
 }
@@ -434,7 +448,7 @@ function route() {
   const views = { entdecken: vEntdecken, rezept: vRezept, kochen: vKochen, fertig: vFertig, auswahl: vAuswahl, einkauf: vEinkauf, vorrat: vVorrat, mehr: vMehr, tagebuch: vTagebuch2, einstellungen: vEinstellungen, daten: vDaten, technik: vTechnik, zutat: vZutat, info: vInfo, einrichtung: vEinrichtung, ziele: vZiele, profile: vProfile, produkte: vProdukte, training: vTraining, mobility: vMobility, mentality: vMentality, planung: vPlanung, meinkochbuch: vMeinKochbuch, date: vDate, ablauf: vAblauf, preise: vPreise, jetzt: vJetzt };
   const fn = views[seite] || vEntdecken;
   try {
-    app.innerHTML = kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
+    app.innerHTML = (KATALOG_PROBLEM ? `<div class="hinweis gefahr" role="alert"><b>Katalog unvollständig:</b> ${esc(KATALOG_PROBLEM.join(', '))} fehlt oder gehört nicht zu dieser Version. Deine eigenen Daten sind nicht betroffen. Bitte mit Internet neu laden; hilft das nicht, unter „Mehr“ nach Updates suchen. <button class="klein" onclick="location.reload()">Neu laden</button></div>` : '') + kopfLeiste(seite, a) + fn(a ? decodeURIComponent(a) : undefined, b);
     if (fn.danach) fn.danach(a ? decodeURIComponent(a) : undefined, b);
   } catch (err) {
     console.error('Ansicht', seite, err);
@@ -1019,7 +1033,11 @@ vEinstellungen.danach = () => { const f = $('#einst-form'); f.addEventListener('
 function exportDaten() { return { art: 'kochschule-export', schema: SCHEMA, app_version: APP_VERSION, katalog_version: K.version, exportiert_am: new Date().toISOString(), daten: D }; }
 function importiere(obj) {
   if (!obj || typeof obj !== 'object') throw new Error('Keine gültige Datei.');
-  if (obj.art === 'kochschule-privat-import') { const e = obj.einstellungen || {}; return { text: `Profil-Import: Ausschlüsse ${(e.ausschluesse || []).join(', ') || '–'}, ${(e.geraete || []).length} Geräte, ${Object.keys(e.geraete_hinweise || {}).length} Geräte-Hinweise. Vorrat, Tagebuch und alle anderen Daten bleiben unverändert.`, anwenden: d => { if (e.ausschluesse) d.einstellungen.ausschluesse = e.ausschluesse; if (e.geraete) d.einstellungen.geraete = e.geraete; if (e.geraete_hinweise) d.einstellungen.geraete_hinweise = Object.assign({}, d.einstellungen.geraete_hinweise || {}, e.geraete_hinweise); } }; }
+  if (obj.art === 'kochschule-privat-import') { const e = obj.einstellungen || {}; const pe = obj.person || null; const alt = D.einstellungen.person || {};
+    // Person: Alter, Geschlecht, Größe, Alltag, Training und Ziel werden übernommen; das Gewicht nur, wenn noch keins eingetragen ist (es ist eine frühere Angabe, kein neuer Messwert)
+    const personText = pe ? ` Person: ${pe.alter} J., ${pe.geschlecht === 'm' ? 'männlich' : pe.geschlecht === 'w' ? 'weiblich' : '–'}, ${pe.groesse} cm, Alltag ${pe.alltag}, ${pe.training_einheiten} × ${pe.training_minuten} Min. ${pe.training_art === 'kraft' ? 'Krafttraining' : pe.training_art}, Ziel ${pe.ziel}${pe.defizit_kcal ? ' −' + pe.defizit_kcal + ' kcal' : ''}. Gewicht: ${alt.gewicht ? `bleibt bei deinem eingetragenen Wert (${alt.gewicht} kg)` : `${pe.gewicht} kg (${pe.gewicht_hinweis || 'frühere Angabe'})`}.` : '';
+    return { text: `Profil-Import: Ausschlüsse ${(e.ausschluesse || []).join(', ') || '–'}, ${(e.geraete || []).length} Geräte, ${Object.keys(e.geraete_hinweise || {}).length} Geräte-Hinweise.${personText} Vorrat, Tagebuch, manuelle Ziele und alle anderen Daten bleiben unverändert.`, anwenden: d => { if (e.ausschluesse) d.einstellungen.ausschluesse = e.ausschluesse; if (e.geraete) d.einstellungen.geraete = e.geraete; if (e.geraete_hinweise) d.einstellungen.geraete_hinweise = Object.assign({}, d.einstellungen.geraete_hinweise || {}, e.geraete_hinweise);
+      if (pe) { const p = d.einstellungen.person = Object.assign({}, d.einstellungen.person || {}); ['alter', 'geschlecht', 'groesse', 'alltag', 'training_art', 'training_einheiten', 'training_minuten', 'kraft', 'ziel', 'defizit_kcal'].forEach(k => { if (pe[k] != null && pe[k] !== '') p[k] = pe[k]; }); if (!p.gewicht && pe.gewicht) p.gewicht = pe.gewicht; } } }; }
   if (obj.art === 'fitomat-trainingsplan') return trainingsplanImport(obj);
   if (obj.art !== 'kochschule-export' || !obj.daten || typeof obj.daten.schema !== 'number') throw new Error('Unbekanntes Format (erwartet: kochschule-export).');
   if (obj.daten.schema > SCHEMA) throw new Error('Die Datei stammt von einer neueren App-Version – bitte zuerst die App aktualisieren (Mehr).');
@@ -1065,7 +1083,8 @@ function timerSpeichern() { try { localStorage.setItem(TIMER_SPEICHER, JSON.stri
 let audioCtx;
 function piep() { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination); g.gain.value = .15; o.start(); o.stop(audioCtx.currentTime + .4); } catch (e) { /* */ } if (navigator.vibrate) navigator.vibrate([300, 150, 300]); }
 function zeichneTimer() {
-  const el = $('#timerleiste'); if (!timer.length) { el.hidden = true; el.innerHTML = ''; return; }
+  if (typeof trTimerAufraeumen === 'function') trTimerAufraeumen();   // verwaiste Trainings-Pausen (verworfene/beendete Einheit, korrigierter Satz) aus dem Zustand entfernen
+  const el = $('#timerleiste'); if (!timer.length) { el.hidden = true; el.innerHTML = ''; timerPlatz(); return; }
   el.hidden = false;
   // Restzeit immer aus dem gespeicherten Endzeitpunkt – App-Wechsel oder ein pausierter Browser verfälschen den Countdown nicht
   el.innerHTML = timer.map(t => { const rest = t.pausiert != null ? t.pausiert : Math.max(0, Math.round((t.ende - Date.now()) / 1000)); const fertig = rest === 0 && t.pausiert == null;
@@ -1074,7 +1093,10 @@ function zeichneTimer() {
     if (t.art === 'pause') return `<span class="timer pausetimer ${fertig ? 'fertig' : ''}"><span><b>Pause ${zeit}</b>${t.naechstes ? `<br><small>danach: ${esc(t.naechstes)}</small>` : ''}</span>
       ${fertig ? '' : `<button class="klein" data-a="timer-plus" data-v="${esc(t.id)}" data-s="30">+30</button><button class="klein" data-a="timer-plus" data-v="${esc(t.id)}" data-s="60">+60</button><button class="klein" data-a="timer-halt" data-v="${esc(t.id)}" aria-label="${t.pausiert != null ? 'fortsetzen' : 'anhalten'}">${t.pausiert != null ? '▶' : 'Ⅱ'}</button>`}<button class="klein" data-a="timer-weg" data-v="${esc(t.id)}">${fertig ? 'OK' : 'überspringen'}</button></span>`;
     return `<span class="timer ${fertig ? 'fertig' : ''}">${esc(t.name.slice(0, 28))} · ${zeit}<button class="klein" data-a="timer-weg" data-v="${esc(t.id)}" aria-label="Timer beenden">✕</button></span>`; }).join('');
+  timerPlatz();
 }
+// Inhalt bekommt unten so viel Platz, wie die Timerleiste hoch ist – sonst verdeckt sie Knöpfe wie „Einheit beenden“
+function timerPlatz() { const el = $('#timerleiste'); const h = el && !el.hidden ? el.offsetHeight : 0; document.documentElement.style.setProperty('--timer-h', h + 'px'); }
 setInterval(zeichneTimer, 1000);
 
 /* ---------- Aktionen ---------- */

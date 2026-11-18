@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611180003 */
+/* Fitomat-Build 202611181314 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
@@ -101,13 +101,22 @@ function suchRang(r, q) {
 function dauerText(min) { if (min == null) return ''; if (min < 90) return `${min} Min.`; return `ca. ${zahlDE(Math.round(min / 30) / 2, 1)} Std.`; }
 const VORTAG_RE = /über Nacht|am Vortag|am Vorabend|Vortag/i;
 const WARTE_ARTEN = [[/einweich/i, 'Einweichen'], [/marinier/i, 'Marinieren'], [/gehen lassen|Teig (?:ruht|ruhen)|Gare\b|gären/i, 'Teig gehen lassen'], [/kühlschrank[^.]{0,60}(?:fest|stunden|std\.|über nacht)|fest werden|durchkühlen|kalt stellen/i, 'Kühlen']];
+/* Vorlauf: ausdrücklich im Rezept (`vorlauf: vortag` | `keiner`, optional `vorlauf_optional: "…"`), sonst vorsichtige Heuristik.
+   „über Nacht“ als Möglichkeit („oder über Nacht“, „besser 1 Std.“, „bis zu 24 Std.“) ist KEIN Pflicht-Vorlauf. */
+const OPTIONAL_VOR_RE = /(oder|besser|bis zu|optional|wahlweise|nach wunsch|gern|länger|auch)\W+(?:\S+\W+){0,4}$/i;
+function vortagPflichtImText(text) {
+  const re = new RegExp(VORTAG_RE.source, 'gi'); let m;
+  while ((m = re.exec(text))) { const davor = text.slice(Math.max(0, m.index - 60), m.index); if (!OPTIONAL_VOR_RE.test(davor) && !/\([^)]*$/.test(davor)) return true; }
+  return false;
+}
 function zeitInfo(r) {
   const i = rezeptInfo(r); const text = r.schritte.map(s => s.titel + ' ' + s.md).join(' \n ');
   const warte = i.gesamt && i.aktiv && i.gesamt > i.aktiv ? i.gesamt - i.aktiv : 0;
   const arten = warte >= 45 ? WARTE_ARTEN.filter(([re]) => re.test(text)).map(x => x[1]) : [];
-  const vs = r.schritte.find(s => VORTAG_RE.test(s.titel + ' ' + s.md));
-  const vortag = vs ? { nr: vs.nr, titel: vs.titel } : (i.gesamt >= 8 * 60 ? { nr: null, titel: '' } : null);
-  return { aktiv: i.aktiv, gesamt: i.gesamt, warte, arten, vortag };
+  const vl = String(r.meta.vorlauf || '').trim().toLowerCase(); let vortag = null;
+  if (vl === 'vortag') vortag = { nr: null, titel: r.meta.vorlauf_text || '' };
+  else if (!vl) { const vs = r.schritte.find(s => vortagPflichtImText(s.titel + ' ' + s.md)); vortag = vs ? { nr: vs.nr, titel: vs.titel } : (i.gesamt >= 8 * 60 ? { nr: null, titel: '' } : null); }
+  return { aktiv: i.aktiv, gesamt: i.gesamt, warte, arten, vortag, optional: r.meta.vorlauf_optional || '' };
 }
 function zeitKurz(r) {
   const z = zeitInfo(r); if (!z.gesamt) return z.aktiv ? `${dauerText(z.aktiv)} Arbeit` : '';
@@ -119,7 +128,8 @@ function zeitDetailHtml(r) {
   if (z.aktiv) t.push(`<span>${ico('hand', 'klein')} ${dauerText(z.aktiv)} Arbeit</span>`);
   if (z.gesamt) t.push(`<span>${ico('uhr', 'klein')} ${dauerText(z.gesamt)} insgesamt</span>`);
   const w = z.warte >= 15 ? `<span class="zeit-davon">davon ${dauerText(z.warte)} ohne Arbeit${z.arten.length ? ' – vor allem ' + esc(z.arten.slice(0, 2).join(' und ')) : ' (Garen, Ruhen, Warten)'}</span>` : '';
-  return t.join('') + w;
+  const opt = z.optional ? `<span class="zeit-davon">optional: ${esc(z.optional)}${/nicht nötig/i.test(z.optional) ? '' : ' (nicht nötig)'}</span>` : '';
+  return t.join('') + w + opt;
 }
 function vortagHinweisHtml(r) {
   const z = zeitInfo(r); if (!z.vortag) return '';
@@ -490,7 +500,7 @@ const pdQuelle = q => q === 'quelle' ? 'Empfehlung aus der Rezeptquelle' : 'eige
 const pdErlaubt = id => R[id] && !rezeptPruefung(R[id]).hart.length;
 function passtDazuDaten(r) {
   const direkt = arr(r.meta.passt_dazu).map(pdParse).filter(e => R[e.id] && e.id !== r.id);
-  const rueck = K.rezepte.filter(x => x.id !== r.id && !direkt.some(d => d.id === x.id)).map(x => { const s = arr(x.meta.passt_dazu).map(pdParse).find(e => e.id === r.id); return s ? { id: x.id, art: 'ergaenzt', grund: s.grund, quelle: s.quelle, rueck: true } : null; }).filter(Boolean);
+  const rueck = K.rezepte.filter(x => x.id !== r.id && !direkt.some(d => d.id === x.id)).map(x => { const s = arr(x.meta.passt_dazu).map(pdParse).find(e => e.id === r.id); return s ? { id: x.id, art: s.art === 'alternative' || s.art === 'ersetzt:hauptgericht' ? 'alternative' : 'ergaenzt', grund: s.grund, quelle: s.quelle, rueck: true } : null; }).filter(Boolean);
   const gruppen = new Set(rezeptKuechen(r).map(k => KUECHE_GRUPPE[k]));
   const istHaupt = r.meta.bereich === 'hauptgericht';
   const passendeBereiche = istHaupt ? ['vorspeise', 'suppe', 'salat', 'beilage', 'dessert'] : ['hauptgericht'];
@@ -514,23 +524,38 @@ function mahlzeitWerte(rs) {
   rs.forEach(x => { const p = x.naehrwerte.pro_portion; if (p.kcal == null) s.unbekannt = true; else { s.kcal += p.kcal; s.protein += p.protein || 0; } s.aktiv += Number(x.meta.zeit_aktiv_min) || 0; s.gesamt = Math.max(s.gesamt, Number(x.meta.zeit_gesamt_min) || 0); arr(x.meta.geraete_noetig).forEach(g => s.geraete.add(g)); });
   return s;
 }
+/* Drei getrennte Beziehungen: „dazu“ (Beilage/Sauce/Salat/Topping zum Gericht), „gang“ (weiterer Menügang), „alternative“ (statt dieses Gerichts).
+   Alternativen werden nie mit „dazu“ ins Menü gelegt. */
+const GANG_BEREICHE = ['vorspeise', 'suppe', 'dessert'];
+function pdBeziehung(r, e) {
+  const x = R[e.id]; if (!x) return 'alternative'; const a = String(e.art || ''); const bx = x.meta.bereich, br = r.meta.bereich;
+  if (a === 'alternative' || a === 'ersetzt:hauptgericht') return 'alternative';
+  if (bx === br && ['hauptgericht', 'dessert', 'suppe', 'vorspeise', 'fruehstueck'].includes(bx)) return 'alternative';   // gleicher Speisebereich = Alternative
+  if (br === 'hauptgericht' && GANG_BEREICHE.includes(bx)) return 'gang';
+  if (bx === 'hauptgericht' && GANG_BEREICHE.concat(['salat']).includes(br)) return 'gang';
+  return 'dazu';
+}
 function passtDazuHtml(r) {
   const d = passtDazuDaten(r); const zeig = d.sichtbar;
   const getr = arr(r.meta.getraenke).map(s => { const [name, art, grund, quelle] = String(s).split('|').map(x => (x || '').trim()); return { name, art, grund, quelle }; });
   const ohneAlk = getr.filter(g => g.art !== 'alkohol'), alk = getr.filter(g => g.art === 'alkohol');
   if (!zeig.length && !getr.length) return '';
   const inAuswahl = id => D.auswahl.some(a => a.rezept === id);
-  const eintrag = e => { const x = R[e.id]; const np = x.naehrwerte.pro_portion;
+  const eintrag = e => { const x = R[e.id]; const np = x.naehrwerte.pro_portion; const bz = pdBeziehung(r, e);
+    const aktion = bz === 'alternative' ? `<a class="knopf klein" href="#/rezept/${esc(x.id)}">ansehen</a>`
+      : `<button class="klein" data-a="pd-auswahl" data-v="${esc(x.id)}" data-zu="${esc(r.id)}" ${inAuswahl(x.id) ? 'disabled' : ''}>${inAuswahl(x.id) ? ico('haken', 'klein') + ' in der Auswahl' : ico('plus', 'klein') + (bz === 'gang' ? ' als Gang' : ' dazu')}</button>`;
     return `<li class="passt-eintrag">${bildHtml(x)}<div><a href="#/rezept/${esc(x.id)}"><b>${esc(kurztitel(x.titel))}</b></a> <span class="leise klein">· ${esc(BEREICH_NAME[x.meta.bereich] || '')}${np.kcal != null ? ' · ' + zahlDE(np.kcal) + ' kcal' : ''}${x.meta.zeit_gesamt_min ? ' · ' + esc(x.meta.zeit_gesamt_min) + ' Min.' : ''}</span>
-      <br><span class="klein">${esc(pdArt(e.art))}: ${esc(e.grund)}</span> <span class="chip ${e.quelle === 'quelle' ? 'gut' : ''}">${e.quelle === 'regel' ? 'App-Regel, inhaltlich ungeprüft' : esc(pdQuelle(e.quelle))}</span></div>
-      <button class="klein" data-a="pd-auswahl" data-v="${esc(x.id)}" data-zu="${esc(r.id)}" ${inAuswahl(x.id) ? 'disabled' : ''}>${inAuswahl(x.id) ? ico('haken', 'klein') + ' in der Auswahl' : ico('plus', 'klein') + ' dazu'}</button></li>`; };
-  const erste = zeig.filter(e => e.quelle !== 'regel').slice(0, 3); const mehr = zeig.filter(e => !erste.includes(e));
+      <br><span class="klein">${bz === 'alternative' ? 'statt dessen' : esc(pdArt(e.art))}: ${esc(e.grund)}</span> <span class="chip ${e.quelle === 'quelle' ? 'gut' : ''}">${e.quelle === 'regel' ? 'App-Regel, inhaltlich ungeprüft' : esc(pdQuelle(e.quelle))}</span></div>
+      ${aktion}</li>`; };
+  const gruppe = (titel, liste, max) => { if (!liste.length) return ''; const erste = liste.filter(e => e.quelle !== 'regel').slice(0, max); const rest = liste.filter(e => !erste.includes(e));
+    return `<h4>${titel}</h4>${erste.length ? `<ul class="passt" style="list-style:none;padding:0">${erste.map(eintrag).join('')}</ul>` : ''}${rest.length ? `<details class="klein"><summary>${erste.length ? 'Mehr' : 'Vorschläge'} (${rest.length})</summary><ul class="passt" style="list-style:none;padding:0">${rest.map(eintrag).join('')}</ul></details>` : ''}`; };
+  const dazu = zeig.filter(e => pdBeziehung(r, e) === 'dazu'), gang = zeig.filter(e => pdBeziehung(r, e) === 'gang'), alt = zeig.filter(e => pdBeziehung(r, e) === 'alternative');
   const menue = kleinesMenue(r, d);
   const begleit = D.auswahl.filter(a => a.zu === r.id && R[a.rezept]).map(a => R[a.rezept]);
   const mw = begleit.length ? mahlzeitWerte([r, ...begleit]) : null;
   return `<div class="karte"><h3 style="margin-top:0">Passt dazu</h3>
-    ${erste.length ? `<ul class="passt" style="list-style:none;padding:0">${erste.map(eintrag).join('')}</ul>` : '<p class="leise klein">Keine hinterlegte Ergänzung, die zu deinen Einstellungen passt.</p>'}
-    ${mehr.length ? `<details class="klein"><summary>Mehr Vorschläge (${mehr.length})</summary><ul class="passt" style="list-style:none;padding:0">${mehr.map(eintrag).join('')}</ul></details>` : ''}
+    ${gruppe('Dazu servieren', dazu, 3)}${gruppe('Als weiterer Gang', gang, 2)}${gruppe('Stattdessen – Alternativen', alt, 3)}
+    ${!dazu.length && !gang.length && !alt.length ? '<p class="leise klein">Keine hinterlegte Ergänzung, die zu deinen Einstellungen passt.</p>' : ''}
     ${menue ? `<details class="klein"><summary>Kleines Menü</summary><ol>${menue.map(x => `<li><a href="#/rezept/${esc(x.id)}">${esc(kurztitel(x.titel))}</a> <span class="leise">(${esc(BEREICH_NAME[x.meta.bereich] || '')})</span></li>`).join('')}</ol>
       ${(() => { const s = mahlzeitWerte(menue); return `<p class="leise">Pro Person ${s.unbekannt ? 'mind. ' : 'ca. '}${zahlDE(s.kcal)} kcal · ${zahlDE(s.protein)} g Protein · aktive Zeit zusammen ca. ${s.aktiv} Min. (parallel teils kürzer) · Geräte: ${esc([...s.geraete].map(g => GERAETE[g] || g).join(', '))}.</p>`; })()}
       <button class="klein" data-a="pd-menue" data-v="${esc(menue.map(x => x.id).join(','))}" data-zu="${esc(r.id)}">${ico('plus', 'klein')} Menü in die Auswahl</button>
@@ -805,14 +830,20 @@ function lernVorschlaege(n = 6) {
     return { r, punkte, grund };
   }).filter(x => x.punkte > 0 && x.grund).sort((a, b) => b.punkte - a.punkte).slice(0, n);
 }
+// Erste Zeile der „Kurzhilfe“ einer Technik als kurze Erklärung, wozu sie dient
+function technikKurz(t) { const m = String(t.md || '').match(/## Kurzhilfe\s*\n+([\s\S]*?)(?:\n## |$)/); if (!m) return ''; const z = m[1].split('\n').map(x => x.trim()).find(x => /^[-*]\s|^\d+\.\s/.test(x)) || ''; return z.replace(/^[-*]\s+|^\d+\.\s+/, '').replace(/\*\(.*?\)\*/g, '').replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, '$1').trim(); }
+const TECHNIK_ART = { vorbereitung: 'Vorbereitung', messer: 'Messer und Schneiden', hitze: 'Hitze und Garen', wuerzen: 'Würzen und Abschmecken', hygiene: 'Hygiene und Lagern', anrichten: 'Anrichten', saucen: 'Saucen', teig: 'Teig und Backen' };
 function lernenHtml() {
-  const st = technikStand(); const alle = K.techniken.map(t => t.name); const geuebt = alle.filter(t => st[t]).sort((a, b) => st[b].n - st[a].n); const offen = alle.filter(t => !st[t]);
+  const st = technikStand(); const alle = K.techniken.map(t => t.name); const geuebt = alle.filter(t => st[t]).sort((a, b) => st[b].n - st[a].n);
   const vs = lernVorschlaege(); const leerF = { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' };
-  return `<p class="leise">Kochen lernst du hier nach Lust und Zeit – ohne Kurs und ohne Tagespflicht. Gezählt werden nur Rezepte, die du im Kochmodus mit „Fertig“ abgeschlossen hast, nicht geöffnete Seiten.</p>
-    <div class="karte"><h2 style="margin-top:0">Geübte Techniken <span class="leise klein">${geuebt.length} von ${alle.length}</span></h2>
-    ${geuebt.length ? `<ul class="eintraege">${geuebt.map(t => `<li><span>${technikLink(t)}</span><span class="leise klein">${st[t].n}× in gekochten Rezepten · zuletzt ${esc(datumDE(st[t].zuletzt))}</span></li>`).join('')}</ul>` : '<p class="leer">Noch nichts gekocht. Die Vorschläge unten starten mit einfachen Gerichten.</p>'}
-    ${offen.length ? `<details class="klein"><summary>Noch nicht geübt (${offen.length})</summary><p class="chips">${offen.map(technikLink).join('')}</p></details>` : ''}</div>
-    <h2>Passende nächste Gerichte</h2>
+  const gruppen = {}; K.techniken.forEach(t => { (gruppen[t.kategorie || 'sonstiges'] = gruppen[t.kategorie || 'sonstiges'] || []).push(t); });
+  const technikListe = Object.entries(gruppen).map(([k, l]) => `<h4>${esc(TECHNIK_ART[k] || k)}</h4><ul class="technik-liste">${l.map(t => `<li><a href="#/technik/${esc(t.id)}"><b>${esc(t.name)}</b></a>${st[t.name] ? ` <span class="chip gut">${st[t.name].n}× geübt</span>` : ''}${technikKurz(t) ? `<br><span class="leise klein">${inline(technikKurz(t))}</span>` : ''}</li>`).join('')}</ul>`).join('');
+  return `<p class="leise">Kochen lernst du hier nach Lust und Zeit – ohne Kurs, ohne Tagespflicht, ohne Punkte. Gezählt werden nur Rezepte, die du im Kochmodus mit „Fertig“ abgeschlossen hast, nicht geöffnete Seiten.</p>
+    ${!geuebt.length ? `<div class="karte lern-start"><h2 style="margin-top:0">So fängst du an</h2><ol class="klein"><li>Ein einfaches Gericht unten auswählen und „Kochen starten“ tippen.</li><li>Im Kochmodus stehen bei jedem Schritt Hitze, Zeit und „Fertig, wenn“ – dazu Hilfen zu Messer, Hitze und Fehlern.</li><li>Am Ende „Fertig“ tippen: Hier erscheinen dann die geübten Techniken und passende nächste Gerichte.</li></ol></div>` : ''}
+    <div class="karte"><h2 style="margin-top:0">Techniken <span class="leise klein">${geuebt.length} von ${alle.length} geübt</span></h2>
+    <p class="leise klein">Jede Technik kurz erklärt; antippen für Anleitung, typische Fehler und Rettung. In den Rezepten steht der passende Link direkt beim Schritt.</p>
+    ${technikListe}</div>
+    <h2>${geuebt.length ? 'Passende nächste Gerichte' : 'Einfache Gerichte für den Einstieg'}</h2>
     ${vs.length ? `<div class="raster karten">${vs.map(v => `<div class="lern-vorschlag">${rezeptKarte(v.r, bewerte(v.r, leerF), geraeteFehlen(v.r))}<p class="leise klein">${esc(v.grund)}</p></div>`).join('')}</div>` : '<p class="leer">Gerade kein passender Vorschlag – alle passenden Rezepte sind schon gekocht oder durch Ausschlüsse in den Einstellungen herausgefiltert.</p>'}
     <p class="leise klein">Vorschlag-Logik: am liebsten genau eine neue Technik, während du die übrigen schon kennst; sonst Rezepte, die eine erst einmal geübte Technik festigen. Profil-Ausschlüsse und fehlende Geräte werden beachtet.</p>`;
 }
@@ -825,11 +856,13 @@ function persoenlichLeisteHtml(r) {
 }
 function meinKochbuchZahlen() { const k = kb(); return { fav: k.favoriten.filter(id => R[id]).length, will: k.kochen_wollen.filter(id => R[id]).length, gekocht: new Set(arr(D.kochprotokolle).map(p => p.rezept).filter(id => R[id])).size, samml: k.sammlungen.length, zuletzt: k.zuletzt.filter(x => R[x.id]).length }; }
 function meinKochbuchLinksHtml() {
-  const z = meinKochbuchZahlen(); if (!z.fav && !z.will && !z.gekocht && !z.samml && !z.zuletzt) return '';
-  const l = [['favoriten', '♥ Favoriten', z.fav], ['kochen', 'Will ich kochen', z.will], ['gekocht', 'Schon gekocht', z.gekocht], ['lernen', 'Kochen lernen', z.gekocht ? -1 : 0], ['sammlungen', 'Sammlungen', z.samml], ['zuletzt', 'Zuletzt angesehen', z.zuletzt]].filter(x => x[2]);
+  const z = meinKochbuchZahlen();
+  // „Kochen lernen“ immer sichtbar – auch ohne Kochbuchdaten (Neulinge)
+  const l = [['lernen', 'Kochen lernen', -1], ['favoriten', '♥ Favoriten', z.fav], ['kochen', 'Will ich kochen', z.will], ['gekocht', 'Schon gekocht', z.gekocht], ['sammlungen', 'Sammlungen', z.samml], ['zuletzt', 'Zuletzt angesehen', z.zuletzt]].filter(x => x[2]);
   return `<nav class="chips-wrap mein-kb" aria-label="Mein Kochbuch">${l.map(([t, n, c]) => `<a class="filterchip" href="#/meinkochbuch/${t}">${esc(n)}${c > 0 ? ` <span class="leise">${c}</span>` : ''}</a>`).join('')}</nav>`;
 }
 function vMeinKochbuch(tab) {
+  if (tab === 'lernen') return `<h1>Kochen lernen</h1>${lernenHtml()}`;   // eigener Unterreiter in Food
   const k = kb(); tab = tab || 'favoriten'; const leerF = { bereich: '', kuechen: [], richtung: [], maxGesamt: '', maxAktiv: '', suche: '' };
   const karten = ids => { const l = ids.filter(id => R[id]); return l.length ? `<div class="raster karten">${l.map(id => rezeptKarte(R[id], bewerte(R[id], leerF), geraeteFehlen(R[id]))).join('')}</div>` : ''; };
   const z = meinKochbuchZahlen();
