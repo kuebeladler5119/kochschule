@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611181314 */
+/* Fitomat-Build 202611211653 */
 /* Kochschule – Tagebuch-Erweiterungen: Mahlzeiten, eigene Mahlzeiten, Bearbeiten, Produktdatenbank.
    Wird nach rezepte.js und vor app.js geladen. Alle Daten liegen nur im lokalen Profil. */
 
@@ -9,7 +9,8 @@ document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-a]'); if (!b || !BUCHUNGS_AKTIONEN.has(b.dataset.a)) return;
   const k = b.dataset.a + '|' + (b.dataset.v || '') + '|' + (b.dataset.p || '') + '|' + (b.dataset.u || '');
   const jetzt = Date.now();
-  if (letzteAktion.schluessel === k && jetzt - letzteAktion.zeit < 800) { ev.stopImmediatePropagation(); ev.preventDefault(); return; }
+  // Nach „Ja“ in einer Rückfrage wird derselbe Knopf erneut ausgelöst – das ist kein Doppeltippen
+  if (frageFreigabe == null && letzteAktion.schluessel === k && jetzt - letzteAktion.zeit < 800) { ev.stopImmediatePropagation(); ev.preventDefault(); return; }
   letzteAktion = { schluessel: k, zeit: jetzt };
 }, true);
 
@@ -465,7 +466,7 @@ function offOnlineHtml() {
         <br><span class="chip">Online-Daten, ungeprüft</span>${p.hinweise.length ? ' <span class="chip warn">Etikett prüfen</span>' : ''}${p.de === false ? ' <span class="chip warn">nicht als in Deutschland verkauft erfasst</span>' : ''}
         ${mengenWahlHtml('off-' + p.code, 'off', { packung: p.packung, packung_einheit: p.packung_einheit, bezug: p.bezug, portionen: p.portion ? [{ name: 'Portion laut Angabe', menge: p.portion }] : [] })}
         <details class="klein tz-details"><summary>Details</summary><p class="klein">Je 100 ${einh}: Fett ${n.fett != null ? zahlDE(n.fett, 1) + ' g' : '?'} · Kohlenhydrate ${n.kh != null ? zahlDE(n.kh, 1) + ' g' : '?'} · Zucker ${n.zucker != null ? zahlDE(n.zucker, 1) + ' g' : '?'} · Ballaststoffe ${n.ballaststoffe != null ? zahlDE(n.ballaststoffe, 1) + ' g' : '?'} · Salz ${n.salz != null ? zahlDE(n.salz, 2) + ' g' : '?'}. Fehlende Angaben = unbekannt, nicht 0.</p>
-          ${p.hinweise.length ? `<p class="klein"><b>Auffälligkeiten:</b> ${esc(p.hinweise.join(' · '))}</p>` : ''}${p.portion_text ? `<p class="klein">Portionsangabe im Eintrag: ${esc(p.portion_text)}</p>` : ''}
+          ${p.hinweise.length ? `<p class="klein"><b>Auffälligkeiten:</b> ${esc(p.hinweise.join(' · '))} <button class="klein" data-a="off-korrigieren" data-v="${esc(p.code)}">Mit Etikett korrigieren</button></p>` : ''}${p.portion_text ? `<p class="klein">Portionsangabe im Eintrag: ${esc(p.portion_text)}</p>` : ''}
           <p class="klein">Barcode ${esc(p.code)}${p.stand ? ' · zuletzt geändert ' + esc(datumJahr(p.stand)) : ''} · <a href="https://de.openfoodfacts.org/produkt/${esc(p.code)}" target="_blank" rel="noopener">Eintrag ansehen</a></p>
           <p class="leise klein">Von Freiwilligen erfasst. Ob Sorte und Rezeptur zu deiner Packung passen, zeigt nur das Etikett.</p></details></span>
         <span class="tz-aktion"><label class="feld menge-feld"><span class="sr-only">Menge</span><input type="number" min="1" value="${esc(start)}" data-gramm="off-${esc(p.code)}" inputmode="decimal"></label><span class="einh">${einh}</span><button class="haupt klein" data-a="off-eintragen" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled title="Energie unbekannt"' : ''}>${ico('plus', 'klein')} Eintragen</button><button class="klein" data-a="off-liste" data-v="${esc(p.code)}" ${p.naehr.kcal == null ? 'disabled' : ''}>+ Liste</button><button class="klein still" data-a="off-merken" data-v="${esc(p.code)}" title="Als Standardprodukt merken">☆</button></span></li>`; }).join('')}</ul>
@@ -583,6 +584,8 @@ document.addEventListener('click', ev => {
       else aendere(`${l.name} als Standardprodukt gemerkt – wird nie automatisch gebucht`, d => { d.standardprodukte = (d.standardprodukte || []).filter(s => !(s.typ === 'eigen' && s.id === l.id)); d.standardprodukte.push({ typ: 'eigen', id: l.id, menge, einheit: l.bezug === '100ml' ? 'ml' : 'g' }); }, { neuZeichnen: false });
       { const tr = $('#tb-treffer'); if (tr) tr.innerHTML = tbTreffer(); const sl = $('#tb-standard'); if (sl) sl.innerHTML = standardListeHtml(); offOnlineZeichnen(); } break; }
     case 'produkt-neu-vorbelegt': { const q = offOnline.q || tbSuche; produktVorbelegung = istBarcode(q) ? { gtin: q } : { name: q }; location.hash = '#/produkte/neu'; break; }
+    // Aus einer Warnung direkt zur Etikettkorrektur: Online-Werte als Entwurf vorbelegen, du prüfst sie am Etikett; nichts wird still übernommen
+    case 'off-korrigieren': { const p = offOnline.treffer.find(x => x.code === v); if (!p) return; produktVorbelegung = { name: p.name || '', marke: p.marke || '', gtin: p.code, bezug: p.bezug || '100g', naehr: Object.assign({}, p.naehr), quelle_art: 'etikett', pruefstatus: 'ungeprueft', notiz: 'Vorbelegt mit Online-Daten (Auffälligkeiten: ' + arr(p.hinweise).join('; ') + ') – bitte jeden Wert mit dem Etikett vergleichen.' }; location.hash = '#/produkte/neu'; break; }
     case 'etikett-weg': etikettFoto = null; { const vs = $('#etikett-vorschau'); if (vs) vs.innerHTML = '<p class="leise klein">Foto wird beim Speichern entfernt.</p>'; } break;
     case 'scan-start': scannerOeffnen(); break;
     case 'scan-zu': { const dl = document.getElementById('scanner'); if (dl && dl.open) dl.close(); scannerStoppen(); break; }

@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611181314 */
+/* Fitomat-Build 202611211653 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -6,6 +6,8 @@
 function trDaten() {
   if (!D.training) D.training = { uebungen: [], routinen: [], einheiten: [], aktiv: null, koerpergewicht: [] };
   const t = D.training; if (!t.plaene) t.plaene = []; if (!t.einstellungen) t.einstellungen = { auto_pause: true, ton: true };
+  // Einmalig (2.27): ältere einseitige Sätze ohne getrennte Seiten kennzeichnen – keine Seite wird nachträglich „bestätigt“
+  if (!t.seiten_v) { arr(t.einheiten).forEach(e => arr(e.uebungen).forEach(u => { if (u.je_seite) arr(u.saetze).forEach(s => { if (s.erledigt && !s.seiten && s.art === 'arbeit') s.seiten_gemeinsam = true; }); })); t.seiten_v = 1; }
   return t;
 }
 /* ---------- Pläne: mehrere Einheiten (Routinen), optional mit Wochentag, oder flexibel „nächste Einheit“ ---------- */
@@ -30,7 +32,7 @@ function letzteLeistung(uebungId, ausser, variante) {
   const passt = u => u.uebung === uebungId && (u.variante || '') === (variante || '');
   const e = trDaten().einheiten.filter(x => x.ende && x.id !== ausser && x.uebungen.some(passt)).sort((a, b) => b.start.localeCompare(a.start))[0];
   if (!e) return null; const u = e.uebungen.find(passt);
-  return { datum: e.start.slice(0, 10), saetze: u.saetze.filter(s => s.art === 'arbeit' && s.erledigt) };
+  return { datum: e.start.slice(0, 10), saetze: u.saetze.filter(s => s.art === 'arbeit' && s.erledigt && !s.nur_seite) };
 }
 const satzTeil = (w, kg) => `${w || '?'} × ${kgText(kg)}`;
 // Zeitübungen: Haltezeit in Sekunden (s.sek), Zusatzgewicht optional
@@ -41,7 +43,35 @@ const METHODEN = [['', 'normal'], ['drop', 'Dropsatz'], ['voll_plus_teil', 'voll
 const methodeZusatz = s => s.methode === 'drop' ? ' + Drop ' + arr(s.stufen).filter(x => x && (x.kg !== '' || x.wdh !== '')).map(x => `${x.wdh || '?'} × ${kgText(x.kg)}`).join(', ')
   : s.methode === 'voll_plus_teil' ? ` + ${s.teil_wdh || '?'} Teilwdh. gedehnt` : s.methode === 'lang_teil' ? ' (nur Teilwdh., gedehnt)' : '';
 const satzText = s => satzTextBasis(s) + methodeZusatz(s);
-const satzTextBasis = s => s.sek != null && s.sek !== '' ? (s.seiten && s.seiten.l && s.seiten.l.sek != null ? `L ${s.seiten.l.sek} s / R ${s.seiten.r.sek} s` : sekTeil(s)) +(s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') : `${s.seiten ?`L ${satzTeil(s.seiten.l.wdh, s.seiten.l.kg)} / R ${satzTeil(s.seiten.r.wdh, s.seiten.r.kg)}` : satzTeil(s.wdh, s.kg)}${s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : ''}`;
+/* ---------- Einseitige Übungen (links/rechts) ----------
+   s.seiten = { l: { kg, wdh | sek, rir }, r: {…}, gleich?: true } – beide Seiten bilden EINEN Satz.
+   s.kg / s.wdh / s.sek / s.rir = schwächere Seite (Grundlage für Vergleich und Vorschläge).
+   s.nur_seite = 'l' | 'r': nur eine Seite absolviert → zählt im Wochenvolumen als ½ Satz und nicht für Vorschläge.
+   s.seiten_gemeinsam: ältere Eingabe ohne getrennte Seiten – es wird nichts über die einzelnen Seiten behauptet. */
+const SEITE_NAME = { l: 'links', r: 'rechts' }; const SEITE_K = { l: 'L', r: 'R' };
+const seitenFolge = u => u && u.seite_start === 'r' ? ['r', 'l'] : ['l', 'r'];
+const seitWert = v => v !== '' && v != null && !(typeof v === 'number' && isNaN(v));
+const satzZaehlt = s => s.nur_seite ? 0.5 : 1;
+function seitenLeer() { return { l: { kg: '', wdh: '', rir: '' }, r: { kg: '', wdh: '', rir: '' } }; }
+// Zusammenfassung aus den Seiten bilden; false, wenn keine Seite einen Wert hat
+function seitenZusammen(s, zeit) {
+  const sd = s.seiten; if (!sd) return false; const k = zeit ? 'sek' : 'wdh';
+  ['l', 'r'].forEach(x => { sd[x] = sd[x] || { kg: '', [k]: '', rir: '' }; if (zeit && sd[x].wdh != null && sd[x].sek == null) { sd[x].sek = sd[x].wdh; delete sd[x].wdh; } });
+  const da = ['l', 'r'].filter(x => seitWert(sd[x][k]));
+  if (!da.length) return false;
+  let w; if (da.length === 1) { w = da[0]; s.nur_seite = w; } else { delete s.nur_seite; const a = Number(sd.l[k]), b = Number(sd.r[k]); w = a < b ? 'l' : b < a ? 'r' : (Number(sd.l.kg) || 0) <= (Number(sd.r.kg) || 0) ? 'l' : 'r'; }
+  s.kg = seitWert(sd[w].kg) ? Number(sd[w].kg) : ''; s[k] = Number(sd[w][k]); if (zeit) s.wdh = ''; else delete s.sek;
+  const rirs = da.map(x => sd[x].rir).filter(seitWert); s.rir = seitWert(sd[w].rir) ? sd[w].rir : (rirs[0] ?? '');
+  delete s.seiten_gemeinsam; return true;
+}
+function seiteTeil(x, zeit) { if (!x) return '–'; const z = zeit ? (seitWert(x.sek) ? x.sek + ' s' : '?') + (Number(x.kg) ? ' + ' + kgText(x.kg) : '') : satzTeil(x.wdh, x.kg); return z + (seitWert(x.rir) ? ' (RIR ' + x.rir + ')' : ''); }
+function seitenText(s) {
+  const sd = s.seiten; const zeit = s.sek != null && s.sek !== '' || (sd && sd.l && sd.l.sek != null);
+  if (s.nur_seite) return `nur ${SEITE_NAME[s.nur_seite]}: ${seiteTeil(sd[s.nur_seite], zeit)}`;
+  if (sd.gleich) return `${seiteTeil(sd.l, zeit)} je Seite (L = R)`;
+  return `L ${seiteTeil(sd.l, zeit)} / R ${seiteTeil(sd.r, zeit)}`;
+}
+const satzTextBasis = s => s.seiten && s.seiten.l ? seitenText(s) : (s.sek != null && s.sek !== '' ? sekTeil(s) : satzTeil(s.wdh, s.kg)) + (s.rir !== '' && s.rir != null ? ' · RIR ' + s.rir : '') + (s.seiten_gemeinsam ? ' je Seite (gemeinsam erfasst)' : '');
 
 /* ---------- Muskelgruppen, Gewichtsangabe, Auswahl ---------- */
 const MUSKEL_GRUPPEN = [['brust', 'Brust', ['brust']], ['ruecken', 'Rücken', ['latissimus', 'oberer_ruecken', 'rueckenstrecker']], ['schultern', 'Schultern', ['vordere_schulter', 'seitliche_schulter', 'hintere_schulter']], ['arme', 'Arme', ['bizeps', 'trizeps']], ['beine', 'Beine', ['quadrizeps', 'beinbeuger', 'waden']], ['gesaess', 'Gesäß', ['gesaess']], ['rumpf', 'Rumpf', ['rumpf']]];
@@ -158,7 +188,9 @@ function trRoutineHtml(id) {
     <div class="zeile">${[['aufwaerm', 'Aufwärmsätze', 0, 5, 1], ['saetze', 'Arbeitssätze', 1, 10, 1], ...(istZeit(x) ? [['sek_von', 'Sek. von', 5, 600, 5], ['sek_bis', 'Sek. bis', 5, 600, 5]] : [['wdh_von', 'Wdh. von', 1, 50, 1], ['wdh_bis', 'Wdh. bis', 1, 50, 1]]), ['pause_s', 'Pause s (optional)', 0, 600, 15], ['referenz_kg', r.historisch ? 'Startwert kg (historisch, optional)' : 'Startgewicht kg (optional)', 0, 500, 0.25], ['schritt_kg', 'Gewichtsschritt kg (optional)', 0, 50, 0.25]].map(([k, n, mi, ma, st]) => { const fe = zielFehlerAlle(x)[k]; return `<label class="feld"><span>${n}</span><input type="number" inputmode="decimal" min="${mi}" max="${ma}" step="${st}" value="${esc(x[k] ?? '')}" placeholder="${k === 'saetze' && x.saetze_offen ? 'offen' : ''}" data-tr-r-feld="${k}" data-i="${i}" ${fe ? 'aria-invalid="true"' : ''} style="width:5.5em">${feldFehlerHtml(fe)}</label>`; }).join('')}
       <label class="feld"><span>Ziel-RIR</span><input value="${esc(x.ziel_rir ?? '')}" data-tr-r-text="ziel_rir" data-i="${i}" placeholder="z. B. 1–2" style="width:6em"></label>
       <label class="feld" style="flex:1 1 160px"><span>Gerät/Variante</span><input value="${esc(x.variante ?? '')}" data-tr-r-text="variante" data-i="${i}" placeholder="z. B. Kabelturm 1. Stock"></label></div>
-    <label><input type="checkbox" data-tr-r-check="je_seite" data-i="${i}" ${x.je_seite ? 'checked' : ''}> einseitig: Wiederholungen und Sätze je Seite</label>
+    <label><input type="checkbox" data-tr-r-check="je_seite" data-i="${i}" ${x.je_seite ? 'checked' : ''}> einseitig: links und rechts getrennt erfassen (ein Satz = beide Seiten)</label>
+    ${x.je_seite ? `<div class="zeile"><label class="feld"><span>Pause zwischen den Seiten s (optional)</span><input type="number" inputmode="numeric" min="0" max="300" step="5" value="${esc(x.seiten_pause_s ?? '')}" placeholder="30" data-tr-r-feld="seiten_pause_s" data-i="${i}" style="width:5.5em">${feldFehlerHtml(zielFehlerAlle(x).seiten_pause_s)}</label>
+      <label class="feld"><span>Zuerst</span><select data-tr-r-text="seite_start" data-i="${i}"><option value="l" ${x.seite_start !== 'r' ? 'selected' : ''}>links</option><option value="r" ${x.seite_start === 'r' ? 'selected' : ''}>rechts</option></select></label></div>` : ''}
     <label><input type="checkbox" data-tr-r-check="zeit" data-i="${i}" ${istZeit(x) ? 'checked' : ''}> nach Zeit: Haltezeit in Sekunden statt Wiederholungen</label>
     ${x.saetze_offen ? '<p class="leise klein">Satzanzahl in der Vorlage nicht angegeben – bitte festlegen.</p>' : ''}${x.aufwaerm_schema ? `<p class="leise klein">Aufwärmen (persönliche Regel): ${esc(aufwaermText(x))}</p>` : ''}${x.notiz ? `<p class="leise klein">${esc(x.notiz)}</p>` : ''}</li>`).join('')}</ol>
   <p class="leise klein">Eine andere Variante (z. B. anderer Kabelturm) wird getrennt protokolliert, damit Gewichte nicht vermischt werden. Ändern der Routine verändert keine bereits gespeicherten Einheiten.</p>
@@ -175,7 +207,8 @@ function vergleichbareEinheiten(uebungId, variante, ausser) {
   const passt = u => u.uebung === uebungId && (u.variante || '') === (variante || '');
   return trDaten().einheiten.filter(e => e.ende && e.id !== ausser && e.uebungen.some(passt)).sort((a, b) => b.start.localeCompare(a.start))
     // Reine Teilwiederholungs-Sätze sind mit vollen Wiederholungen nicht vergleichbar; bei Dropsatz und „voll + Teilwdh.“ zählt der volle Hauptteil (s.kg/s.wdh)
-    .map(e => { const u = e.uebungen.find(passt); const ar = u.saetze.filter(s => s.art === 'arbeit' && s.methode !== 'lang_teil'); const fertig = ar.filter(s => s.erledigt);
+    // Nur eine Seite absolviert: kein vollständiger Satz – zählt für Vorschläge nicht als geschafft
+    .map(e => { const u = e.uebungen.find(passt); const ar = u.saetze.filter(s => s.art === 'arbeit' && s.methode !== 'lang_teil'); const fertig = ar.filter(s => s.erledigt && !s.nur_seite);
       const top = Math.max(0, ...fertig.map(s => Number(s.kg) || 0));
       return { datum: e.start.slice(0, 10), saetze: fertig, geplant: ar.length, top, beschwerde: !!u.beschwerde, qualitaet: u.qualitaet || '', pause_s: u.pause_s, vorschlag: u.vorschlag || null }; });
 }
@@ -278,7 +311,7 @@ function sekZiel(x) { if (x.sek_von || x.sek_bis) return { von: x.sek_von, bis: 
    Regel je Feld: [min, max, Name, Pflicht, ganzzahlig]. Pflicht hängt von der Messart ab: Zeitübung → Sekunden von UND bis,
    sonst Wiederholungen von UND bis (für ein festes Ziel denselben Wert zweimal). Optionale Felder sind in der Oberfläche als „optional“ beschriftet.
    Ungültige Werte werden nie still korrigiert oder durch alte Werte ersetzt. */
-const ZIEL_REGEL = { saetze: [1, 10, 'Sätze', true, true], aufwaerm: [0, 5, 'Aufwärmsätze', false, true], wdh_von: [1, 50, 'Wdh. von', true, true], wdh_bis: [1, 50, 'Wdh. bis', true, true], sek_von: [5, 600, 'Sek. von', true, true], sek_bis: [5, 600, 'Sek. bis', true, true], pause_s: [0, 600, 'Pause', false, true], referenz_kg: [0, 500, 'Startgewicht', false, false], schritt_kg: [0, 50, 'Gewichtsschritt', false, false] };
+const ZIEL_REGEL = { saetze: [1, 10, 'Sätze', true, true], aufwaerm: [0, 5, 'Aufwärmsätze', false, true], wdh_von: [1, 50, 'Wdh. von', true, true], wdh_bis: [1, 50, 'Wdh. bis', true, true], sek_von: [5, 600, 'Sek. von', true, true], sek_bis: [5, 600, 'Sek. bis', true, true], pause_s: [0, 600, 'Pause', false, true], referenz_kg: [0, 500, 'Startgewicht', false, false], schritt_kg: [0, 50, 'Gewichtsschritt', false, false], seiten_pause_s: [0, 300, 'Seitenpause', false, true] };
 const zielZahl = roh => { const s = String(roh ?? '').replace(',', '.').trim(); return s === '' ? null : Number(s); };
 function zielFeldFehler(feld, roh, x) {
   const r = ZIEL_REGEL[feld]; if (!r) return ''; const zeit = istZeit(x);
@@ -615,16 +648,19 @@ function planKompaktErweitern(k) {
   if (!k || k.v !== 1 || !Array.isArray(k.d)) throw new Error('Unbekannter oder beschädigter Plan-Code.');
   return { art: 'fitomat-trainingsplan', schema: 1, import_id: k.id, unerwuenschte_uebungen: arr(k.x), plan: { name: k.n, art: k.a || 'eigen', hinweis: k.h || (k.a === 'historisch' ? 'Originalplan übernommen. Gewichte sind historische Startwerte, keine bestätigten Leistungen.' : '') },
     einstellungen: { aufwaermen_text: k.w || 'Erste Übung: ca. 50 % × 8–10, 70 % × 5, 80 % × 1–2. Weitere Übungen: ca. 50 % × 6–8. Persönliche Vorgehensweise; Gewichte werden auf die Gewichtsschritte des Geräts gerundet.' }, uebungen: [],
-    routinen: k.d.map(([key, name, ex]) => ({ key, name, uebungen: ex.map(([id, s, kg, fl, va, gh, no, wv, wb]) => Object.assign({ uebung: id, aufwaerm: fl & 2 ? 3 : 1, aufwaerm_schema: fl & 2 ? AW_ERSTE : AW_WEITERE, saetze: s || null, wdh_von: wv || 10, wdh_bis: wb || wv || 10, pause_s: 150, ziel_rir: 'ca. 1–2' },
-      kg ? { referenz_kg: kg } : {}, s ? {} : { saetze_offen: true }, fl & 1 ? { je_seite: true } : {}, fl & 4 ? { optional: true } : {}, va ? { variante: va } : {}, gh ? { gewicht_hinweis: gh } : {}, no ? { notiz: no } : {})) })),
+    // Ab 2.27 optional angehängt: Aufwärmsätze (+1), Pause in s, Seitenpause (+1) – ältere Codes ohne diese Felder bleiben gültig
+    routinen: k.d.map(([key, name, ex]) => ({ key, name, uebungen: ex.map(([id, s, kg, fl, va, gh, no, wv, wb, aw1, ps, sp1]) => { const aw = aw1 ? aw1 - 1 : fl & 2 ? 3 : 1;
+      return Object.assign({ uebung: id, aufwaerm: aw }, aw ? { aufwaerm_schema: fl & 2 ? AW_ERSTE : AW_WEITERE } : {}, { saetze: s || null, wdh_von: wv || 10, wdh_bis: wb || wv || 10, pause_s: ps || 150, ziel_rir: 'ca. 1–2' },
+      kg ? { referenz_kg: kg } : {}, s ? {} : { saetze_offen: true }, fl & 1 ? { je_seite: true } : {}, fl & 4 ? { optional: true } : {}, va ? { variante: va } : {}, gh ? { gewicht_hinweis: gh } : {}, no ? { notiz: no } : {}, sp1 ? { seiten_pause_s: sp1 - 1 } : {}); }) })),
     einheiten: k.d.map(([key]) => ({ routine: key, tag: WOCHENTAGE.some(w => w[0] === key) ? key : '' })) };
 }
 // Umkehrung (für die lokale Erzeugung eines Codes aus einer Plan-Datei): eigene Übungen werden auf Bibliotheksübungen abgebildet
 function planKompakt(obj) {
   const map = trImportZuordnung(obj); const def = id => arr(obj.uebungen).find(u => u.id === id) || {};
-  return { v: 1, id: obj.import_id, n: obj.plan.name, a: obj.plan.art, x: arr(obj.unerwuenschte_uebungen),
-    d: obj.routinen.map(r => [r.key, r.name, r.uebungen.map(x => { const d = def(x.uebung); const e = [map[x.uebung] || x.uebung, x.saetze_offen ? 0 : (Number(x.saetze) || 0), x.referenz_kg || 0, (x.je_seite ? 1 : 0) | (arr(x.aufwaerm_schema).length > 1 ? 2 : 0) | (x.optional ? 4 : 0), x.variante || (map[x.uebung] ? d.bibliothek_variante || '' : ''), x.gewicht_hinweis || '', x.notiz || '', x.wdh_von !== 10 ? x.wdh_von : 0, x.wdh_bis !== x.wdh_von ? x.wdh_bis : 0];
-      while (e.length > 4 && !e[e.length - 1]) e.pop(); return e; })]) };
+  return Object.assign({ v: 1, id: obj.import_id, n: obj.plan.name, a: obj.plan.art, x: arr(obj.unerwuenschte_uebungen) }, obj.plan.hinweis && obj.plan.art !== 'historisch' ? { h: obj.plan.hinweis } : {}, {
+    d: obj.routinen.map(r => [r.key, r.name, r.uebungen.map(x => { const d = def(x.uebung); const fl = (x.je_seite ? 1 : 0) | (arr(x.aufwaerm_schema).length > 1 ? 2 : 0) | (x.optional ? 4 : 0); const awStd = fl & 2 ? 3 : 1; const aw = x.aufwaerm == null ? awStd : Number(x.aufwaerm);
+      const e = [map[x.uebung] || x.uebung, x.saetze_offen ? 0 : (Number(x.saetze) || 0), x.referenz_kg || 0, fl, x.variante || (map[x.uebung] ? d.bibliothek_variante || '' : ''), x.gewicht_hinweis || '', x.notiz || '', x.wdh_von !== 10 ? x.wdh_von : 0, x.wdh_bis !== x.wdh_von ? x.wdh_bis : 0, aw !== awStd ? aw + 1 : 0, Number(x.pause_s) && Number(x.pause_s) !== 150 ? Number(x.pause_s) : 0, x.seiten_pause_s != null && x.seiten_pause_s !== '' ? Number(x.seiten_pause_s) + 1 : 0];
+      while (e.length > 4 && !e[e.length - 1]) e.pop(); return e; })]) });
 }
 const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 async function planCodeErzeugen(obj) { const daten = new TextEncoder().encode(JSON.stringify(planKompakt(obj))); const z = new Uint8Array(await new Response(new Blob([daten]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); let s = ''; for (let i = 0; i < z.length; i += 8192) s += String.fromCharCode(...z.subarray(i, i + 8192)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -760,14 +796,14 @@ function linienSvg(punkte, titel, einheit) {
 }
 // Sitzungen einer Übung, getrennt nach Variante; je Sitzung schwerster Satz, Wdh. dabei, Volumen, geschätzte Kraft (nur 1–12 Wdh.)
 // Gehaltene Sekunden eines Satzes; bei links/rechts zählt die kürzere Seite (wie beim Abschließen)
-const haltSek = x => x.seiten && x.seiten.l && x.seiten.r && (x.seiten.l.sek != null || x.seiten.r.sek != null) ? Math.min(Number(x.seiten.l.sek) || 0, Number(x.seiten.r.sek) || 0) : Number(x.sek) || 0;
+const haltSek = x => seitWert(x.sek) ? Number(x.sek) || 0 : x.seiten && x.seiten.l && x.seiten.r ? Math.min(Number(x.seiten.l.sek) || 0, Number(x.seiten.r.sek) || 0) : 0;
 function uebungsSitzungen(id) {
   const out = {}; trDaten().einheiten.filter(e => e.ende).sort((a, b) => a.start.localeCompare(b.start)).forEach(e => e.uebungen.filter(u => u.uebung === id).forEach(u => {
     const k = u.variante || '';
     if (istZeit(u)) { const s = u.saetze.filter(x => x.art === 'arbeit' && x.erledigt && haltSek(x) > 0); if (!s.length) return;
       (out[k] = out[k] || []).push({ zeit: true, datum: e.start.slice(0, 10), saetze: s, aufwaerm: u.saetze.filter(x => x.art === 'aufwaerm' && x.erledigt).length, topSek: Math.max(...s.map(haltSek)), summeSek: s.reduce((a, x) => a + haltSek(x), 0), rirFehlt: false, beschwerde: !!u.beschwerde, technik: s.map(x => x.technik).filter(Boolean) }); return; }
     const s = u.saetze.filter(x => x.art === 'arbeit' && x.erledigt && Number(x.wdh) > 0); if (!s.length) return;
-    const top = [...s].sort((a, b) => (Number(b.kg) || 0) - (Number(a.kg) || 0) || Number(b.wdh) - Number(a.wdh))[0];
+    const voll = s.filter(x => !x.nur_seite); const top = [...(voll.length ? voll : s)].sort((a, b) => (Number(b.kg) || 0) - (Number(a.kg) || 0) || Number(b.wdh) - Number(a.wdh))[0];
     const e1 = s.filter(x => Number(x.wdh) <= 12 && Number(x.kg) > 0).map(x => Number(x.kg) * (1 + Number(x.wdh) / 30));
     (out[k] = out[k] || []).push({ datum: e.start.slice(0, 10), saetze: s, aufwaerm: u.saetze.filter(x => x.art === 'aufwaerm' && x.erledigt).length, top, volumen: s.reduce((a, x) => a + (Number(x.kg) || 0) * Number(x.wdh), 0), e1rm: e1.length ? Math.max(...e1) : null, rirFehlt: s.some(x => x.rir === '' || x.rir == null), beschwerde: !!u.beschwerde, technik: s.map(x => x.technik).filter(Boolean) }); }));
   return out;
@@ -785,8 +821,9 @@ function uebungVerlaufHtml(id) {
   ${vars.length > 1 ? `<p class="klein" style="margin:0">Variante/Gerät (getrennt geführt, nicht vergleichbar):</p><div class="fz-chips">${vars.map(x => `<button class="filterchip" data-a="tr-vz-var" data-u="${esc(id)}" data-v="${esc(x)}" aria-pressed="${x === v}">${esc(x || 'ohne Angabe')}</button>`).join('')}</div>` : v ? `<p class="leise klein">Variante: ${esc(v)}</p>` : ''}
   ${zeitChips()}<p class="klein">${esc(zus)}</p>
   ${(() => { const e = trDaten().einheiten.filter(x => x.ende && x.uebungen.some(u => u.uebung === id && (u.variante || '') === v && u.saetze.some(s => s.seiten && s.erledigt))).sort((a, b) => b.start.localeCompare(a.start))[0]; if (!e) return '';
-    const ss = e.uebungen.find(u => u.uebung === id && (u.variante || '') === v).saetze.filter(s => s.seiten && s.erledigt); const sum = k => ss.reduce((a, s) => a + (Number(s.seiten[k].wdh) || 0) * (Number(s.seiten[k].kg) || 0), 0);
-    return `<p class="klein">Links/rechts zuletzt (${esc(datumDE(e.start.slice(0, 10)))}): ${ss.map(s => `L ${esc(satzTeil(s.seiten.l.wdh, s.seiten.l.kg))} / R ${esc(satzTeil(s.seiten.r.wdh, s.seiten.r.kg))}`).join(' · ')}${sum('l') && sum('r') ? ` – Volumen L ${zahlDE(sum('l'))} kg, R ${zahlDE(sum('r'))} kg` : ''}. <span class="leise">Kleine Seitenunterschiede sind häufig und allein kein Befund; bei Schmerzen ärztlich abklären lassen.</span></p>`; })()}
+    const ss = e.uebungen.find(u => u.uebung === id && (u.variante || '') === v).saetze.filter(s => s.seiten && s.erledigt); const beide = ss.filter(s => !s.nur_seite); const sum = k => beide.reduce((a, s) => a + (Number(s.seiten[k].wdh) || 0) * (Number(s.seiten[k].kg) || 0), 0);
+    const diff = beide.filter(s => !s.seiten.gleich && (Number(s.seiten.l.wdh) !== Number(s.seiten.r.wdh) || Number(s.seiten.l.kg) !== Number(s.seiten.r.kg))).length;
+    return `<p class="klein">Links/rechts zuletzt (${esc(datumDE(e.start.slice(0, 10)))}): ${ss.map(s => esc(seitenText(s))).join(' · ')}${sum('l') && sum('r') ? ` – Volumen (Gewicht × Wdh.) L ${zahlDE(sum('l'))} kg, R ${zahlDE(sum('r'))} kg` : ''}. ${diff ? `In ${diff} von ${beide.length} Sätzen unterschieden sich die Seiten. ` : beide.length ? 'Beide Seiten gleich. ' : ''}<span class="leise">Kleine Seitenunterschiede sind häufig und allein kein Befund; bei Schmerzen ärztlich abklären lassen.</span></p>`; })()}
   ${l.length ? `${linienSvg(l.map(s => ({ datum: s.datum, y: Number(s.top.kg) || 0, hohl: s.rirFehlt })), 'Gewicht des schwersten Arbeitssatzes (kg)', 'kg')}
     ${linienSvg(l.map(s => ({ datum: s.datum, y: Number(s.top.wdh) || 0 })), 'Wiederholungen in diesem Satz', 'Wdh.')}
     <details class="klein"><summary>Volumen und geschätzte Maximalkraft</summary>
@@ -801,33 +838,35 @@ function uebungVerlaufZeitHtml(id, vars, v, l) {
   const zus = l.length >= 2 ? `${l.length} Einheiten im Zeitraum. Längste Haltezeit: ${erste.topSek} s (${datumDE(erste.datum)}) → ${letzte.topSek} s (${datumDE(letzte.datum)})${letzte.topSek > erste.topSek ? ' – länger gehalten' : letzte.topSek < erste.topSek ? ' – kürzer gehalten' : ' – gleich lang'}. Länger halten ist nur sinnvoll, solange die Ausführung sauber bleibt.` : l.length ? '1 Einheit im Zeitraum – für einen Vergleich sind mindestens zwei nötig.' : 'Keine Einheit in diesem Zeitraum.';
   const lr = (() => { const e = trDaten().einheiten.filter(x => x.ende && x.uebungen.some(u => u.uebung === id && (u.variante || '') === v && u.saetze.some(s => s.seiten && s.erledigt))).sort((a, b) => b.start.localeCompare(a.start))[0]; if (!e) return '';
     const ss = e.uebungen.find(u => u.uebung === id && (u.variante || '') === v).saetze.filter(s => s.seiten && s.erledigt);
-    return `<p class="klein">Links/rechts zuletzt (${esc(datumDE(e.start.slice(0, 10)))}): ${ss.map(s => `L ${esc(String(s.seiten.l.sek ?? '?'))} s / R ${esc(String(s.seiten.r.sek ?? '?'))} s`).join(' · ')}. <span class="leise">Gezählt wird je Satz die kürzere Seite. Kleine Seitenunterschiede sind häufig und allein kein Befund.</span></p>`; })();
+    return `<p class="klein">Links/rechts zuletzt (${esc(datumDE(e.start.slice(0, 10)))}): ${ss.map(s => esc(seitenText(s))).join(' · ')}. <span class="leise">Gezählt wird je Satz die kürzere Seite. Kleine Seitenunterschiede sind häufig und allein kein Befund.</span></p>`; })();
   return `<h2>Verlauf</h2>
   ${vars.length > 1 ? `<p class="klein" style="margin:0">Variante/Gerät (getrennt geführt, nicht vergleichbar):</p><div class="fz-chips">${vars.map(x => `<button class="filterchip" data-a="tr-vz-var" data-u="${esc(id)}" data-v="${esc(x)}" aria-pressed="${x === v}">${esc(x || 'ohne Angabe')}</button>`).join('')}</div>` : v ? `<p class="leise klein">Variante: ${esc(v)}</p>` : ''}
   ${zeitChips()}<p class="klein">${esc(zus)}</p>${lr}
   ${l.length ? `${linienSvg(l.map(s => ({ datum: s.datum, y: s.topSek })), 'Längste gehaltene Zeit je Einheit (s)', 's')}
     ${linienSvg(l.map(s => ({ datum: s.datum, y: s.summeSek })), 'Gesamte Haltezeit aller Arbeitssätze (s)', 's')}
-    <table class="mikro verlauf-tabelle"><thead><tr><th>Datum</th><th>Arbeitssätze</th></tr></thead><tbody>${[...l].reverse().map(s => `<tr><td>${esc(datumDE(s.datum))}</td><td>${s.saetze.map(x => x.seiten ? `L ${esc(String(x.seiten.l.sek ?? '?'))} s / R ${esc(String(x.seiten.r.sek ?? '?'))} s` : `${esc(String(haltSek(x)))} s`).join('<br>')}${s.beschwerde ? '<br><span class="chip warn">Beschwerden</span>' : ''}</td></tr>`).join('')}</tbody></table>` : ''}`;
+    <table class="mikro verlauf-tabelle"><thead><tr><th>Datum</th><th>Arbeitssätze</th></tr></thead><tbody>${[...l].reverse().map(s => `<tr><td>${esc(datumDE(s.datum))}</td><td>${s.saetze.map(x => x.seiten ? esc(seitenText(x)) : `${esc(String(haltSek(x)))} s`).join('<br>')}${s.beschwerde ? '<br><span class="chip warn">Beschwerden</span>' : ''}</td></tr>`).join('')}</tbody></table>` : ''}`;
 }
 function trVerlaufHtml() {
   const t = trDaten(); const grenze = trZeitGrenze(); const fertig = t.einheiten.filter(e => e.ende && e.start.slice(0, 10) >= grenze).sort((a, b) => b.start.localeCompare(a.start));
   const sets = fertig.flatMap(e => e.uebungen.flatMap(u => u.saetze.filter(s => s.erledigt).map(s => ({ s, u, info: ueb(u.uebung) }))));
   const ar = sets.filter(x => x.s.art === 'arbeit'), aw = sets.filter(x => x.s.art === 'aufwaerm');
-  const z = TR_ZEITRAUM.find(x => x[0] === trVZeit); const wochen = z && z[2] ? z[2] / 7 : (fertig.length ? Math.max(1, (Date.now() - new Date(fertig[fertig.length - 1].start)) / 6048e5) : 1);
-  const direkt = {}, indirekt = {}; ar.forEach(({ info }) => { arr(info.muskeln_haupt).forEach(m => { direkt[m] = (direkt[m] || 0) + 1; }); arr(info.muskeln_neben).forEach(m => { indirekt[m] = (indirekt[m] || 0) + 1; }); });
+  // Wochen = gewählter Zeitraum, aber höchstens seit der ersten Einheit darin (sonst wird „pro Woche“ bei kurzen Verläufen zu niedrig)
+  const z = TR_ZEITRAUM.find(x => x[0] === trVZeit); const seitErster = fertig.length ? Math.max(1, (Date.now() - new Date(fertig[fertig.length - 1].start)) / 6048e5) : 1; const wochen = z && z[2] ? Math.min(z[2] / 7, seitErster) : seitErster;
+  const direkt = {}, indirekt = {}; ar.forEach(({ info, s }) => { const n = satzZaehlt(s); arr(info.muskeln_haupt).forEach(m => { direkt[m] = (direkt[m] || 0) + n; }); arr(info.muskeln_neben).forEach(m => { indirekt[m] = (indirekt[m] || 0) + n; }); });
   const muskeln = [...new Set([...Object.keys(direkt), ...Object.keys(indirekt)])].sort((a, b) => (direkt[b] || 0) - (direkt[a] || 0));
   const zaehl = (feld, werte) => { const c = {}; werte.forEach(([k]) => { c[k] = 0; }); let unb = 0; ar.forEach(({ s }) => { const v = s[feld]; if (v === '' || v == null) unb++; else c[v] = (c[v] || 0) + 1; }); return { c, unb }; };
   const tech = zaehl('technik', TECHNIK), gef = zaehl('gefuehl', GEFUEHL), rir = zaehl('rir', [0, 1, 2, 3, 4, '5+'].map(x => [String(x)]));
   const beschw = fertig.reduce((a, e) => a + e.uebungen.filter(u => u.beschwerde).length, 0);
   const verteilung = (o, liste) => `${liste.map(([k, n]) => `${esc(n || k)}: ${o.c[k] || 0}`).join(' · ')} · unbekannt: ${o.unb}`;
-  const jeUebung = {}; t.einheiten.filter(e => e.ende).forEach(e => e.uebungen.forEach(u => { if (!u.saetze.some(x => x.art === 'arbeit' && x.erledigt)) return; const k = u.uebung; (jeUebung[k] = jeUebung[k] || { uebung: k, varianten: new Set(), n: 0, letzte: '' }).n++; jeUebung[k].varianten.add(u.variante || ''); if (e.start > jeUebung[k].letzte) jeUebung[k].letzte = e.start; }));
+  // Je Übung: Einheiten zählen (nicht Einträge – eine Einheit kann dieselbe Übung an zwei Geräten enthalten)
+  const jeUebung = {}; t.einheiten.filter(e => e.ende).forEach(e => e.uebungen.forEach(u => { if (!u.saetze.some(x => x.art === 'arbeit' && x.erledigt)) return; const k = u.uebung; const j = (jeUebung[k] = jeUebung[k] || { uebung: k, varianten: new Set(), einheiten: new Set(), n: 0, letzte: '' }); j.einheiten.add(e.id); j.n = j.einheiten.size; j.varianten.add(u.variante || ''); if (e.start > j.letzte) j.letzte = e.start; }));
   const kg = [...t.koerpergewicht].sort((a, b) => a.datum.localeCompare(b.datum)).filter(x => x.datum >= grenze);
   return `<h1>Verlauf und Statistik</h1>${zeitChips()}
   <section class="karte"><h2 style="margin-top:0">Überblick</h2>
     <div class="fz-soll"><div><span>Einheiten</span><b>${fertig.length}</b></div><div><span>pro Woche</span><b>${zahlDE(fertig.length / wochen, 1)}</b></div><div><span>Arbeitssätze</span><b>${ar.length}</b></div><div><span>Aufwärmsätze</span><b>${aw.length}</b></div></div>
     <p class="leise klein">Gezählt werden nur bestätigte Sätze abgeschlossener Einheiten. Übersprungene und offene Sätze zählen nicht.</p></section>
-  ${ar.length ? `<section class="karte"><h2 style="margin-top:0">Arbeitssätze je Muskel</h2><div class="tabelle-wrap"><table class="mikro"><thead><tr><th>Muskel</th><th>direkt</th><th>zusätzlich mitbeteiligt</th></tr></thead><tbody>${muskeln.map(m => `<tr><td>${esc(MUSKEL_NAME[m] || m)}</td><td>${direkt[m] || 0}</td><td class="leise">${indirekt[m] || 0}</td></tr>`).join('')}</tbody></table></div>
-    <p class="leise klein">„Direkt“: Satz einer Übung, bei der der Muskel als Zielmuskel hinterlegt ist. „Mitbeteiligt“: Hilfsmuskel laut Übungsbibliothek – getrennt aufgeführt und nicht addiert. Eigene Übungen ohne Muskelangabe fehlen hier.</p></section>
+  ${ar.length ? `<section class="karte"><h2 style="margin-top:0">Arbeitssätze je Muskel</h2><div class="tabelle-wrap"><table class="mikro"><thead><tr><th>Muskel</th><th>direkt</th><th>zusätzlich mitbeteiligt</th></tr></thead><tbody>${muskeln.map(m => `<tr><td>${esc(MUSKEL_NAME[m] || m)}</td><td>${zahlDE(direkt[m] || 0, 1)}</td><td class="leise">${zahlDE(indirekt[m] || 0, 1)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="leise klein">„Direkt“: Satz einer Übung, bei der der Muskel als Zielmuskel hinterlegt ist. „Mitbeteiligt“: Hilfsmuskel laut Übungsbibliothek – getrennt aufgeführt und nicht addiert. Eigene Übungen ohne Muskelangabe fehlen hier. Einseitig: ein Satz = beide Seiten; nur eine Seite absolviert zählt als ½.</p></section>
   <section class="karte"><h2 style="margin-top:0">Subjektive Angaben (Arbeitssätze)</h2>
     <p class="klein"><b>Ausführung:</b> ${verteilung(tech, TECHNIK)}</p><p class="klein"><b>Zielmuskel gespürt:</b> ${verteilung(gef, GEFUEHL)}</p><p class="klein"><b>RIR eingetragen:</b> ${ar.length - rir.unb} von ${ar.length} Sätzen${ar.length - rir.unb ? ' (' + [0, 1, 2, 3, 4, '5+'].map(x => `${x}: ${rir.c[String(x)] || 0}`).join(' · ') + ')' : ''}</p><p class="klein"><b>Beschwerden notiert:</b> bei ${beschw} Übungseinträgen</p>
     <p class="leise klein">Getrennt von der Leistung ausgewertet. Fehlende Angaben sind „unbekannt“, nicht null. Das Zielmuskelgefühl ist ein subjektiver Eindruck und kein Messwert für Muskelwachstum.</p></section>` : ''}
@@ -840,6 +879,7 @@ function trVerlaufHtml() {
 function mobDaten() { if (!D.mobility) D.mobility = { eigene: [], verlauf: [], favoriten: [], einrichtung: {} }; return D.mobility; }
 const MOB = () => (K.mobility || { uebungen: [], routinen: [], quellen: {} });
 const mobUeb = id => MOB().uebungen.find(u => u.id === id) || { id, name: 'Unbekannte Übung' };
+const MOB_HILFSMITTEL = { matte: 'Matte oder Teppich', stuhl: 'stabiler Stuhl', band: 'Widerstandsband', wand: 'freie Wand', stange: 'Stange oder Türrahmen', keins: 'keine' };
 const MOB_ZIEL = { beweglichkeit: 'Bewegungsumfang', aktive_kontrolle: 'aktive Kontrolle', vorbereitung: 'Vorbereitung/Aufwärmen', allgemein: 'allgemeine Bewegungsroutine' };
 const MOB_KONTEXT = { vor_training: 'vor dem Training', nach_training: 'nach dem Training', eigenstaendig: 'eigenständig', buero: 'Büro/Pause' };
 const MOB_ART = { dynamisch: 'dynamisch', aktiv: 'aktive Mobility', statisch: 'statisches Dehnen' };
@@ -853,7 +893,14 @@ document.addEventListener('click', ev => {
     case 'mob-start': aendere(null, d => { mobDaten(); d.mobility.lauf = { id: v, i: 0, start: new Date().toISOString() }; }, { neuZeichnen: false }); location.hash = '#/mobility/lauf'; break;
     case 'mob-schritt': mobTimerStopp(); aendere(null, d => { d.mobility.lauf.i = Math.max(0, d.mobility.lauf.i + Number(v)); }); window.scrollTo(0, 0); break;
     case 'mob-fertig': case 'mob-abbruch': { const l = m.lauf; const r = l && mobRoutine(l.id); const voll = a === 'mob-fertig'; mobTimerStopp();
-      aendere(voll ? 'Routine abgeschlossen' : 'Routine abgebrochen', d => { if (r && (voll || l.i > 0)) d.mobility.verlauf = [...arr(d.mobility.verlauf), { datum: heute(), id: r.id, name: r.name, vollstaendig: voll }]; d.mobility.lauf = null; }, { neuZeichnen: false }); location.hash = '#/mobility'; break; }
+      const aktivSek = l ? Math.round((Date.now() - new Date(l.start)) / 1000) : 0;
+      aendere(voll ? 'Routine abgeschlossen' : 'Routine abgebrochen', d => { const rk = (l && l.rueck) || {};
+        if (r && (voll || l.i > 0)) d.mobility.verlauf = [...arr(d.mobility.verlauf), Object.assign({ datum: heute(), id: r.id, name: r.name, vollstaendig: voll, dauer_s: aktivSek }, Object.keys(rk).length ? { rueck: rk } : {})];
+        // Rückmeldung je Übung mit gewählter Stufe – Grundlage für Stufenvorschläge (nie automatisch)
+        Object.entries(rk).forEach(([id, x]) => { d.mobility.stand = d.mobility.stand || {}; d.mobility.stand[id] = [...arr(d.mobility.stand[id]), { datum: heute(), stufe: x.stufe, urteil: x.urteil }].slice(-12); });
+        d.mobility.lauf = null; }, { neuZeichnen: false }); location.hash = '#/mobility'; break; }
+    case 'mob-stufe': aendere(null, d => { d.mobility.stufe = Object.assign({}, d.mobility.stufe, { [b.dataset.u]: Number(v) }); if (d.mobility.lauf && d.mobility.lauf.rueck && d.mobility.lauf.rueck[b.dataset.u]) d.mobility.lauf.rueck[b.dataset.u].stufe = Number(v); }); break;
+    case 'mob-rueck': aendere(null, d => { const l = d.mobility.lauf; if (!l) return; l.rueck = Object.assign({}, l.rueck, { [b.dataset.u]: { stufe: mobStufeIndex(mobUeb(b.dataset.u)), urteil: v } }); }); break;
     case 'mob-fav': aendere(null, d => { const f = new Set(arr(d.mobility.favoriten)); f.has(v) ? f.delete(v) : f.add(v); d.mobility.favoriten = [...f]; }); break;
     case 'mob-eigen-weg': aendere('Eigene Routine gelöscht – Rückgängig möglich', d => { d.mobility.eigene = arr(d.mobility.eigene).filter(r => r.id !== v); }, { neuZeichnen: false }); location.hash = '#/mobility'; break;
     case 'mob-eigen-speichern': { const c = m.einrichtung || {}; const vs = mobVorschlag(c); if (!vs.uebungen.length) return; const id = uid('mrou');
@@ -895,10 +942,33 @@ function mobRoutineHtml(id) {
 function mobUebungHtml(id) {
   const u = mobUeb(id); const q = MOB().quellen || {};
   return `<p class="klein"><a class="knopf still klein" href="javascript:history.back()">${ico('zurueck', 'klein')} zurück</a></p><div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div>
-  <p class="leise klein">${esc(MOB_ART[u.art] || '')} · ${esc(arr(u.bereiche).map(b => MOB_BEREICH[b] || b).join(', '))} · ${esc(u.dauer_vorschlag || '')} · Hilfsmittel: ${esc(arr(u.hilfsmittel).join(', ') || 'keins')}</p>
-  ${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''}
-  ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}${u.demo_link_geprueft ? '; geprüft ' + esc(u.demo_link_geprueft) : ''})</span></p>` : ''}
+  <p class="leise klein">${esc(MOB_ART[u.art] || '')} · ${esc(arr(u.bereiche).map(b => MOB_BEREICH[b] || b).join(', '))} · ${esc(u.dauer_vorschlag || '')} · Hilfsmittel: ${esc(arr(u.hilfsmittel).filter(h => h !== 'keins').map(h => MOB_HILFSMITTEL[h] || h).join(', ') || 'keine')}</p>
+  ${MOB_ART_ERKL[u.art] ? `<p class="leise klein">${esc(MOB_ART[u.art])}: ${esc(MOB_ART_ERKL[u.art])}</p>` : ''}${mobStufenHtml(u, false)}
+  ${arr((mobDaten().stand || {})[u.id]).length ? `<details class="klein"><summary>Deine Rückmeldungen (${arr(mobDaten().stand[u.id]).length})</summary><ul>${[...arr(mobDaten().stand[u.id])].reverse().map(x => `<li>${esc(datumDE(x.datum))}: Stufe ${esc((mobStufen(u)[x.stufe] || {}).name || '–')} – ${esc((MOB_URTEIL.find(y => y[0] === x.urteil) || ['', x.urteil])[1])}</li>`).join('')}</ul><p class="leise">Eigene Einschätzung, keine Messung.</p></details>` : ''}
+  ${u.md ? mdHintergrund(String(u.md).replace(/^\s*# .*\n/, '')) : ''}
+  ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}${/^\d{4}-\d{2}-\d{2}/.test(String(u.demo_link_geprueft || '')) ? '; geprüft am ' + esc(datumDE(String(u.demo_link_geprueft).slice(0, 10))) : ''})</span></p>` : ''}
   ${arr(u.quellen).length ? `<p class="belege">Quellen: ${arr(u.quellen).map(x => { const k = String(x).replace(/^\^/, ''); const e = q[k]; return e && e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(String(e.titel).slice(0, 70))}</a>` : esc(e ? e.titel : k); }).join(' · ')}</p>` : ''}`;
+}
+/* Stufen (leicht / mittel / fortgeschritten) aus der Bibliothek: gewählte Stufe wird gespeichert; Vorschlag zur nächsten Stufe nur
+   nach eigenen Rückmeldungen (zweimal hintereinander „zu leicht“ auf derselben Stufe, keine Beschwerden) – nie wegen vergangener Tage. */
+const MOB_URTEIL = [['leicht', 'zu leicht'], ['passend', 'passend'], ['schwer', 'zu schwer'], ['schmerz', 'Schmerz/Kribbeln']];
+const MOB_ART_ERKL = { dynamisch: 'in ruhiger Bewegung, ohne am Ende zu halten – gut zum Aufwärmen', aktiv: 'die Position aus eigener Muskelkraft erreichen und kontrollieren', statisch: 'ruhig halten und atmen – eher nach dem Training oder separat, nicht direkt vor Kraft- oder Sprungleistung' };
+function mobStufen(u) { return arr(u.stufen).map(s => { const m = String(s).match(/^\s*([^:]+):\s*(.*)$/); return m ? { name: m[1].trim(), text: m[2].trim() } : { name: String(s), text: '' }; }); }
+function mobStufeIndex(u) { const st = mobStufen(u); if (!st.length) return null; const g = (mobDaten().stufe || {})[u.id]; if (g != null && g < st.length) return g; const mi = st.findIndex(s => /mittel/i.test(s.name)); return mi >= 0 ? mi : 0; }
+function mobStufenVorschlag(u) {
+  const st = mobStufen(u); if (st.length < 2) return null; const i = mobStufeIndex(u); const h = arr((mobDaten().stand || {})[u.id]).filter(x => x.stufe === i);
+  const l2 = h.slice(-2); const letzte = h[h.length - 1];
+  if (letzte && letzte.urteil === 'schmerz') return { richtung: -1, text: 'Zuletzt Schmerz oder Kribbeln notiert: heute leichtere Stufe oder die Übung auslassen. Halten Beschwerden an, abklären lassen.' };
+  if (letzte && letzte.urteil === 'schwer' && i > 0) return { richtung: -1, text: `Zuletzt „zu schwer“ auf Stufe ${st[i].name} – die leichtere Stufe ist eine gute Wahl.` };
+  if (l2.length === 2 && l2.every(x => x.urteil === 'leicht') && i < st.length - 1) return { richtung: 1, text: `Zweimal hintereinander „zu leicht“ auf Stufe ${st[i].name}. Wenn es sich weiter gut anfühlt, kannst du „${st[i + 1].name}“ probieren – du entscheidest.` };
+  return null;
+}
+function mobStufenHtml(u, imLauf) {
+  const st = mobStufen(u); if (!st.length) return ''; const i = mobStufeIndex(u); const vs = mobStufenVorschlag(u);
+  return `<section class="karte klein mob-stufen"><p style="margin:0"><b>Deine Stufe:</b> ${esc(st[i].name)}${st[i].text ? ` – ${esc(st[i].text)}` : ''}</p>
+    <div class="chips-wrap" role="group" aria-label="Stufe wählen">${st.map((s, k) => `<button class="filterchip" data-a="mob-stufe" data-u="${esc(u.id)}" data-v="${k}" aria-pressed="${k === i}">${esc(s.name)}</button>`).join('')}</div>
+    ${vs ? `<p class="${vs.richtung < 0 ? 'hinweis warn' : 'hinweis'} klein" style="margin:.4em 0 0">${esc(vs.text)}${vs.richtung ? ` <button class="klein" data-a="mob-stufe" data-u="${esc(u.id)}" data-v="${i + vs.richtung}">${esc(st[i + vs.richtung].name)} wählen</button>` : ''}</p>` : ''}
+    ${imLauf ? '' : '<p class="leise" style="margin:.3em 0 0">Die Stufe gilt für alle Routinen mit dieser Übung. Sie steigt nie automatisch.</p>'}</section>`;
 }
 /* Geführter Ablauf: Übung für Übung, Zeitangaben aus der Routine; Timer nur als Hilfe */
 function mobLaufHtml() {
@@ -908,17 +978,19 @@ function mobLaufHtml() {
   const dText = String(dauer || u.dauer_vorschlag || ''); const sek = (dText.replace(/\([^)]*\)/g, '').match(/(\d+)\s*(?:–\s*\d+\s*)?s\b/) || [])[1]; const seiten = /je (Seite|Bein|Arm|Fuß)|und (Seite|Arm|Fuß|Bein)/i.test(dText);
   const tKnopf = (txt, name) => `<button class="gross" data-a="timer" data-quelle="mob" data-min="${Number(sek) / 60}" data-name="${esc(name)}">⏱ ${txt}</button>`;
   return `<p class="leise klein">${esc(r.name)} · Schritt ${i + 1} von ${l.length}${runden > 1 ? ` · Runde ${l[i].runde} von ${runden}` : ''}</p><div class="fortschritt"><i style="width:${Math.round(100 * (i + 1) / l.length)}%"></i></div>
-  <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div><p class="klein"><b>${esc(dText.trim())}</b> · ${esc(MOB_ART[u.art] || '')}${arr(u.hilfsmittel).includes('matte') ? ' · auf Matte, Teppich oder Handtuch' : ''}</p>
+  <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div><p class="klein"><b>${esc(dText.trim())}</b> · ${esc(MOB_ART[u.art] || '')}${arr(u.hilfsmittel).includes('matte') ? ' · auf Matte, Teppich oder Handtuch' : ''}</p>${MOB_ART_ERKL[u.art] ? `<p class="leise klein" style="margin-top:-.4em">${esc(MOB_ART[u.art])}: ${esc(MOB_ART_ERKL[u.art])}</p>` : ''}
+  ${mobStufenHtml(u, true)}
   ${sek ? `<div class="knopfreihe">${seiten ? tKnopf(`${sek} s links`, u.name + ' links') + tKnopf(`${sek} s rechts`, u.name + ' rechts') : tKnopf(`${sek} s`, u.name)}</div><p class="leise klein">Timer nur als Hilfe; er stoppt bei „Weiter“ und beim Abbrechen. Bei gesperrtem iPhone kann der Ton ausbleiben.</p>` : ''}
-  ${(() => { const b = arr(u.anleitung)[0]; return b ? `<section class="karte"><p><b>Start:</b> ${inline(String(b.start || ''))}</p><ol class="anl-schritte">${arr(b.schritte).map(x => `<li>${inline(String(x))}</li>`).join('')}</ol>${b.intensitaet ? `<p class="klein"><b>Intensität:</b> ${inline(String(b.intensitaet))}</p>` : ''}<p class="leise klein">Fehler, Kontrolle, Varianten und „Dehngefühl oder Schmerz?“ unter „ⓘ Anleitung“.</p></section>` : u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : ''; })()}
+  ${(() => { const b = arr(u.anleitung)[0]; return b ? `<section class="karte"><p><b>Start:</b> ${inline(String(b.start || ''))}</p><ol class="anl-schritte">${arr(b.schritte).map(x => `<li>${inline(String(x))}</li>`).join('')}</ol>${b.intensitaet ? `<p class="klein"><b>Intensität:</b> ${inline(String(b.intensitaet))}</p>` : ''}<p class="leise klein">Fehler, Kontrolle, Varianten und „Dehngefühl oder Schmerz?“ unter „ⓘ Anleitung“.</p></section>` : u.md ? mdHintergrund(String(u.md).replace(/^\s*# .*\n/, '')) : ''; })()}
   <p class="hinweis warn klein">Deutliches Ziehen ist in Ordnung, Schmerz nicht: bei Schmerz, Taubheit oder Kribbeln diese Übung beenden.</p>
+  ${(() => { const rk = (mobLauf.rueck || {})[u.id]; return `<div class="klein"><p style="margin:.2em 0"><b>Wie war es?</b> <span class="leise">(freiwillig – für den Stufenvorschlag beim nächsten Mal)</span></p><div class="chips-wrap" role="group" aria-label="Rückmeldung">${MOB_URTEIL.map(([k, n]) => `<button class="filterchip" data-a="mob-rueck" data-u="${esc(u.id)}" data-v="${k}" aria-pressed="${!!rk && rk.urteil === k}">${n}</button>`).join('')}</div></div>`; })()}
   <div style="height:80px"></div>
   <div class="kochnav"><button data-a="mob-schritt" data-v="-1" ${i === 0 ? 'disabled' : ''}>← Zurück</button>${i === l.length - 1 ? '<button class="haupt" data-a="mob-fertig">Fertig ✓</button>' : '<button class="haupt" data-a="mob-schritt" data-v="1">Weiter →</button>'}</div>
   <p><button class="still klein" data-a="mob-abbruch">✕ Routine abbrechen</button></p>`;
 }
 function mobVerlaufHtml() {
   const v = [...arr(mobDaten().verlauf)].sort((a, b) => b.datum.localeCompare(a.datum));
-  return `<h1>Verlauf</h1>${v.length ? `<ul class="eintraege">${v.slice(0, 40).map(x => `<li><span>${esc(datumDE(x.datum))} · <b>${esc(x.name)}</b>${x.vollstaendig ? '' : ' <span class="leise klein">(teilweise)</span>'}</span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Routine abgeschlossen.</p>'}
+  return `<h1>Verlauf</h1>${v.length ? `<ul class="eintraege">${v.slice(0, 40).map(x => `<li><span>${esc(datumDE(x.datum))} · <b>${esc(x.name)}</b>${x.vollstaendig ? '' : ' <span class="leise klein">(teilweise)</span>'}${x.dauer_s ? ` <span class="leise klein">· ${Math.max(1, Math.round(x.dauer_s / 60))} Min. von Start bis Ende</span>` : ''}${x.rueck ? `<br><span class="leise klein">${esc(Object.entries(x.rueck).map(([id, y]) => `${mobUeb(id).name}: ${(MOB_URTEIL.find(z => z[0] === y.urteil) || ['', y.urteil])[1]}`).join(' · '))}</span>` : ''}</span></li>`).join('')}</ul>` : '<p class="leise">Noch keine Routine abgeschlossen.</p>'}
   <p class="leise klein">Nur ein Protokoll – daraus wird keine Beweglichkeits-„Messung“ abgeleitet.</p>`;
 }
 /* Persönliche Routine: aus geprüften Übungen nach Ziel, Bereichen, Zeit, Hilfsmitteln; unerwünschte Übungen ausgeschlossen.
@@ -1030,8 +1102,8 @@ function ersatzVorschlaege(info, ohne) {
     const gemein = arr(x.muskeln_haupt).filter(m => haupt.includes(m)); const hinterlegt = arr(info.alternativen).includes(x.id);
     const gleichesMuster = !iso && x.bewegungsmuster === info.bewegungsmuster; const gleicheRolle = iso && x.bewegungsmuster === 'isolation' && arr(x.muskeln_haupt)[0] === haupt[0];
     if (!(gemein.length && (gleichesMuster || gleicheRolle)) && !(hinterlegt && gemein.length)) return null;
-    const warum = [gleichesMuster ? 'gleiches Bewegungsmuster (' + (PLATZ_NAME[x.bewegungsmuster] || x.bewegungsmuster) + ')' : gleicheRolle ? 'gleiche Rolle (Isolation)' : 'in der Bibliothek als Alternative hinterlegt', 'Zielmuskel ' + gemein.map(m => MUSKEL_NAME[m] || m).join(', ')];
-    const gA = geraete(info), gB = geraete(x); const unterschied = [!gleichesMuster && !gleicheRolle && x.bewegungsmuster !== info.bewegungsmuster ? `anderes Bewegungsmuster (${PLATZ_NAME[x.bewegungsmuster] || x.bewegungsmuster} statt ${PLATZ_NAME[info.bewegungsmuster] || info.bewegungsmuster})` : '', gB.join('/') !== gA.join('/') ? `Gerät: ${gB.join('/') || '–'} statt ${gA.join('/') || '–'}` : '', arr(x.muskeln_haupt).filter(m => !haupt.includes(m)).length ? 'zusätzlich ' + arr(x.muskeln_haupt).filter(m => !haupt.includes(m)).map(m => MUSKEL_NAME[m] || m).join(', ') : ''].filter(Boolean);
+    const warum = [gleichesMuster ? 'gleiches Bewegungsmuster (' + (PLATZ_NAME[x.bewegungsmuster] || MUSTER_NAME[x.bewegungsmuster] || x.bewegungsmuster) + ')' : gleicheRolle ? 'gleiche Rolle (Isolation)' : 'in der Bibliothek als Alternative hinterlegt', 'Zielmuskel ' + gemein.map(m => MUSKEL_NAME[m] || m).join(', ')];
+    const gA = geraete(info), gB = geraete(x); const unterschied = [!gleichesMuster && !gleicheRolle && x.bewegungsmuster !== info.bewegungsmuster ? `anderes Bewegungsmuster (${PLATZ_NAME[x.bewegungsmuster] || MUSTER_NAME[x.bewegungsmuster] || x.bewegungsmuster} statt ${PLATZ_NAME[info.bewegungsmuster] || MUSTER_NAME[info.bewegungsmuster] || info.bewegungsmuster})` : '', gB.join('/') !== gA.join('/') ? `Gerät: ${gB.join('/') || '–'} statt ${gA.join('/') || '–'}` : '', arr(x.muskeln_haupt).filter(m => !haupt.includes(m)).length ? 'zusätzlich ' + arr(x.muskeln_haupt).filter(m => !haupt.includes(m)).map(m => MUSKEL_NAME[m] || m).join(', ') : ''].filter(Boolean);
     const verfuegbar = !ger.length || x.quelle === 'eigen' || uebVerfuegbar(x, ger);
     return { u: x, warum: warum.join(' · '), unterschied: unterschied.join(' · '), verfuegbar, punkte: (hinterlegt ? 1 : 0) + (gleichesMuster || gleicheRolle ? 3 : 0) + gemein.length + (verfuegbar ? 2 : 0) };
   }).filter(Boolean).sort((a, b) => b.punkte - a.punkte).slice(0, 6);
@@ -1058,20 +1130,23 @@ function trTausche(d, ui, neu) {
 }
 /* ---------- Heute weniger Zeit: kürzen nach Reihenfolge, Pausen bleiben ---------- */
 let trZeitMin = ''; let trZeitVorschlag = null;
-const satzSek = (u, s) => 45 + (s.art === 'arbeit' ? (Number(u.pause_s) || 90) : 60);
+// Einseitige Arbeitssätze: zweimal Arbeitszeit plus Seitenwechsel
+const satzSek = (u, s) => (u.je_seite && s.art === 'arbeit' ? 90 + (u.seiten_pause_s != null && u.seiten_pause_s !== '' ? Number(u.seiten_pause_s) : 15) : 45) + (s.art === 'arbeit' ? (Number(u.pause_s) || 90) : 60);
 function einheitRestSek(e) { return e.uebungen.reduce((sum, u) => sum + u.saetze.filter(s => !s.erledigt).reduce((a, s) => a + satzSek(u, s), 0), 0); }
 function zeitKuerzen(e, minuten) {
   // Kopie der offenen Sätze; zuerst je Übung (von hinten) einen Arbeitssatz streichen, wenn mind. 3 offen; dann ganze Übungen von hinten (die erste bleibt)
   const ziel = minuten * 60; const plan = e.uebungen.map(u => ({ offenA: u.saetze.filter(s => !s.erledigt && s.art === 'arbeit').length, offenW: u.saetze.filter(s => !s.erledigt && s.art === 'aufwaerm').length, weg: 0, ganz: false }));
-  const rest = () => plan.reduce((sum, p, i) => p.ganz ? sum : sum + (p.offenA - p.weg) * (45 + (Number(e.uebungen[i].pause_s) || 90)) + p.offenW * 105, 0);
-  for (let i = plan.length - 1; i >= 0 && rest() > ziel; i--) if (plan[i].offenA - plan[i].weg >= 3) plan[i].weg++;
+  const rest = () => plan.reduce((sum, p, i) => p.ganz ? sum : sum + (p.offenA - p.weg) * satzSek(e.uebungen[i], { art: 'arbeit' }) + p.offenW * 105, 0);
+  // Zuerst Übungen, die im Plan als optional bzw. „zusätzlich“ markiert sind (von hinten), dann Sätze, dann weitere Übungen
+  for (let i = plan.length - 1; i >= 1 && rest() > ziel; i--) if (e.uebungen[i].optional && plan[i].offenA + plan[i].offenW > 0) plan[i].ganz = true;
+  for (let i = plan.length - 1; i >= 0 && rest() > ziel; i--) if (!plan[i].ganz && plan[i].offenA - plan[i].weg >= 3) plan[i].weg++;
   for (let i = plan.length - 1; i >= 1 && rest() > ziel; i--) if (plan[i].offenA + plan[i].offenW > 0) plan[i].ganz = true;
   return { plan, rest: rest(), passt: rest() <= ziel };
 }
 function trZeitVorschauHtml(e) {
   const v = trZeitVorschlag; if (!v) return '';
   const aend = v.plan.map((p, i) => p.ganz ? `<li><b>${esc(ueb(e.uebungen[i].uebung).name)}</b>: entfällt heute</li>` : p.weg ? `<li>${esc(ueb(e.uebungen[i].uebung).name)}: ${p.weg} Arbeitssatz weniger</li>` : '').join('');
-  return `${aend ? `<ul>${aend}</ul>` : '<p class="klein">Passt ohne Kürzung.</p>'}<p class="leise klein">Danach ca. ${Math.round(v.rest / 60)} Min.${v.passt ? '' : ' – reicht trotzdem nicht ganz; die erste Übung bleibt immer erhalten.'} Pausen werden nicht verkürzt. Reihenfolge der Routine = Priorität.</p>
+  return `${aend ? `<ul>${aend}</ul>` : '<p class="klein">Passt ohne Kürzung.</p>'}<p class="leise klein">Danach ca. ${Math.round(v.rest / 60)} Min.${v.passt ? '' : ' – reicht trotzdem nicht ganz; die erste Übung bleibt immer erhalten.'} Pausen werden nicht verkürzt. Zuerst fallen als optional markierte Übungen weg, danach gilt: Reihenfolge der Routine = Priorität.</p>
     ${aend ? '<div class="knopfreihe"><button class="klein haupt" data-a="tr-zeit-ok">So kürzen</button><button class="klein still" data-a="tr-zeit-ab">Abbrechen</button></div>' : ''}`;
 }
 
@@ -1097,6 +1172,16 @@ function trainingsplanImport(obj) {
       if (arr(obj.unerwuenschte_uebungen).length) { t.einrichtung = Object.assign({}, t.einrichtung); t.einrichtung.unerwuenscht = [...new Set([...arr(t.einrichtung.unerwuenscht), ...arr(obj.unerwuenschte_uebungen)])]; } } };
 }
 
+/* Geschätzte Dauer einer Routine (Modell, keine Messung): 5 Min. allgemeines Aufwärmen; Aufwärmsatz 40 s + 60 s Pause;
+   Arbeitssatz 40 s (einseitig 2 × 40 s + Seitenwechsel); eingestellte Pause zwischen den Arbeitssätzen; 2 Min. Geräte-/Übungswechsel.
+   Optionale Übungen getrennt. Offene Satzanzahl zählt nicht mit (wird angezeigt). */
+function routineDauer(r) {
+  const ex = x => { const n = Number(x.saetze) || 0; const aw = x.aufwaerm == null ? 1 : Number(x.aufwaerm) || 0; const satz = x.je_seite ? 80 + (x.seiten_pause_s != null && x.seiten_pause_s !== '' ? Number(x.seiten_pause_s) : 15) : 40; return aw * 100 + n * satz + Math.max(0, n - 1) * (Number(x.pause_s) || 120) + 120; };
+  const l = arr(r.uebungen); const kern = 300 + l.filter(x => !x.optional).reduce((a, x) => a + ex(x), 0); const opt = l.filter(x => x.optional).reduce((a, x) => a + ex(x), 0);
+  return { min: Math.round(kern / 60), optMin: Math.round(opt / 60), offen: l.some(x => x.saetze_offen && !(Number(x.saetze) > 0)) };
+}
+const routineDauerText = r => { const d = routineDauer(r); return `ca. ${d.min} Min.${d.optMin ? ` (+ ${d.optMin} Min. optional)` : ''}${d.offen ? ' + Übung mit offener Satzanzahl' : ''}`; };
+
 /* ---------- Plan bearbeiten ---------- */
 function trPlanHtml(id) {
   const t = trDaten(); const p = t.plaene.find(x => x.id === id); if (!p) return '<p class="leer">Plan nicht gefunden.</p>';
@@ -1107,7 +1192,7 @@ function trPlanHtml(id) {
   <h2>Einheiten</h2>
   ${(() => { const rs = p.einheiten.map(pe => t.routinen.find(r => r.id === pe.routine)).filter(Boolean); const ohne = rs.flatMap(r => r.uebungen).filter(x => (x.referenz_kg || x.start_kg) && !vergleichbareEinheiten(x.uebung, x.variante, null).length).length; const offen = rs.flatMap(r => r.uebungen.filter(x => x.saetze_offen && !(Number(x.saetze) > 0)).map(x => r.name + ': ' + ueb(x.uebung).name)); const unklar = rs.flatMap(r => r.uebungen.filter(x => x.gewicht_hinweis).map(x => r.name.split(' – ')[0] + ': ' + ueb(x.uebung).name));
     return ohne || offen.length || unklar.length ? `<div class="hinweis klein"><b>Vor dem ersten Training prüfen</b><ul>${ohne ? `<li>${ohne} Startgewichte sind ${p.art === 'historisch' ? 'historische Angaben' : 'Startwerte'}: vorausgefüllt, jederzeit änderbar, nicht als Leistung gespeichert. Gesteigert wird erst nach deinen eigenen bestätigten Einheiten.</li>` : ''}${offen.length ? `<li>Satzanzahl offen: ${esc(offen.join(', '))} – wird vor der Übung abgefragt.</li>` : ''}${unklar.length ? `<li>Gewichtsangabe unklar (gesamt oder je Seite, Kabelübersetzung): ${esc(unklar.join(', '))}.</li>` : ''}</ul></div>` : ''; })()}
-  ${p.einheiten.length ? `<ol class="tr-liste">${p.einheiten.map((pe, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between;align-items:center"><b><a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}</a></b>
+  ${p.einheiten.length ? `<p class="leise klein">Dauer: Schätzung aus Sätzen, Pausen, Aufwärmsätzen, Seitenwechsel und ca. 2 Min. Gerätewechsel je Übung, plus 5 Min. allgemeines Aufwärmen – keine Messung.</p><ol class="tr-liste">${p.einheiten.map((pe, i) => `<li class="karte"><div class="zeile" style="justify-content:space-between;align-items:center"><b><a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}</a>${(() => { const r0 = t.routinen.find(r => r.id === pe.routine); return r0 ? `<br><span class="leise klein" style="font-weight:400">${esc(routineDauerText(r0))}</span>` : ''; })()}</b>
       <button class="haupt klein" data-a="tr-start" data-v="${esc(pe.routine)}" data-plan="${esc(p.id)}" data-pe="${i}" ${t.aktiv ? 'disabled' : ''}>▶ Starten</button></div>
       <div class="zeile" style="justify-content:flex-end"><a class="knopf klein" href="#/training/routine/${esc(pe.routine)}">Übungen und Startwerte</a></div><div class="reihen-knoepfe"><button class="still" data-a="tr-pe-hoch" data-v="${i}" ${i ? '' : 'disabled'} aria-label="Einheit nach oben">▲ nach oben</button><button class="still" data-a="tr-pe-weg" data-v="${i}">✕ entfernen</button></div>
       <label class="feld"><span>Wochentag (optional)</span><select data-tr-pe-tag="${i}"><option value="">flexibel</option>${WOCHENTAGE.map(([k, n]) => `<option value="${k}" ${pe.tag === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -1120,6 +1205,34 @@ function trPlanHtml(id) {
     <p class="klein">Mit der Kamera des anderen Geräts scannen → Fitomat öffnet sich mit einer Vorschau unter Training → Pläne. Der Plan steht nur im Teil der Adresse nach „#“, der nicht an den Server gesendet wird.</p>
     <div class="knopfreihe"><button class="klein" data-a="tr-qr-kopieren">Plan-Code kopieren</button><button class="klein still" data-a="tr-qr-zu">Ausblenden</button></div></section>` : ''}
   <p class="leise klein">Die Kopie bekommt eigene Einheiten (Routinen); Änderungen daran lassen das Original und alle gespeicherten Trainings unverändert. Beim Löschen eines Plans bleiben Routinen und Trainingsverlauf erhalten.</p>`;
+}
+
+/* ---------- Einseitig in der Tabelle: je Arbeitssatz eine Zeile links und eine rechts (Reihenfolge wählbar) ---------- */
+function gewichtSeiteText(info) {
+  if (info.gewicht_bezug === 'gesamt') return 'kg gesamt'; const g = arr(info.geraet).map(String);
+  if (g.includes('kurzhantel')) return 'kg der Hantel in der arbeitenden Hand'; if (g.includes('maschine') || g.includes('kabel')) return 'kg laut Gerät, für die eine arbeitende Seite';
+  const b = gewichtArt(info); return /je Seite|je Hantel/.test(b) ? 'kg je Seite' : b + ' je Seite';
+}
+function trSeitenZeileHtml(u, ui, s, si, l) {
+  const zeit = istZeit(u); const k = zeit ? 'sek' : 'wdh'; const sd = s.seiten && s.seiten.l ? s.seiten : seitenLeer();
+  const nr = u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length; const vs = l ? l.saetze[nr - 1] : null;
+  const vorher = vs ? (vs.seiten && vs.seiten.l ? seitenText(vs) : satzTextBasis(vs)) : '–';
+  const ph = (x, f) => vs && vs.seiten && vs.seiten[x] && seitWert(vs.seiten[x][f]) ? vs.seiten[x][f] : f === 'rir' ? '' : trVorher(u, l, si, f);
+  const folge = seitenFolge(u);
+  return `<tr class="tr-lr-satz ${s.erledigt ? 'erledigt' : ''}"><td><span class="tr-lr-nr">W${nr}</span></td><td class="vorher">${esc(vorher)}</td>
+    <td colspan="3"><div class="tr-lr">${folge.map(x => `<div class="tr-lr-z${s.nur_seite && s.nur_seite !== x ? ' leer' : ''}"><b class="tr-lr-k" title="${SEITE_NAME[x]}">${SEITE_K[x]}</b>
+      <input type="number" inputmode="decimal" step="0.25" min="0" value="${esc(sd[x].kg ?? '')}" placeholder="${esc(ph(x, 'kg'))}" data-tr-seite="${x}:kg" data-u="${ui}" data-s="${si}" aria-label="${SEITE_NAME[x]}: Gewicht kg">
+      <input type="number" inputmode="numeric" step="${zeit ? 5 : 1}" min="0" value="${esc(sd[x][k] ?? '')}" placeholder="${esc(ph(x, k))}" data-tr-seite="${x}:${k}" data-u="${ui}" data-s="${si}" aria-label="${SEITE_NAME[x]}: ${zeit ? 'Sekunden' : 'Wiederholungen'}">
+      ${zeit ? '<span class="leise">–</span>' : `<select data-tr-seite="${x}:rir" data-u="${ui}" data-s="${si}" aria-label="${SEITE_NAME[x]}: RIR"><option value=""></option>${[0, 1, 2, 3, 4, '5+'].map(r => `<option ${String(sd[x].rir) === String(r) ? 'selected' : ''}>${r}</option>`).join('')}</select>`}</div>`).join('')}
+      <div class="tr-lr-akt"><button class="klein still" data-a="tr-seite-gleich" data-u="${ui}" data-s="${si}">= wie ${SEITE_K[folge[0]]}</button>${s.nur_seite ? `<span class="chip">nur ${SEITE_NAME[s.nur_seite]}</span>` : sd.gleich ? '<span class="leise">L = R</span>' : ''}</div></div></td>
+    <td><button class="klein ${s.erledigt ? '' : 'haupt'}" data-a="tr-satz-ok" data-u="${ui}" data-s="${si}" aria-label="Satz ${s.erledigt ? 'wieder öffnen' : 'abschließen (beide Seiten)'}">${s.erledigt ? ico('haken', 'klein') : '<span class="tr-ok-text">fertig</span>'}</button></td></tr>`;
+}
+// Steuerzeile für einseitige Übungen (Tabelle und geführter Modus): Reihenfolge, Seitenpause, Gewichtsbezug
+function seitenSteuerHtml(u, ui) {
+  const [a1, b1] = seitenFolge(u); const sek = Number(u.seiten_pause_s) || 30;
+  return `<div class="tr-seiten-steuer klein"><span>Reihenfolge: <button class="klein still" data-a="tr-seite-start" data-u="${ui}" aria-label="Reihenfolge der Seiten wechseln">${SEITE_NAME[a1]} zuerst ⇄</button></span>
+    <button class="klein" data-a="tr-seiten-pause" data-u="${ui}">⏱ ${SEITE_NAME[a1]} fertig – ${sek} s Seitenwechsel</button></div>
+    <p class="leise klein" style="margin:.2em 0 .5em">Gewicht: ${esc(gewichtSeiteText(ueb(u.uebung)))}. Ein Satz = beide Seiten; die Satzpause${u.pause_s ? ` (${zahlDE(u.pause_s / 60, 1)} Min.)` : ''} folgt nach ${SEITE_NAME[b1]}. Aufwärmsätze gelten für beide Seiten.</p>`;
 }
 
 /* ---------- Laufende Einheit ---------- */
@@ -1143,18 +1256,19 @@ function trEinheitHtml() {
   ${e.uebungen.map((u, ui) => { const info = ueb(u.uebung); const l = letzteLeistung(u.uebung, e.id, u.variante);
     return `<section class="karte tr-uebung"><div class="zeile" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(info.name)}</h2>${anleitungsKnopf('tr', u.uebung, u.variante)}</div>
       ${u.variante ? `<p class="klein" style="margin:.1em 0">${esc(u.variante)}</p>` : ''}
-      <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(istZeit(u) ? 'Haltezeit in Sekunden; Zusatz-kg nur bei Gewicht' : gewichtArt(info))}</b> · ${istZeit(u) ? `${zielKurz(u) === 'Haltezeit' ? 'Haltezeit selbst wählen' : 'Ziel ' + esc(zielKurz(u))}${u.je_seite ? ' je Seite' : ''} · ` : u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir && !istZeit(u) ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
+      <p class="leise klein" style="margin:.2em 0 .6em"><b>${esc(istZeit(u) ? 'Haltezeit in Sekunden; Zusatz-kg nur bei Gewicht' : u.je_seite ? gewichtSeiteText(info) : gewichtArt(info))}</b> · ${istZeit(u) ? `${zielKurz(u) === 'Haltezeit' ? 'Haltezeit selbst wählen' : 'Ziel ' + esc(zielKurz(u))}${u.je_seite ? ' je Seite' : ''} · ` : u.wdh_von ? `Ziel ${u.wdh_von}${u.wdh_bis && u.wdh_bis !== u.wdh_von ? '–' + u.wdh_bis : ''} Wdh.${u.je_seite ? ' je Seite' : ''} · ` : u.je_seite ? 'je Seite · ' : ''}${u.ziel_rir && !istZeit(u) ? `Ziel-RIR ${esc(u.ziel_rir)} · ` : ''}${l ? `Letztes Mal (${esc(datumDE(l.datum))}): ${esc(l.saetze.map(satzText).join(', ') || 'keine Arbeitssätze')}` : 'Noch keine frühere Leistung'}${u.referenz_kg ? ` · Referenz (historisch): ${esc(kgText(u.referenz_kg))}` : ''}${u.ersetzt ? ` · ersetzt ${esc(ueb(u.ersetzt).name)}` : ''}</p>
       ${u.aufwaerm_schema && u.saetze.some(s => s.art === 'aufwaerm') ? `<p class="leise klein" style="margin:-.3em 0 .5em">Aufwärmen (deine Regel): ${esc(aufwaermText(u))} – Gewichte als Vorschlag im Feld, bezogen auf ${l && l.saetze.length ? 'den letzten Arbeitssatz' : u.referenz_kg ? 'das Referenzgewicht' : 'dein Arbeitsgewicht'}.</p>` : ''}
       ${!u.saetze.some(s => s.art === 'arbeit') ? '<p class="hinweis klein">Satzanzahl offen – Arbeitssätze mit „+ Satz“ hinzufügen.</p>' : ''}
       ${vorschlagHtml(u, ui, e)}
       <table class="tr-saetze"><thead><tr><th>Satz</th><th>Vorher</th><th>${istZeit(u) ? 'Zusatz-kg' : 'kg'}</th><th>${istZeit(u) ? 'Sek.' : 'Wdh.'}</th><th>RIR</th><th></th></tr></thead><tbody>
-      ${u.saetze.map((s, si) => `<tr class="${s.erledigt ? 'erledigt' : ''}"><td><button class="klein still" data-a="tr-satz-art" data-u="${ui}" data-s="${si}" aria-label="Satzart wechseln">${s.art === 'aufwaerm' ? 'A' : 'W' + (u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length)}</button></td>
+      ${u.saetze.map((s, si) => u.je_seite && s.art === 'arbeit' ? trSeitenZeileHtml(u, ui, s, si, l) : `<tr class="${s.erledigt ? 'erledigt' : ''}"><td><button class="klein still" data-a="tr-satz-art" data-u="${ui}" data-s="${si}" aria-label="Satzart wechseln">${s.art === 'aufwaerm' ? 'A' : 'W' + (u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length)}</button></td>
         <td class="vorher">${(() => { const idx = u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length - 1; const vs = s.art === 'arbeit' && l ? l.saetze[idx] : null; return vs ? esc(vs.sek != null && vs.sek !== '' ? vs.sek + ' s' : (vs.kg !== '' && vs.kg != null ? zahlDE(Number(vs.kg), 2) : '–') + '×' + (vs.wdh || '?')) : '–'; })()}</td>
         <td><input type="number" inputmode="decimal" step="0.25" min="0" value="${esc(s.kg ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'kg') : trVorher(u, l, si, 'kg'))}" data-tr-satz="kg" data-u="${ui}" data-s="${si}" aria-label="Gewicht kg"></td>
         <td>${istZeit(u) ? `<input type="number" inputmode="numeric" step="5" min="0" value="${esc(s.sek ?? '')}" placeholder="${esc(trVorher(u, l, si, 'sek') || sekZiel(u).bis || sekZiel(u).von || '')}" data-tr-satz="sek" data-u="${ui}" data-s="${si}" aria-label="Haltezeit in Sekunden">` : `<input type="number" inputmode="numeric" step="1" min="0" value="${esc(s.wdh ?? '')}" placeholder="${esc(s.art === 'aufwaerm' ? aufwaermVorschlag(u, l, si, 'wdh') : trVorher(u, l, si, 'wdh'))}" data-tr-satz="wdh" data-u="${ui}" data-s="${si}" aria-label="Wiederholungen">`}</td>
         <td>${istZeit(u) ? '<span class="leise" title="Bei Halteübungen keine RIR-Angabe">–</span>' : `<select data-tr-satz="rir" data-u="${ui}" data-s="${si}" aria-label="RIR"><option value=""></option>${[0, 1, 2, 3, 4, '5+'].map(x => `<option ${String(s.rir) === String(x) ? 'selected' : ''}>${x}</option>`).join('')}</select>`}</td>
         <td><button class="klein ${s.erledigt ? '' : 'haupt'}" data-a="tr-satz-ok" data-u="${ui}" data-s="${si}" aria-label="Satz ${s.erledigt ? 'wieder öffnen' : 'abschließen'}">${s.erledigt ? ico('haken', 'klein') : '<span class="tr-ok-text">fertig</span>'}</button></td></tr>`).join('')}
       </tbody></table>
+      ${u.je_seite ? seitenSteuerHtml(u, ui) : ''}
       ${!istZeit(u) && u.saetze.some(s => s.art === 'arbeit') ? `<details class="klein tr-methoden"${u.saetze.some(s => s.methode) ? ' open' : ''}><summary>Satzmethoden (optional): Dropsatz, Teilwiederholungen</summary>
         <p class="leise" style="margin:.3em 0">Normal ist Standard. Sondersätze werden getrennt gespeichert: Vorschläge vergleichen nur die vollen Wiederholungen, reine Teilwiederholungs-Sätze gar nicht. Ein Dropsatz zählt im Wochenvolumen als ein Satz.</p>
         ${u.saetze.map((s, si) => s.art !== 'arbeit' ? '' : `<div class="tr-methode-zeile"><span class="tr-methode-satz">W${u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length}</span>
@@ -1172,7 +1286,7 @@ function trEinheitHtml() {
       <div class="zeile"><label class="feld" style="flex:2 1 180px"><span>Notiz</span><input value="${esc(u.notiz || '')}" data-tr-u-feld="notiz" data-u="${ui}" placeholder="z. B. Griff, Sitzeinstellung"></label>
         <label class="feld"><span>Ausführung (freiwillig)</span><select data-tr-u-qual="${ui}"><option value="">–</option>${[['sauber', 'sauber'], ['unsicher', 'unsicher'], ['unsauber', 'unsauber']].map(([k, n]) => `<option value="${k}" ${u.qualitaet === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
       <label style="margin-top:4px"><input type="checkbox" data-tr-u-beschwerde="${ui}" ${u.beschwerde ? 'checked' : ''}> Schmerzen oder Beschwerden bei dieser Übung</label>
-      ${u.beschwerde ? `<label class="feld"><span>Was und wo?</span><input value="${esc(u.beschwerde_text || '')}" data-tr-u-feld="beschwerde_text" data-u="${ui}"></label><p class="hinweis warn klein">Bei Schmerzen die Übung nicht „durchziehen“: Satz beenden, leichter oder eine schmerzfreie Alternative wählen. Halten Beschwerden an, ärztlich oder physiotherapeutisch abklären lassen.</p>` : ''}
+      ${u.beschwerde ? `${u.je_seite ? `<label class="feld"><span>Welche Seite?</span><select data-tr-u-feld="beschwerde_seite" data-u="${ui}">${[['', '–'], ['l', 'links'], ['r', 'rechts'], ['beide', 'beide']].map(([k, n]) => `<option value="${k}" ${(u.beschwerde_seite || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>` : ''}<label class="feld"><span>Was und wo?</span><input value="${esc(u.beschwerde_text || '')}" data-tr-u-feld="beschwerde_text" data-u="${ui}"></label><p class="hinweis warn klein">Bei Schmerzen die Übung nicht „durchziehen“: Satz beenden, leichter oder eine schmerzfreie Alternative wählen. Halten Beschwerden an, ärztlich oder physiotherapeutisch abklären lassen.</p>` : ''}
     </section>`; }).join('')}
   ${uebungsWahlHtml('einheit')}
   <label class="feld"><span>Notiz zur Einheit</span><input value="${esc(e.notiz || '')}" data-tr-e-notiz="1" placeholder="z. B. Schlaf, Energie"></label>
@@ -1228,7 +1342,11 @@ function trSoll(e, ui, si) {
 }
 function trEntwurf(e, f) {
   const key = f.ui + '-' + f.si; if (f.entwurf && f.entwurf.key === key) return f.entwurf;
-  const so = trSoll(e, f.ui, f.si); return { key, kg: so.kg, wdh: so.wdh, rir: null, technik: '', gefuehl: '', beschwerde: false, beschwerde_text: '', getrennt: false, kgL: so.kg, wdhL: so.wdh, kgR: so.kg, wdhR: so.wdh };
+  const so = trSoll(e, f.ui, f.si); const ls = so.letzter && so.letzter.seiten && so.letzter.seiten.l && !so.letzter.nur_seite ? so.letzter.seiten : null; const lk = istZeit(e.uebungen[f.ui]) ? 'sek' : 'wdh';
+  // Seiten getrennt vorausgewählt, wenn sie sich beim letzten Mal in diesem Satz unterschieden haben
+  const getrennt = !!(ls && !ls.gleich && (Number(ls.l[lk]) !== Number(ls.r[lk]) || Number(ls.l.kg) !== Number(ls.r.kg)));
+  const sv = (x, f0) => getrennt && seitWert(ls[x][f0]) ? ls[x][f0] : f0 === 'kg' ? so.kg : so.wdh;
+  return { key, kg: so.kg, wdh: so.wdh, rir: null, technik: '', gefuehl: '', beschwerde: false, beschwerde_text: '', beschwerde_seite: '', getrennt, umfang: 'beide', kgL: sv('l', 'kg'), wdhL: sv('l', lk), kgR: sv('r', 'kg'), wdhR: sv('r', lk), rirL: null, rirR: null };
 }
 function stepperHtml(id, label, wert, schritt, einheit) {
   return `<div class="fz-feld"><label for="${id}">${label}${einheit ? ` <span class="leise">(${esc(einheit)})</span>` : ''}</label><div class="fz-stepper"><button type="button" data-a="tr-f-plus" data-feld="${id}" data-d="${-schritt}" aria-label="${label} verringern">−</button><input id="${id}" data-tr-f-feld="${id}" type="number" inputmode="decimal" step="any" min="0" value="${esc(wert ?? '')}"><button type="button" data-a="tr-f-plus" data-feld="${id}" data-d="${schritt}" aria-label="${label} erhöhen">+</button></div></div>`;
@@ -1278,7 +1396,7 @@ function trFuehrungHtml() {
     ${f.phase === 'satz' && e.uebungen[f.ui] ? `<details class="klein"><summary>Übung ersetzen (Gerät besetzt)</summary>${tauschHtml(e.uebungen[f.ui], f.ui, ueb(e.uebungen[f.ui].uebung)).replace(/data-a="tr-tausch"/g, 'data-a="tr-f-tausch"').replace(/data-tr-tausch=/g, 'data-tr-f-tausch=')}</details>` : ''}</details>`;
   if (f.korrektur) { const k = f.korrektur; const u = e.uebungen[k.ui]; const s = u && u.saetze[k.si]; if (s) return `<div class="fz">${uebersicht}<p class="fz-kopf">Korrektur · ${esc(ueb(u.uebung).name)} · ${esc(satzLabel(u, k.si))}</p>
     <h1>Satz korrigieren</h1><p class="leise klein">Bisher: ${esc(satzText(s))}</p>
-    ${s.seiten ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-k-kgL', 'Gewicht', s.seiten.l.kg, trSchritt(u))}${stepperHtml('fz-k-wdhL', 'Wdh.', s.seiten.l.wdh, 1)}</div><div><b>Rechts</b>${stepperHtml('fz-k-kgR', 'Gewicht', s.seiten.r.kg, trSchritt(u))}${stepperHtml('fz-k-wdhR', 'Wdh.', s.seiten.r.wdh, 1)}</div></div>` : s.sek != null && s.sek !== '' ? `${stepperHtml('fz-k-kg', 'Zusatzgewicht', s.kg, trSchritt(u), 'kg')}${stepperHtml('fz-k-wdh', 'Sekunden', s.sek, 5)}` : `${stepperHtml('fz-k-kg', 'Gewicht', s.kg, trSchritt(u), gewichtArt(ueb(u.uebung)))}${stepperHtml('fz-k-wdh', 'Wiederholungen', s.wdh, 1)}`}
+    ${s.seiten && s.seiten.l ? `<p class="leise klein">Leere Seite = nicht absolviert. Der Satz zählt dann als halber Satz.</p><div class="fz-seiten">${seitenFolge(u).map(x => { const X = x.toUpperCase(); const zk = istZeit(u) ? 'sek' : 'wdh'; return `<div><b>${SEITE_NAME[x][0].toUpperCase() + SEITE_NAME[x].slice(1)}</b>${stepperHtml('fz-k-kg' + X, 'Gewicht', s.seiten[x].kg, trSchritt(u))}${stepperHtml('fz-k-wdh' + X, istZeit(u) ? 'Sekunden' : 'Wdh.', s.seiten[x][zk], istZeit(u) ? 5 : 1)}</div>`; }).join('')}</div>` : s.sek != null && s.sek !== '' ? `${stepperHtml('fz-k-kg', 'Zusatzgewicht', s.kg, trSchritt(u), 'kg')}${stepperHtml('fz-k-wdh', 'Sekunden', s.sek, 5)}` : `${stepperHtml('fz-k-kg', 'Gewicht', s.kg, trSchritt(u), gewichtArt(ueb(u.uebung)))}${stepperHtml('fz-k-wdh', 'Wiederholungen', s.wdh, 1)}`}
     <p class="klein"><b>RIR (tatsächlich)</b></p>${chipsHtml('k-rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), f.korrektur.rir !== undefined ? f.korrektur.rir : s.rir, 'unbekannt')}
     <button class="haupt fz-ok" data-a="tr-f-korr-ok">Korrektur speichern</button><button class="still" data-a="tr-f-korr-ab">abbrechen</button></div>`; }
   if (f.phase === 'fertig') return `<div class="fz">${uebersicht}<h1>Alle Sätze erledigt</h1><p>Gut gemacht. Beende das Training, um die Zusammenfassung und die Vorschläge für das nächste Mal zu sehen.</p>
@@ -1302,6 +1420,8 @@ function trFuehrungHtml() {
     <div class="fz-chips">${[1, 2, 3, 4].map(x => `<button class="filterchip fz-gross" data-a="tr-f-saetze" data-v="${x}">${x}</button>`).join('')}</div>
     <label class="klein"><input type="checkbox" id="fz-saetze-merken" checked> Auch im Plan speichern (sonst nur für heute)</label>${weitere}</div>`;
   const s = u.saetze[f.si]; const so = trSoll(e, f.ui, f.si); const ent = trEntwurf(e, f); const schritt = trSchritt(u);
+  // Einseitig: nur Arbeitssätze werden je Seite erfasst; Aufwärmsätze gelten für beide Seiten
+  const lrModus = !!u.je_seite && s.art === 'arbeit'; const lrGetrennt = lrModus && (ent.getrennt || (ent.umfang || 'beide') !== 'beide');
   const vsKurz = s.art === 'arbeit' && u.saetze.filter(x => x.art === 'arbeit').indexOf(s) === 0 && so.vs && so.vs.art !== 'start' ? `<details class="vorschlag v-${esc(so.vs.art)} klein"><summary><b>Vorschlag:</b> ${esc(so.vs.titel)}</summary><p class="klein">${esc(so.vs.begruendung)}</p>${so.vs.daten ? `<p class="leise klein">Daten: ${esc(so.vs.daten)}</p>` : ''}${so.vs.unsicherheit ? `<p class="leise klein">Unsicher: ${esc(so.vs.unsicherheit)}</p>` : ''}${so.vs.kg != null && ['steigern', 'reduzieren'].includes(so.vs.art) ? `<button class="klein" data-a="tr-f-vorschlag" data-v="${esc(so.vs.kg)}">${esc(kgText(so.vs.kg))} für heute übernehmen</button>` : ''}</details>` : '';
   const hinw = [u.gewicht_hinweis, u.plan_notiz, /kabel/.test(arr(info.geraet).join()) ? 'Kabelgewichte nur am selben Turm vergleichen.' : ''].filter(Boolean);
   return `<div class="fz">${uebersicht}${kopf}
@@ -1311,11 +1431,12 @@ function trFuehrungHtml() {
     <p class="leise klein fz-herkunft">${esc(so.herkunft || (istZeit(u) ? 'Haltezeit selbst wählen – nur so lange die Ausführung sauber bleibt; Zusatzgewicht nur, wenn du eins nutzt' : so.kg === '' ? 'Kein Startwert – Gewicht selbst wählen' : ''))}${so.letzter ? ` · Letztes Mal dieser Satz: ${esc(satzText(so.letzter))}` : so.letzte ? ` · Zuletzt ${esc(datumDE(so.letzte.datum))}: ${esc(so.letzte.saetze.map(satzText).join(', '))}` : ''}</p>
     ${hinw.length ? `<p class="hinweis klein">${hinw.map(esc).join('<br>')}</p>` : ''}${vsKurz}
     <div class="fz-eingabe"><p class="fz-ist">Tatsächlich – bestätigen oder ändern:</p>
-      ${u.je_seite ? `<div class="zeile" style="align-items:center"><label class="klein"><input type="checkbox" data-a="tr-f-getrennt" ${ent.getrennt ? 'checked' : ''}> Seiten unterschiedlich (sonst gilt der Wert für beide Seiten)</label><button class="klein still" data-a="timer" data-quelle="seite" data-min="0.5" data-name="Seitenwechsel">⏱ 30 s Seitenwechsel</button></div><p class="leise klein">Ein Satz = beide Seiten; er zählt im Volumen einmal.</p>` : ''}
-      ${u.je_seite && ent.getrennt ? `<div class="fz-seiten"><div><b>Links</b>${stepperHtml('fz-kgL', istZeit(u) ? 'Zusatzgewicht' : 'Gewicht', ent.kgL, schritt)}${stepperHtml('fz-wdhL', istZeit(u) ? 'Sekunden' : 'Wdh.', ent.wdhL, istZeit(u) ? 5 : 1)}</div><div><b>Rechts</b>${stepperHtml('fz-kgR', istZeit(u) ? 'Zusatzgewicht' : 'Gewicht', ent.kgR, schritt)}${stepperHtml('fz-wdhR', istZeit(u) ? 'Sekunden' : 'Wdh.', ent.wdhR, istZeit(u) ? 5 : 1)}</div></div>`
+      ${lrModus ? `${seitenSteuerHtml(u, f.ui)}<p class="klein fz-label"><b>Absolviert</b></p>${chipsHtml('umfang', [['beide', 'beide Seiten'], ['l', 'nur links'], ['r', 'nur rechts']], ent.umfang || 'beide')}
+        ${(ent.umfang || 'beide') === 'beide' ? `<label class="klein"><input type="checkbox" data-a="tr-f-getrennt" ${ent.getrennt ? 'checked' : ''}> Seiten unterschiedlich (Gewicht, ${istZeit(u) ? 'Sekunden' : 'Wdh. oder RIR'})</label>` : ''}` : ''}
+      ${lrGetrennt ? `<div class="fz-seiten">${seitenFolge(u).filter(x => (ent.umfang || 'beide') === 'beide' || ent.umfang === x).map(x => { const X = x.toUpperCase(); return `<div><b>${SEITE_NAME[x][0].toUpperCase() + SEITE_NAME[x].slice(1)}</b>${stepperHtml('fz-kg' + X, istZeit(u) ? 'Zusatzgewicht' : 'Gewicht', ent['kg' + X], schritt)}${stepperHtml('fz-wdh' + X, istZeit(u) ? 'Sekunden' : 'Wdh.', ent['wdh' + X], istZeit(u) ? 5 : 1)}${istZeit(u) ? '' : `<p class="klein fz-label"><b>RIR ${SEITE_K[x]}</b></p>${chipsHtml('rir' + X, [0, 1, 2, 3, 4, '5+'].map(r => [r, r]), ent['rir' + X], '?')}`}</div>`; }).join('')}</div>`
         : `<div class="fz-paar">${stepperHtml('fz-kg', 'Gewicht', ent.kg, schritt, so.einheit)}${istZeit(u) ? stepperHtml('fz-wdh', u.je_seite ? 'Sekunden je Seite' : 'Sekunden gehalten', ent.wdh, 5) : stepperHtml('fz-wdh', u.je_seite ? 'Wdh. je Seite' : 'Wiederholungen', ent.wdh, 1)}</div>`}
       ${istZeit(u) ? '<p class="leise klein fz-label">Bei Halteübungen gibt es keine RIR-Angabe: Halte nur so lange, wie die Ausführung sauber bleibt. Variante und Zusatzgewicht werden getrennt gespeichert.</p>' : ''}
-      ${s.art === 'arbeit' && !istZeit(u) ? `<p class="klein fz-label"><b>RIR</b> – Wiederholungen in Reserve (freiwillig; leer = unbekannt)</p>${chipsHtml('rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), ent.rir, 'unbekannt')}` : ''}
+      ${s.art === 'arbeit' && !istZeit(u) && !lrGetrennt ? `<p class="klein fz-label"><b>RIR</b> – Wiederholungen in Reserve (freiwillig; leer = unbekannt)${lrModus ? ' – gilt für beide Seiten' : ''}</p>${chipsHtml('rir', [0, 1, 2, 3, 4, '5+'].map(x => [x, x]), ent.rir, 'unbekannt')}` : ''}
       ${s.art === 'arbeit' && !istZeit(u) ? `<details class="fz-optional"${ent.methode ? ' open' : ''}><summary>Satzmethode <span class="leise">(optional: Dropsatz, Teilwiederholungen)</span></summary>
         <label class="feld"><span>Methode</span><select id="fz-methode">${METHODEN.map(([k, n]) => `<option value="${k}" ${(ent.methode || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         ${ent.methode === 'drop' ? `<div class="fz-seiten"><div><b>Stufe 2</b>${stepperHtml('fz-d0kg', 'Gewicht', ent.d0kg ?? '', schritt)}${stepperHtml('fz-d0wdh', 'Wdh.', ent.d0wdh ?? '', 1)}</div><div><b>Stufe 3 (optional)</b>${stepperHtml('fz-d1kg', 'Gewicht', ent.d1kg ?? '', schritt)}${stepperHtml('fz-d1wdh', 'Wdh.', ent.d1wdh ?? '', 1)}</div></div>` : ''}
@@ -1326,7 +1447,7 @@ function trFuehrungHtml() {
         <p class="klein fz-label"><b>Ausführung</b></p>${chipsHtml('technik', TECHNIK, ent.technik, '–')}
         <p class="klein fz-label"><b>Zielmuskel gespürt</b> <span class="leise">(subjektiv, kein Wachstumsmaß)</span></p>${chipsHtml('gefuehl', GEFUEHL, ent.gefuehl, '–')}
         <label class="klein fz-label"><input type="checkbox" data-a="tr-f-beschwerde" ${ent.beschwerde ? 'checked' : ''}> Schmerzen oder Beschwerden in diesem Satz</label>
-        ${ent.beschwerde ? `<label class="feld"><span>Was und wo?</span><input data-tr-f-feld="beschwerde_text" value="${esc(ent.beschwerde_text || '')}"></label><p class="hinweis warn klein">Nicht durchziehen: Übung beenden, leichter oder eine schmerzfreie Alternative wählen. Halten Beschwerden an, ärztlich oder physiotherapeutisch abklären lassen. Bei Beschwerden schlägt die App keine Steigerung vor.</p>` : ''}</details>
+        ${ent.beschwerde ? `${lrModus ? `<p class="klein fz-label"><b>Seite</b></p>${chipsHtml('beschwerde_seite', [['l', 'links'], ['r', 'rechts'], ['beide', 'beide']], ent.beschwerde_seite, '–')}` : ''}<label class="feld"><span>Was und wo?</span><input data-tr-f-feld="beschwerde_text" value="${esc(ent.beschwerde_text || '')}"></label><p class="hinweis warn klein">Nicht durchziehen: Übung beenden, leichter oder eine schmerzfreie Alternative wählen. Halten Beschwerden an, ärztlich oder physiotherapeutisch abklären lassen. Bei Beschwerden schlägt die App keine Steigerung vor.</p>` : ''}</details>
     </div>
     <button class="haupt fz-ok" data-a="tr-f-ok" data-k="${esc(ent.key)}">${ico('haken', 'klein')} Satz abschließen & Pause</button>
     ${weitere}</div>`;
@@ -1355,28 +1476,31 @@ document.addEventListener('click', ev => {
     case 'tr-f-plus': { const el = document.getElementById(b.dataset.feld); if (!el) return; const alt = Number(String(el.value).replace(',', '.')) || 0; el.value = Math.max(0, Math.round((alt + Number(b.dataset.d)) * 100) / 100); el.dispatchEvent(new Event('input', { bubbles: true })); break; }
     case 'tr-f-wert': { const feld = b.dataset.feld; const val = b.dataset.v === '' ? null : b.dataset.v;
       if (feld === 'k-rir') { f.korrektur.rir = val == null ? '' : val; } else trSpeichernStill(() => { f.entwurf = Object.assign(trEntwurf(e, f), trFEntwurfLesen(f), { [feld]: val }); });
-      b.parentElement.querySelectorAll('.filterchip').forEach(c => c.setAttribute('aria-pressed', String(c === b))); break; }
+      b.parentElement.querySelectorAll('.filterchip').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
+      if (feld === 'umfang') route(); break; }
     case 'tr-f-ok': {
       // Doppeltippen und veraltete Ansicht abfangen: nur der aktuelle, noch offene Satz kann bestätigt werden
       if (Date.now() - trFSperre < 1200 || b.dataset.k !== f.ui + '-' + f.si || f.phase !== 'satz') return; const u = e.uebungen[f.ui]; const s = u && u.saetze[f.si]; if (!s || !trOffen(s)) return;
       const ent = Object.assign(trEntwurf(e, f), trFEntwurfLesen(f)); const so = trSoll(e, f.ui, f.si);
-      const seiten = u.je_seite && ent.getrennt ? { l: { kg: ent.kgL, wdh: ent.wdhL }, r: { kg: ent.kgR, wdh: ent.wdhR } } : null;
-      const wdh = seiten ? Math.min(Number(seiten.l.wdh) || 0, Number(seiten.r.wdh) || 0) : ent.wdh; const kg = seiten ? (Number(seiten.l.wdh) <= Number(seiten.r.wdh) ? seiten.l.kg : seiten.r.kg) : ent.kg;
-      if (wdh === '' || wdh == null || !(Number(wdh) >= 0)) { toast(istZeit(u) ? 'Bitte die gehaltenen Sekunden eintragen' : 'Bitte die tatsächlichen Wiederholungen eintragen'); return; }
-      { const zk = istZeit(u) ? 'sek' : 'wdh'; const pr = [['kg', kg], [zk, wdh]]; if (seiten) ['l', 'r'].forEach(x => pr.push(['kg', seiten[x].kg], [zk, seiten[x].wdh]));
+      // Einseitig: beide Seiten (gleich oder getrennt) oder nur eine Seite; Aufwärmsätze gemeinsam
+      const um = ent.umfang || 'beide'; const getr = !!(ent.getrennt || um !== 'beide'); const leerS = () => ({ kg: '', wdh: '', rir: '' });
+      const seiten = u.je_seite && s.art === 'arbeit' ? (() => { const v = X => getr ? { kg: ent['kg' + X], wdh: ent['wdh' + X], rir: ent['rir' + X] ?? '' } : { kg: ent.kg, wdh: ent.wdh, rir: ent.rir ?? '' }; const o = { l: v('L'), r: v('R') }; if (!getr) o.gleich = true; if (um === 'l') o.r = leerS(); if (um === 'r') o.l = leerS(); return o; })() : null;
+      const aktivS = seiten ? ['l', 'r'].filter(x => um === 'beide' || um === x) : [];
+      const wdh = seiten ? (aktivS.some(x => !seitWert(seiten[x].wdh)) ? '' : Math.min(...aktivS.map(x => Number(seiten[x].wdh)))) : ent.wdh; const kg = seiten ? '' : ent.kg;
+      if (wdh === '' || wdh == null || !(Number(wdh) >= 0)) { toast(istZeit(u) ? `Bitte die gehaltenen Sekunden${seiten ? ' je Seite' : ''} eintragen` : `Bitte die tatsächlichen Wiederholungen${seiten ? ' je Seite' : ''} eintragen`); return; }
+      { const zk = istZeit(u) ? 'sek' : 'wdh'; const pr = [['kg', kg], [zk, wdh]]; if (seiten) aktivS.forEach(x => pr.push(['kg', seiten[x].kg], [zk, seiten[x].wdh]));
         for (const [k, w] of pr) { const f0 = satzFeldFehler(k, w); if (f0) { toast(`Satz nicht abgeschlossen – ${SATZ_GRENZE[k][3]}: ${f0}`); return; } } }
       trFSperre = Date.now(); b.disabled = true;
       aendere(null, d => { const e2 = trEinheit(); const f2 = e2.fuehrung; const u2 = e2.uebungen[f2.ui]; const s2 = u2.saetze[f2.si];
         Object.assign(s2, { soll: { kg: so.kg, wdh: so.wdh, ziel: so.ziel, rir: so.rir }, kg: kg === '' ? '' : Number(kg), wdh: Number(wdh), rir: ent.rir == null ? '' : ent.rir, erledigt: true, zeit: new Date().toISOString() });
-        if (seiten) s2.seiten = seiten; else delete s2.seiten;
-        if (istZeit(u2)) { s2.sek = Number(wdh); s2.wdh = ''; s2.soll.sek = so.wdh; s2.soll.wdh = '';
-          if (s2.seiten) s2.seiten = { l: { kg: s2.seiten.l.kg, sek: Number(s2.seiten.l.wdh) || 0 }, r: { kg: s2.seiten.r.kg, sek: Number(s2.seiten.r.wdh) || 0 } }; }
+        if (istZeit(u2)) { s2.sek = Number(wdh); s2.wdh = ''; s2.soll.sek = so.wdh; s2.soll.wdh = ''; }
+        if (seiten) { s2.seiten = seiten; seitenZusammen(s2, istZeit(u2)); } else { delete s2.seiten; delete s2.nur_seite; }
         delete s2.methode; delete s2.stufen; delete s2.teil_wdh;
         if (ent.methode && !istZeit(u2)) { s2.methode = ent.methode;
           if (ent.methode === 'drop') s2.stufen = [[ent.d0kg, ent.d0wdh], [ent.d1kg, ent.d1wdh]].filter(([k, w]) => (k !== '' && k != null) || (w !== '' && w != null)).map(([k, w]) => ({ kg: k === '' || k == null ? '' : Number(k), wdh: w === '' || w == null ? '' : Number(w) }));
           if (ent.methode === 'voll_plus_teil') s2.teil_wdh = ent.teil === '' || ent.teil == null ? '' : Number(ent.teil); }
         if (ent.technik) s2.technik = ent.technik; if (ent.gefuehl) s2.gefuehl = ent.gefuehl;
-        if (ent.beschwerde) { s2.beschwerde = true; s2.beschwerde_text = ent.beschwerde_text || ''; u2.beschwerde = true; u2.beschwerde_text = [u2.beschwerde_text, ent.beschwerde_text].filter(Boolean).join('; '); }
+        if (ent.beschwerde) { s2.beschwerde = true; s2.beschwerde_text = ent.beschwerde_text || ''; if (ent.beschwerde_seite) { s2.beschwerde_seite = ent.beschwerde_seite; u2.beschwerde_seite = u2.beschwerde_seite && u2.beschwerde_seite !== ent.beschwerde_seite ? 'beide' : ent.beschwerde_seite; } u2.beschwerde = true; u2.beschwerde_text = [u2.beschwerde_text, ent.beschwerde_text].filter(Boolean).join('; '); }
         if (ent.technik === 'unsauber') u2.qualitaet = 'unsauber'; else if (ent.technik && !u2.qualitaet) u2.qualitaet = ent.technik;
         f2.letzter = { ui: f2.ui, si: f2.si }; f2.entwurf = null; f2.phase = 'pause'; }, { neuZeichnen: false });
       trFPauseStarten(trEinheit(), e.uebungen[f.ui], e.uebungen[f.ui].saetze[f.si]); window.scrollTo(0, 0); route(); break; }
@@ -1384,7 +1508,9 @@ document.addEventListener('click', ev => {
     case 'tr-f-korr': if (f.letzter) { f.korrektur = { ui: f.letzter.ui, si: f.letzter.si }; route(); window.scrollTo(0, 0); } break;
     case 'tr-f-korr-ab': delete f.korrektur; route(); break;
     case 'tr-f-korr-ok': { const k = f.korrektur; const s = e.uebungen[k.ui].saetze[k.si]; const v = id => { const el = document.getElementById(id); return el && el.value !== '' ? Number(String(el.value).replace(',', '.')) : ''; };
-      aendere('Satz korrigiert', () => { if (s.seiten) { s.seiten = { l: { kg: v('fz-k-kgL'), wdh: v('fz-k-wdhL') }, r: { kg: v('fz-k-kgR'), wdh: v('fz-k-wdhR') } }; const lw = Number(s.seiten.l.wdh) <= Number(s.seiten.r.wdh); s.wdh = Math.min(Number(s.seiten.l.wdh) || 0, Number(s.seiten.r.wdh) || 0); s.kg = lw ? s.seiten.l.kg : s.seiten.r.kg; } else if (s.sek != null && s.sek !== '') { s.kg = v('fz-k-kg'); s.sek = v('fz-k-wdh'); } else { s.kg = v('fz-k-kg'); s.wdh = v('fz-k-wdh'); } if (k.rir !== undefined) s.rir = k.rir; s.korrigiert = new Date().toISOString(); delete f.korrektur; }); break; }
+      const uk = e.uebungen[k.ui]; const zk = istZeit(uk) ? 'sek' : 'wdh';
+      if (s.seiten && s.seiten.l && !seitWert(v('fz-k-wdhL')) && !seitWert(v('fz-k-wdhR'))) { toast('Mindestens eine Seite braucht einen Wert'); return; }
+      aendere('Satz korrigiert', () => { if (s.seiten && s.seiten.l) { const alt = s.seiten; s.seiten = { l: { kg: v('fz-k-kgL'), [zk]: v('fz-k-wdhL'), rir: alt.l.rir ?? '' }, r: { kg: v('fz-k-kgR'), [zk]: v('fz-k-wdhR'), rir: alt.r.rir ?? '' } }; if (k.rir !== undefined) { s.seiten.l.rir = k.rir; s.seiten.r.rir = k.rir; } seitenZusammen(s, zk === 'sek'); } else if (s.sek != null && s.sek !== '') { s.kg = v('fz-k-kg'); s.sek = v('fz-k-wdh'); } else { s.kg = v('fz-k-kg'); s.wdh = v('fz-k-wdh'); } if (k.rir !== undefined) s.rir = k.rir; s.korrigiert = new Date().toISOString(); delete f.korrektur; }); break; }
     case 'tr-f-skip-satz': aendere('Satz übersprungen – zählt nicht', () => { const s = e.uebungen[f.ui].saetze[f.si]; if (s && trOffen(s)) s.uebersprungen = true; trFWeiter(f, e); }); break;
     case 'tr-f-satz-plus': aendere('Zusätzlicher Arbeitssatz', () => { const ui0 = f.phase === 'fertig' && f.letzter ? f.letzter.ui : f.ui; const u = e.uebungen[ui0]; u.saetze.push({ art: 'arbeit', kg: '', wdh: '', rir: '', erledigt: false, extra: true }); if (f.phase === 'fertig') { f.ui = ui0; f.si = u.saetze.length - 1; f.phase = 'satz'; } }); break;
     case 'tr-f-skip-uebung': aendere('Übung übersprungen – offene Sätze zählen nicht', () => { const u = e.uebungen[f.ui]; u.saetze.forEach(s => { if (trOffen(s)) s.uebersprungen = true; }); u.heute_ausgelassen = 'übersprungen'; f.si = u.saetze.length; trFWeiter(f, e); }); break;
@@ -1478,7 +1604,7 @@ function anleitungInhalt() {
   const quellen = arr(u.quellen).map(x => { const k = String(x).replace(/^\^/, ''); if (mob) { const e = (MOB().quellen || {})[k]; return e ? (e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(String(e.titel).slice(0, 90))} ↗</a>` : esc(e.titel)) : esc(k); } const q = K.quellen && K.quellen[k]; return q ? linkHtml('Quellenverzeichnis#' + k, String(q.titel || k).slice(0, 90)) : esc(k); });
   let kopf = `<div class="anl-kopf"><div><h2 id="anl-titel">${esc(u.name)}</h2>${b ? `<p class="anl-variante">${esc(b.name)}</p>` : ''}</div><button type="button" class="anl-zu" data-a="anleitung-zu" aria-label="Anleitung schließen">✕</button></div>`;
   if (u.quelle === 'eigen') return kopf + `<div class="anl-inhalt"><p class="hinweis klein">Eigene Übung – dafür gibt es keine geprüfte Anleitung.</p>${u.notiz ? `<p>${esc(u.notiz)}</p>` : ''}${u.link ? `<p><a href="${esc(u.link)}" target="_blank" rel="noopener">Eigener Demonstrationslink ↗</a> <span class="leise klein">(von dir eingetragen, nicht geprüft)</span></p>` : ''}<p class="klein">Bei Schmerz Satz beenden und eine schmerzfreie Alternative wählen.</p></div>`;
-  if (!b) return kopf + `<div class="anl-inhalt"><p class="leise">Für diese Übung ist die Kurzanleitung noch nicht fertig.</p>${u.md ? `<details><summary>Ausführliche Beschreibung</summary>${md(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}</div>`;
+  if (!b) return kopf + `<div class="anl-inhalt"><p class="leise">Für diese Übung ist die Kurzanleitung noch nicht fertig.</p>${u.md ? `<details><summary>Ausführliche Beschreibung</summary>${mdHintergrund(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}</div>`;
   const hinweisVar = variante && !w.treffer ? `<p class="hinweis klein">Für deine Variante „${esc(variante)}“ gibt es keine eigene Anleitung. Angezeigt wird „${esc(b.name)}“ – Griff, Gerät oder Position können abweichen.</p>` : variante && wahl == null ? `<p class="leise klein">Passend zu deiner Variante „${esc(variante)}“.</p>` : '';
   const auswahl = bl.length > 1 ? `<div class="anl-wahl" role="group" aria-label="Variante wählen">${bl.map((x, i) => `<button type="button" class="filterchip" data-a="anleitung-var" data-v="${i}" aria-pressed="${i === w.i}">${esc(x.name)}</button>`).join('')}</div>` : '';
   return kopf + `<div class="anl-inhalt">${hinweisVar}${auswahl}
@@ -1491,7 +1617,7 @@ function anleitungInhalt() {
     ${mob ? `<h3>Dehngefühl oder Schmerz?</h3>${b.gefuehl ? `<p>${inline(String(b.gefuehl))}</p>` : ''}<p class="klein">${DEHN_SCHMERZ()}</p>` : ''}
     <div class="hinweis warn klein"><b>Abbrechen:</b> ${arr(b.abbruch).map(x => inline(String(x))).join(' ')}</div>
     ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(externe Seite: ${esc(u.demo_link_quelle || 'ohne Angabe')}; öffnet sich in einem neuen Tab, nichts startet automatisch)</span></p>` : ''}
-    ${u.md ? `<details class="anl-mehr"><summary>Vertiefung: Varianten, Hintergründe, Sicherheit</summary>${md(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
+    ${u.md ? `<details class="anl-mehr"><summary>Vertiefung: Varianten, Hintergründe, Sicherheit</summary>${mdHintergrund(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
     ${quellen.length ? `<details class="anl-mehr"><summary>Quellen (${quellen.length})</summary><ul class="klein anl-quellen">${quellen.map(q => `<li>${q}</li>`).join('')}</ul><p class="leise klein">Kennzeichnung: Quellenlink = belegt; <i>(abgeleitet)</i> = übertragen; <i>(Vorschlag, ungeprüft)</i> = eigener Vorschlag ohne direkte Quelle.</p></details>` : ''}
     <p><button type="button" class="haupt anl-schliessen" data-a="anleitung-zu">Schließen</button></p></div>`;
 }
@@ -1521,7 +1647,7 @@ function trUebungHtml(id) {
   <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('tr', id, '')}</div>
   ${arr(u.anleitung).length ? `<p class="leise klein">Kurzanleitung für ${arr(u.anleitung).length > 1 ? arr(u.anleitung).length + ' Varianten' : 'die Grundform'} über „ⓘ Anleitung“; darunter die ausführliche Beschreibung.</p>` : ''}
   ${u.quelle === 'eigen' ? `<p class="leise klein">Eigene Übung${u.geraet ? ' · ' + esc(u.geraet) : ''}${u.schritt_kg ? ' · kleinster Gewichtsschritt ' + esc(zahlDE(u.schritt_kg, 2)) + ' kg' : ''}</p>${u.notiz ? `<p>${esc(u.notiz)}</p>` : ''}${u.link ? `<p><a href="${esc(u.link)}" target="_blank" rel="noopener">Eigener Demonstrationslink</a> <span class="leise klein">(von dir eingetragen, nicht geprüft)</span></p>` : ''}`
-    : `${u.md ? md(String(u.md).replace(/^\s*# .*\n/, '')) : '<p class="leise">Anleitung folgt.</p>'}${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}; geprüft: ${esc(u.demo_link_geprueft || 'nicht angegeben')})</span></p>` : ''}`}
+    : `${u.md ? mdHintergrund(String(u.md).replace(/^\s*# .*\n/, '')) : '<p class="leise">Anleitung folgt.</p>'}${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen</a> <span class="leise klein">(${esc(u.demo_link_quelle || 'externe Seite')}${/^\d{4}-\d{2}-\d{2}/.test(String(u.demo_link_geprueft || '')) ? '; geprüft am ' + esc(datumDE(String(u.demo_link_geprueft).slice(0, 10))) : ''})</span></p>` : ''}`}
   ${trEinheit() ? `<p class="hinweis klein">Training läuft – <a href="#/training/${trEinheit().fuehrung ? 'fuehrung' : 'einheit'}">zurück zum aktuellen Satz</a> (Eingaben und Timer bleiben erhalten).</p>` : ''}
   ${uebungVerlaufHtml(id)}`;
 }
@@ -1584,7 +1710,7 @@ function trVorher(u, l, si, feld) {
 function trEinheit() { const t = trDaten(); return t.einheiten.find(e => e.id === t.aktiv); }
 function trSpeichernStill(fn) { fn(D); speichern(); }   // Eingaben in der Einheit ohne Neuzeichnen (Fokus bleibt)
 function trNeueSaetze(x) { const s = []; const n = x.saetze_offen && !(Number(x.saetze) > 0) ? 0 : (Number(x.saetze) || 3); for (let i = 0; i < (Number(x.aufwaerm) || 0); i++) s.push({ art: 'aufwaerm', kg: '', wdh: '', rir: '', erledigt: false }); for (let i = 0; i < n; i++) s.push({ art: 'arbeit', kg: '', wdh: '', rir: '', erledigt: false }); return s; }
-const ROUTINE_FELDER = ['messung', 'sek_von', 'sek_bis', 'wdh_von', 'wdh_bis', 'pause_s', 'je_seite', 'referenz_kg', 'ziel_rir', 'variante', 'aufwaerm_schema', 'schritt_kg', 'saetze_offen', 'gewicht_hinweis', 'start_kg', 'optional'];
+const ROUTINE_FELDER = ['messung', 'sek_von', 'sek_bis', 'wdh_von', 'wdh_bis', 'pause_s', 'je_seite', 'referenz_kg', 'ziel_rir', 'variante', 'aufwaerm_schema', 'schritt_kg', 'saetze_offen', 'gewicht_hinweis', 'start_kg', 'optional', 'seiten_pause_s', 'seite_start', 'nur_lang'];
 // Die Einheit bekommt eine Kopie der Routine – spätere Planänderungen verändern gespeicherte Trainings nicht
 function trEinheitAnlegen(d, r, plan, pe, gefuehrt) {
   trDaten(); const id = uid('tre');
@@ -1634,6 +1760,21 @@ document.addEventListener('click', ev => {
     case 'tr-vz-var': trVVar[b.dataset.u] = v; route(); break;
     case 'tr-tausch': { if (!v) return; aendere(`Ersetzt durch ${ueb(v).name} – Gewichte nicht übernommen`, d => { trTausche(d, ui, v); }); break; }
     case 'tr-satz-ok': { const e = trEinheit(); const u = e.uebungen[ui]; const s = u.saetze[si]; const fertig = !s.erledigt;
+      if (fertig && u.je_seite && s.art === 'arbeit') { const zeit = istZeit(u); const k = zeit ? 'sek' : 'wdh'; const sd = s.seiten && s.seiten.l ? JSON.parse(JSON.stringify(s.seiten)) : seitenLeer();
+        const l0 = letzteLeistung(u.uebung, e.id, u.variante); const vsx = l0 && l0.saetze[u.saetze.filter((x, xi) => x.art === 'arbeit' && xi <= si).length - 1];
+        const da = ['l', 'r'].filter(x => seitWert(sd[x][k]));
+        if (!da.length) { // beide leer: Werte vom letzten Mal (wie bei beidseitigen Übungen), sonst nachfragen
+          const vor = x => vsx && vsx.seiten && vsx.seiten[x] && seitWert(vsx.seiten[x][k]) ? vsx.seiten[x] : vsx && seitWert(vsx[k]) ? { kg: vsx.kg, [k]: vsx[k] } : null;
+          if (!vor('l') || !vor('r')) { toast(`Bitte zuerst ${zeit ? 'die Sekunden' : 'die Wiederholungen'} je Seite eintragen`); return; }
+          ['l', 'r'].forEach(x => { sd[x].kg = vor(x).kg ?? ''; sd[x][k] = Number(vor(x)[k]); }); }
+        else if (da.length === 1) { const x = da[0];
+          if (!bestaetigt(`Nur ${SEITE_NAME[x]} eingetragen. Satz als „nur ${SEITE_NAME[x]}“ speichern?\nEr zählt dann als halber Satz und nicht für Vorschläge. Für gleiche Werte auf beiden Seiten vorher „= wie ${SEITE_K[x]}“ tippen.`, { jaText: `Nur ${SEITE_NAME[x]} speichern` })) return; }
+        ['l', 'r'].forEach(x => { if (seitWert(sd[x][k]) && !seitWert(sd[x].kg)) { const vk = trVorher(u, l0, si, 'kg'); if (vk !== '') sd[x].kg = Number(vk); } });
+        const probe = { seiten: sd }; const sf = satzFehlerText(probe); if (sf) { toast('Satz nicht abgeschlossen – ' + sf); return; }
+        aendere(null, () => { const s2 = trEinheit().uebungen[ui].saetze[si]; s2.seiten = sd; seitenZusammen(s2, zeit); s2.erledigt = true; s2.zeit = new Date().toISOString(); });
+        const einst = trDaten().einstellungen;
+        if (u.pause_s > 0 && einst.auto_pause !== false) { timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', einheit: trEinheit().id, satz: ui + '-' + si, name: 'Pause ' + ueb(u.uebung).name, naechstes: naechsterSatzText(trEinheit(), ui, si), ton: einst.ton !== false, ende: Date.now() + u.pause_s * 1000 }); timerSpeichern(); zeichneTimer(); }
+        break; }
       if (fertig) { const sf = satzFehlerText(s); if (sf) { toast('Satz nicht abgeschlossen – ' + sf); return; } }
       if (fertig && s.art === 'arbeit' && istZeit(u) && (s.sek === '' || s.sek == null)) { const vs0 = trVorher(u, letzteLeistung(u.uebung, e.id, u.variante), si, 'sek'); if (vs0 === '') { toast('Bitte zuerst die gehaltenen Sekunden eintragen'); return; } s.sek = Number(vs0); }
       else if (fertig && s.art === 'arbeit' && !istZeit(u) && (s.wdh === '' || s.wdh == null)) { const l0 = letzteLeistung(u.uebung, e.id, u.variante); const vw = trVorher(u, l0, si, 'wdh'); if (vw === '') { toast('Bitte zuerst die Wiederholungen eintragen'); return; } s.wdh = Number(vw); if (s.kg === '' || s.kg == null) { const vk = trVorher(u, l0, si, 'kg'); if (vk !== '') s.kg = Number(vk); } }
@@ -1687,7 +1828,15 @@ document.addEventListener('click', ev => {
     case 'tr-pe-add': { const sel = $('#tr-pe-neu'); if (!sel || !sel.value) { toast('Bitte eine Routine wählen'); return; } aendere(null, d => { d.training.plaene.find(x => x.id === v).einheiten.push({ routine: sel.value, tag: '' }); }); break; }
     case 'tr-pe-neu': { const rid = uid('rou'); aendere(null, d => { d.training.routinen.push({ id: rid, name: 'Neue Einheit', uebungen: [] }); d.training.plaene.find(x => x.id === v).einheiten.push({ routine: rid, tag: '' }); }, { neuZeichnen: false }); location.hash = '#/training/routine/' + rid; break; }
     case 'tr-satz-add': aendere(null, d => { const l = trEinheit().uebungen[ui].saetze; const vor = l[l.length - 1]; l.push({ art: 'arbeit', kg: vor ? vor.kg : '', wdh: '', rir: '', erledigt: false }); }); break;
-    case 'tr-satz-weg': aendere(null, d => { trEinheit().uebungen[ui].saetze.pop(); }); break;
+    case 'tr-satz-weg': { const l0 = trEinheit().uebungen[ui].saetze; const letzt = l0[l0.length - 1]; if (!letzt) return;
+      if (letzt.erledigt && !bestaetigt(`Letzten Satz (${satzText(letzt)}) entfernen? Er ist schon bestätigt. Direkt danach rückgängig machbar.`)) return;
+      aendere('Satz entfernt', d => { trEinheit().uebungen[ui].saetze.pop(); }); break; }
+    case 'tr-seite-gleich': { const u = trEinheit().uebungen[ui]; const [a1, b1] = seitenFolge(u);
+      aendere(`Werte ${SEITE_NAME[a1]} für ${SEITE_NAME[b1]} übernommen`, () => { const s = trEinheit().uebungen[ui].saetze[si]; if (!s.seiten || !s.seiten.l) s.seiten = seitenLeer(); s.seiten[b1] = Object.assign({}, s.seiten[a1]); s.seiten.gleich = true; if (s.erledigt) { seitenZusammen(s, istZeit(u)); s.korrigiert = new Date().toISOString(); } }); break; }
+    case 'tr-seite-start': aendere(null, d => { const u = trEinheit().uebungen[ui]; u.seite_start = u.seite_start === 'r' ? 'l' : 'r';
+      const r = trEinheit().routine && d.training.routinen.find(x => x.id === trEinheit().routine); const x = r && r.uebungen.find(y => y.uebung === u.uebung && (y.variante || '') === (u.variante || '')); if (x) x.seite_start = u.seite_start; }); break;
+    case 'tr-seiten-pause': { const e = trEinheit(); const u = e.uebungen[ui]; const sek = Number(u.seiten_pause_s) || 30; const [a1, b1] = seitenFolge(u);
+      timer = timer.filter(t0 => t0.art !== 'pause'); timer.push({ id: uid('t'), art: 'pause', einheit: e.id, name: 'Seitenwechsel', naechstes: `${SEITE_NAME[b1]} · ${ueb(u.uebung).name}`, ton: trDaten().einstellungen.ton !== false, ende: Date.now() + sek * 1000 }); timerSpeichern(); zeichneTimer(); toast(`${SEITE_NAME[a1][0].toUpperCase() + SEITE_NAME[a1].slice(1)} fertig – ${sek} s, dann ${SEITE_NAME[b1]}`); break; }
     case 'tr-satz-art': aendere(null, d => { const s = trEinheit().uebungen[ui].saetze[si]; s.art = s.art === 'aufwaerm' ? 'arbeit' : 'aufwaerm'; }); break;
     case 'tr-e-add': { const sel = $('#tr-e-neu'); if (!sel || !sel.value) { toast('Bitte eine Übung wählen'); return; } aendere(null, d => { trEinheit().uebungen.push({ uebung: sel.value, pause_s: 120, saetze: trNeueSaetze({ aufwaerm: 1, saetze: 3 }), notiz: '', beschwerde: false }); }); break; }
     case 'tr-ende': { const e = trEinheit(); const offen = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => !x.erledigt && x.art === 'arbeit').length, 0);
@@ -1703,6 +1852,11 @@ document.addEventListener('input', ev => {
   if (d.trTeil) { trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s.teil_wdh = el.value === '' ? '' : Number(el.value); }); return; }
   if (d.trBib === 'q') { trBib.q = el.value; const li = $('#tr-bib-liste'); if (li) li.innerHTML = trBibListe(); return; }
   if (d.trWahlQ) { trWahl.q = el.value; const li = $('#tr-wahl-liste'); if (li) li.innerHTML = uebungsWahlListe(d.trWahlQ); return; }
+  if (d.trSeite) { const [x, f] = d.trSeite.split(':'); const bad = el.validity && el.validity.badInput;
+    trSpeichernStill(() => { const u = trEinheit().uebungen[Number(d.u)]; const s = u.saetze[Number(d.s)]; if (!s.seiten || !s.seiten.l) s.seiten = seitenLeer(); delete s.seiten.gleich;
+      s.seiten[x][f] = bad ? NaN : el.value === '' ? '' : (f === 'rir' ? el.value : Number(String(el.value).replace(',', '.')));
+      if (s.erledigt) { if (!seitenZusammen(s, istZeit(u))) s.erledigt = false; s.korrigiert = new Date().toISOString(); } });
+    if (f !== 'rir') feldFehlerZeigen(el, bad ? 'Bitte eine Zahl eingeben.' : satzFeldFehler(f, el.value)); return; }
   if (d.trSatz) { const bad = el.validity && el.validity.badInput; trSpeichernStill(() => { const s = trEinheit().uebungen[Number(d.u)].saetze[Number(d.s)]; s[d.trSatz] = bad ? NaN : el.value === '' ? '' : (d.trSatz === 'rir' ? el.value : Number(String(el.value).replace(',', '.'))); }); if (d.trSatz !== 'rir') feldFehlerZeigen(el, bad ? 'Bitte eine Zahl eingeben.' : satzFeldFehler(d.trSatz, el.value)); }
   else if (d.trUFeld) trSpeichernStill(() => { trEinheit().uebungen[Number(d.u)][d.trUFeld] = el.value; });
   else if (d.trENotiz) trSpeichernStill(() => { trEinheit().notiz = el.value; });

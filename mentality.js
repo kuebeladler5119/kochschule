@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611181314 */
+/* Fitomat-Build 202611211653 */
 /* Fitomat – Mentality: kurze, sachliche Übungen für konkrete Situationen. Alles lokal; nichts wird gesendet.
    Grundlagen, Belege und Grenzen: Vault „70 Mentality/Mentality – Grundlagen“. Keine Diagnosen, keine Heilversprechen. */
 
@@ -17,11 +17,15 @@ const MT_UEBUNGEN = [
   { id: 'body-scan', name: 'Body-Scan', art: 'still', unauffaellig: false, minuten: [5, 10],
     kurz: 'Aufmerksamkeit langsam von den Füßen bis zum Kopf wandern lassen.', gefuehrt: true, vorbereitung: 'Leg dich hin oder setz dich bequem. Augen schließen, wenn das angenehm ist. Es gibt nichts zu erreichen – nur wahrnehmen.',
     schritte: ['Füße und Beine: nur wahrnehmen, was da ist – Wärme, Druck, Kribbeln oder nichts Besonderes.', 'Becken, Bauch und Rücken: der Atem darf sich bewegen, wie er will.', 'Hände, Arme, Schultern: wenn etwas angespannt ist, nur bemerken – loslassen ist kein Muss.', 'Nacken, Gesicht, Kopf. Zum Schluss den ganzen Körper auf einmal spüren.'],
+    // Geführt: aktueller Körperbereich mit kurzem Hinweis; Anteil = relative Dauer des Abschnitts (Vorschlag, ungeprüft)
+    abschnitte: [{ bereich: 'Ankommen', text: 'Ein paar ruhige Atemzüge. Spür, wo dein Körper aufliegt.', anteil: 1 }, { bereich: 'Füße', text: 'Zehen, Sohlen, Fersen: Wärme, Druck, Kribbeln – oder nichts Besonderes.', anteil: 1 }, { bereich: 'Unterschenkel und Knie', text: 'Nur bemerken, was da ist.', anteil: 1 }, { bereich: 'Oberschenkel und Becken', text: 'Wo liegen die Beine auf? Ist irgendwo Spannung?', anteil: 1 }, { bereich: 'Bauch und Rücken', text: 'Der Atem bewegt den Bauch, wie er will.', anteil: 1.5 }, { bereich: 'Hände und Arme', text: 'Finger, Handflächen, Unterarme, Oberarme.', anteil: 1 }, { bereich: 'Schultern und Nacken', text: 'Angespannt? Nur bemerken – loslassen ist kein Muss.', anteil: 1 }, { bereich: 'Gesicht und Kopf', text: 'Kiefer, Augen, Stirn, Kopfhaut.', anteil: 1 }, { bereich: 'Ganzer Körper', text: 'Den Körper als Ganzes spüren, dann langsam die Augen öffnen.', anteil: 1.5 }],
     beleg: 'Teil vieler Achtsamkeitsprogramme; die Wirkung des Body-Scans allein ist wenig untersucht.' },
   { id: 'pmr', name: 'Muskeln anspannen und lösen', art: 'still', unauffaellig: false, minuten: [5, 10],
     kurz: 'Kurzform der progressiven Muskelentspannung: je Muskelgruppe kurz anspannen, dann lösen.',
     gefuehrt: true, vorbereitung: 'Setz oder leg dich bequem hin. Nur leicht anspannen (etwa halbe Kraft), nie bis zum Schmerz; Stellen mit Verletzung oder Krampfneigung auslassen. Je Abschnitt: etwa 5 Sekunden anspannen, dann lösen und nachspüren.',
     schritte: ['Hände: zu Fäusten ballen – etwa 5 Sekunden halten – lösen und nachspüren, wie die Spannung nachlässt.', 'Arme: Unterarme beugen und die Oberarme anspannen – halten – lösen.', 'Schultern: zu den Ohren ziehen – halten – fallen lassen.', 'Gesicht: Augen zukneifen, Stirn runzeln – halten – lösen.', 'Bauch: anspannen – halten – lösen, ruhig weiteratmen.', 'Beine und Füße: Oberschenkel anspannen, Zehen zu dir ziehen – halten – lösen. Zum Schluss den ganzen Körper wahrnehmen.'],
+    // Je Abschnitt: ca. 5 s anspannen, danach lösen und nachspüren (Rest des Abschnitts)
+    pmr: true, abschnitte: [{ bereich: 'Hände', text: 'Fäuste ballen.', anteil: 1 }, { bereich: 'Arme', text: 'Unterarme beugen, Oberarme anspannen.', anteil: 1 }, { bereich: 'Schultern', text: 'Zu den Ohren ziehen.', anteil: 1 }, { bereich: 'Gesicht', text: 'Augen zukneifen, Stirn runzeln.', anteil: 1 }, { bereich: 'Bauch', text: 'Bauch anspannen, weiteratmen.', anteil: 1 }, { bereich: 'Beine und Füße', text: 'Oberschenkel anspannen, Zehen zu dir ziehen.', anteil: 1 }, { bereich: 'Ganzer Körper', text: 'Nicht mehr anspannen – nur nachspüren.', anteil: 1, ohneAnspannen: true }],
     beleg: 'Progressive Muskelentspannung ist ein gut eingeführtes Entspannungsverfahren; die Kurzform hier ist vereinfacht (Vorschlag).' },
   { id: 'sinne-54321', name: '5-4-3-2-1 – mit den Sinnen ankommen', art: 'still', unauffaellig: true, minuten: [2, 3],
     kurz: 'Aufmerksamkeit nach außen lenken: 5 Dinge sehen, 4 hören, 3 spüren, 2 riechen, 1 schmecken.',
@@ -109,23 +113,29 @@ function mtUebungHtml(id) {
   const letzteFokus = mtDaten().fokus.filter(f => f.geschafft).slice(-1)[0];
   return `<p class="klein"><a class="knopf still klein" href="#/mentality">${ico('zurueck', 'klein')} Mentality</a></p><h1>${esc(u.name)}</h1><p>${esc(u.kurz)}</p>
   ${u.vorbereitung ? `<p class="hinweis klein"><b>Vorbereiten:</b> ${esc(u.vorbereitung)}</p>` : ''}
-  ${u.gefuehrt ? `<details class="klein"><summary>Alle ${u.schritte.length} Abschnitte ansehen</summary><ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol></details><p class="leise klein">Beim Üben führt die App Abschnitt für Abschnitt; die gewählte Dauer wird gleichmäßig verteilt. Du kannst jederzeit weiter- oder zurückspringen.</p>` : `<ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`}
+  ${u.gefuehrt ? `<details class="klein"><summary>Alle ${mtAbschnitte(u).length} Abschnitte ansehen</summary><ol class="mt-schritte">${mtAbschnitte(u).map(a => `<li>${a.bereich ? `<b>${esc(a.bereich)}:</b> ` : ''}${esc(a.text)}</li>`).join('')}</ol></details><p class="leise klein">Beim Üben siehst du nur den aktuellen Bereich mit einem kurzen Hinweis. Die Zeit läuft erst ab „Los“ und verteilt sich auf die Abschnitte${u.pmr ? '; je Abschnitt etwa 5 s anspannen, dann lösen und nachspüren' : ''}. Weiter, Zurück und Anhalten gehen jederzeit; gezählt wird nur die aktive Zeit.</p>` : `<ol class="mt-schritte">${u.schritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`}
   ${u.fokus ? `<label class="feld"><span>Deine Aufgabe</span><input id="mt-aufgabe" maxlength="120" placeholder="z. B. Bericht Abschnitt 2 entwerfen"></label>${letzteFokus ? `<p class="leise klein">Zuletzt ganz geschafft: ${letzteFokus.min} Min. Wenn das gut ging, kannst du ${letzteFokus.min + 5} Min. versuchen.</p>` : '<p class="leise klein">Fang lieber kurz an; verlängern kannst du später.</p>'}` : ''}
   <p class="klein"><b>Dauer:</b></p><div class="chips-wrap">${u.minuten.map(n => `<button class="haupt gross-chip" data-a="mt-start" data-v="${u.id}" data-min="${n}">${n} Min. starten</button>`).join('')}</div>
   <details class="klein"><summary>Was ist belegt?</summary><p>${esc(u.beleg)}</p><p class="leise">Quellen und Grenzen: Vault „Mentality – Grundlagen“.</p></details>
   <p class="leise klein">Der Timer läuft nur, solange die App offen ist; bei gesperrtem iPhone kann er stehen bleiben und kein Ton kommen.</p>`;
 }
 /* Aktive Dauer = Uhrzeit seit Start minus Pausen; beim Beenden eingefroren. Zeit außerhalb der App wird nach der Rückkehr erfragt. */
-function mtAktivMs() { if (!mtLauf) return 0; if (mtLauf.aktivMsEnde != null) return mtLauf.aktivMsEnde; const pause = mtLauf.pausiertMs + (mtLauf.pausiertSeit ? Date.now() - mtLauf.pausiertSeit : 0); return Math.min(mtLauf.min * 60000, Math.max(0, Date.now() - mtLauf.start - pause)); }
+function mtAktivMs() { if (!mtLauf || mtLauf.vorb) return 0; if (mtLauf.aktivMsEnde != null) return mtLauf.aktivMsEnde; const pause = mtLauf.pausiertMs + (mtLauf.pausiertSeit ? Date.now() - mtLauf.pausiertSeit : 0); return Math.min(mtLauf.min * 60000, Math.max(0, Date.now() - mtLauf.start - pause)); }
 function mtRest() { return mtLauf ? Math.max(0, mtLauf.min * 60000 - mtAktivMs()) : 0; }
 const mtDauerText = x => x.sek != null ? `${x.sek < 60 ? x.sek + ' s' :Math.floor(x.sek / 60) + ':' + String(x.sek % 60).padStart(2, '0') + ' Min.'}${x.min_geplant ? ` von ${x.min_geplant} Min.` : ''}` : `${x.min} Min.`;
-document.addEventListener('visibilitychange', () => { if (!mtLauf || mtLauf.aktivMsEnde != null) return;
+document.addEventListener('visibilitychange', () => { if (!mtLauf || mtLauf.aktivMsEnde != null || mtLauf.vorb) return;
   if (document.visibilityState === 'hidden') { mtLauf.verstecktSeit = Date.now(); return; }
   const weg = mtLauf.verstecktSeit ? Date.now() - mtLauf.verstecktSeit : 0; const seit = mtLauf.verstecktSeit; mtLauf.verstecktSeit = null;
   if (weg > 20000 && !mtLauf.pausiertSeit) { mtLauf.pausiertSeit = seit; mtLauf.abwesendMs = weg; if (location.hash.startsWith('#/mentality/lauf')) route(); } });
 function mtLaufHtml() {
   if (!mtLauf) return '<p class="leer">Keine Übung aktiv. <a href="#/mentality">Mentality</a></p>';
-  const u = mtUeb(mtLauf.id); const rest = mtRest(); const fertig = rest <= 0 || mtLauf.beendet;
+  const u = mtUeb(mtLauf.id);
+  if (mtLauf.vorb) return `<p class="leise klein">${esc(u.name)} · ${mtLauf.min} Min.</p><h1>Vorbereiten</h1>
+    <p>${esc(u.vorbereitung || '')}</p>
+    <p class="klein"><b>Ablauf:</b> ${esc(mtAbschnitte(u).map(a => a.bereich || a.text).join(' → '))}</p>
+    <p class="leise klein">Die Zeit startet erst mit „Los“. Während der Übung siehst du nur den aktuellen Abschnitt; Weiter, Zurück und Anhalten gehen jederzeit.</p>
+    <div class="knopfreihe"><button class="haupt gross" data-a="mt-los">Los</button><button class="still" data-a="mt-abbruch">abbrechen</button></div>`;
+  const rest = mtRest(); const fertig = rest <= 0 || mtLauf.beendet;
   if (fertig) return `<h1>${esc(u.name)}</h1><p>${mtLauf.beendet === 'frueh' ? 'Vorzeitig beendet' : 'Die Zeit ist um'} – aktiv ${esc(mtDauerText({ sek: Math.round(mtAktivMs() / 1000), min_geplant: mtLauf.min }))}</p>
     ${u.journal ? mtJournalForm() : ''}
     ${u.fokus ? `<p class="klein"><b>Aufgabe:</b> ${esc(mtLauf.aufgabe || '–')}</p><div class="knopfreihe"><button data-a="mt-fokus-ergebnis" data-v="ja">Konnte dranbleiben</button><button data-a="mt-fokus-ergebnis" data-v="teils">Teilweise</button><button data-a="mt-fokus-ergebnis" data-v="nein">Kaum</button></div>` : ''}
@@ -142,11 +152,18 @@ function mtLaufHtml() {
 /* Geführte Übungen (Body-Scan, Muskelentspannung): ein Abschnitt nach dem anderen; Dauer gleichmäßig auf die Abschnitte verteilt.
    Weiter/Zurück jederzeit; Signal nur, wenn ausdrücklich eingeschaltet. */
 const mtEinst = () => Object.assign({ vibration: false, ton: false }, mtDaten().einst || {});
+// Abschnitte mit Bereich und Anteil; ältere Übungen ohne „abschnitte“ teilen die Zeit gleichmäßig auf ihre Schritte auf
+const mtAbschnitte = u => arr(u.abschnitte).length ? u.abschnitte : u.schritte.map(s => ({ bereich: '', text: s, anteil: 1 }));
+function mtAbschnittDauer(u, i) { const l = mtAbschnitte(u); const summe = l.reduce((a, x) => a + (Number(x.anteil) || 1), 0); return mtLauf.min * 60000 * (Number(l[i].anteil) || 1) / summe; }
+const MT_ANSPANNEN_MS = 5000;
 function mtAbschnittHtml(u) {
-  const n = u.schritte.length; const i = Math.min(mtLauf.abIdx || 0, n - 1); const per = mtLauf.min * 60000 / n; const rest = Math.max(0, per - (mtAktivMs() - (mtLauf.abStart || 0)));
-  return `<p class="leise klein" style="margin:0">Abschnitt ${i + 1} von ${n}${i < n - 1 ? ` · nächster in ca. ${Math.ceil(rest / 1000)} s` : ' · letzter Abschnitt'}</p>
-    <div class="mt-punkte" aria-hidden="true">${u.schritte.map((_, k) => `<i class="${k < i ? 'fertig' : k === i ? 'jetzt' : ''}"></i>`).join('')}</div>
-    <p class="mt-abschnitt-text">${esc(u.schritte[i])}</p>
+  const l = mtAbschnitte(u); const n = l.length; const i = Math.min(mtLauf.abIdx || 0, n - 1); const im = mtAktivMs() - (mtLauf.abStart || 0); const rest = Math.max(0, mtAbschnittDauer(u, i) - im); const a = l[i];
+  const phase = u.pmr && !a.ohneAnspannen ? (im < MT_ANSPANNEN_MS ? 'anspannen' : 'loesen') : '';
+  return `<p class="leise klein" style="margin:0">Abschnitt ${i + 1} von ${n}${i < n - 1 ? ` · weiter in ca. ${Math.ceil(rest / 1000)} s` : ' · letzter Abschnitt'}</p>
+    <div class="mt-punkte" aria-hidden="true">${l.map((_, k) => `<i class="${k < i ? 'fertig' : k === i ? 'jetzt' : ''}"></i>`).join('')}</div>
+    ${a.bereich ? `<p class="mt-bereich">${esc(a.bereich)}</p>` : ''}
+    ${phase ? `<p class="mt-phase mt-phase-${phase}">${phase === 'anspannen' ? `Anspannen (etwa halbe Kraft) · ${Math.ceil((MT_ANSPANNEN_MS - im) / 1000)} s` : 'Lösen und nachspüren'}</p>` : ''}
+    <p class="mt-abschnitt-text">${esc(a.text)}</p>
     <div class="knopfreihe"><button class="still" data-a="mt-ab" data-v="-1" ${i === 0 ? 'disabled' : ''}>← Zurück</button><button class="still" data-a="mt-ab" data-v="1" ${i === n - 1 ? 'disabled' : ''}>Weiter →</button></div>`;
 }
 function mtSignal() {
@@ -154,8 +171,9 @@ function mtSignal() {
   if (e.ton) { try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; mtSignal.ctx = mtSignal.ctx || new AC(); const c = mtSignal.ctx; const o = c.createOscillator(), g = c.createGain(); o.frequency.value = 528; g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(0.06, c.currentTime + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.6); o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.65); } catch (er) { /* */ } }
 }
 function mtTick() {
-  if (mtLauf && !mtLauf.pausiertSeit && mtLauf.aktivMsEnde == null) { const u0 = mtUeb(mtLauf.id); if (u0 && u0.gefuehrt) { const n = u0.schritte.length, per = mtLauf.min * 60000 / n, i = mtLauf.abIdx || 0;
-    if (i < n - 1 && mtAktivMs() - (mtLauf.abStart || 0) >= per) { mtLauf.abIdx = i + 1; mtLauf.abStart = mtAktivMs(); mtSignal(); }
+  if (mtLauf && !mtLauf.vorb && !mtLauf.pausiertSeit && mtLauf.aktivMsEnde == null) { const u0 = mtUeb(mtLauf.id); if (u0 && u0.gefuehrt) { const n = mtAbschnitte(u0).length, i = mtLauf.abIdx || 0; const im = mtAktivMs() - (mtLauf.abStart || 0);
+    if (i < n - 1 && im >= mtAbschnittDauer(u0, i)) { mtLauf.abIdx = i + 1; mtLauf.abStart = mtAktivMs(); mtLauf.phaseSignal = false; mtSignal(); }
+    else if (u0.pmr && !mtAbschnitte(u0)[i].ohneAnspannen && im >= MT_ANSPANNEN_MS && !mtLauf.phaseSignal) { mtLauf.phaseSignal = true; mtSignal(); }
     const el = $('#mt-abschnitt'); if (el && (!el.dataset.i || Number(el.dataset.i) !== (mtLauf.abIdx || 0) || Date.now() - (el._t || 0) > 1000)) { el.innerHTML = mtAbschnittHtml(u0); el.dataset.i = mtLauf.abIdx || 0; el._t = Date.now(); } } }
   if (!mtLauf || !location.hash.startsWith('#/mentality/lauf')) { clearInterval(mtTakt); mtTakt = null; return; }
   const rest = mtRest(); const uhr = $('#mt-uhr'); if (uhr) uhr.textContent = `${Math.floor(rest / 60000)}:${String(Math.floor(rest / 1000) % 60).padStart(2, '0')}`;
@@ -214,10 +232,11 @@ document.addEventListener('click', ev => {
     case 'mt-frage': mtFrage[b.dataset.k] = b.dataset.k === 'zeit' ? Number(v) : v; route(); break;
     case 'mt-unauff': mtFrage.unauff = b.checked; route(); break;
     case 'mt-fav': aendere(null, d => { mtDaten(); const f = new Set(d.mentality.favoriten); f.has(v) ? f.delete(v) : f.add(v); d.mentality.favoriten = [...f]; }); break;
-    case 'mt-start': { const auf = ($('#mt-aufgabe') || {}).value || ''; mtLauf = { id: v, min: Number(b.dataset.min), start: Date.now(), pausiertSeit: null, pausiertMs: 0, aufgabe: auf.trim().slice(0, 120) }; location.hash = '#/mentality/lauf'; clearInterval(mtTakt); mtTakt = setInterval(mtTick, 200); break; }
+    case 'mt-start': { const auf = ($('#mt-aufgabe') || {}).value || ''; const gef = !!mtUeb(v).gefuehrt; mtLauf = { id: v, min: Number(b.dataset.min), start: Date.now(), pausiertSeit: null, pausiertMs: 0, aufgabe: auf.trim().slice(0, 120), vorb: gef }; /* geführte Übungen: erst vorbereiten, die Zeit läuft ab „Los“ */ location.hash = '#/mentality/lauf'; clearInterval(mtTakt); mtTakt = setInterval(mtTick, 200); break; }
     case 'mt-pause': if (!mtLauf) return; if (mtLauf.pausiertSeit) { mtLauf.pausiertMs += Date.now() - mtLauf.pausiertSeit; mtLauf.pausiertSeit = null; } else mtLauf.pausiertSeit = Date.now(); route(); break;
     case 'mt-ende': if (!mtLauf) return; mtLauf.aktivMsEnde = mtAktivMs(); mtLauf.beendet = mtRest() > 0 ? 'frueh' : 'zeit'; route(); break;
-    case 'mt-ab': { if (!mtLauf) return; const n = mtUeb(mtLauf.id).schritte.length; mtLauf.abIdx = Math.max(0, Math.min(n - 1, (mtLauf.abIdx || 0) + Number(v))); mtLauf.abStart = mtAktivMs(); const el = $('#mt-abschnitt'); if (el) { el.innerHTML = mtAbschnittHtml(mtUeb(mtLauf.id)); el.dataset.i = mtLauf.abIdx; } break; }
+    case 'mt-los': if (!mtLauf || !mtLauf.vorb) return; mtLauf.vorb = false; mtLauf.start = Date.now(); mtLauf.abIdx = 0; mtLauf.abStart = 0; route(); break;
+    case 'mt-ab': { if (!mtLauf) return; const n = mtAbschnitte(mtUeb(mtLauf.id)).length; mtLauf.abIdx = Math.max(0, Math.min(n - 1, (mtLauf.abIdx || 0) + Number(v))); mtLauf.abStart = mtAktivMs(); mtLauf.phaseSignal = false; const el = $('#mt-abschnitt'); if (el) { el.innerHTML = mtAbschnittHtml(mtUeb(mtLauf.id)); el.dataset.i = mtLauf.abIdx; } break; }
     case 'mt-signal': aendere(null, d => { mtDaten(); d.mentality.einst = Object.assign({}, d.mentality.einst || {}, { [v]: b.checked }); }, { neuZeichnen: false }); if (b.checked && v === 'ton') mtSignal(); break;
     case 'mt-abwesend': if (!mtLauf || !mtLauf.pausiertSeit) return; if (v === 'ja') { mtLauf.pausiertSeit = null; } else { mtLauf.pausiertMs += Date.now() - mtLauf.pausiertSeit; mtLauf.pausiertSeit = null; } mtLauf.abwesendMs = null; route(); break;
     case 'mt-abbruch': mtLauf = null; clearInterval(mtTakt); mtTakt = null; location.hash = '#/mentality'; break;

@@ -1,11 +1,12 @@
-/* Fitomat-Build 202611181314 */
+/* Fitomat-Build 202611211653 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
 
 /* ---------- Küchen ---------- */
 const KUECHEN_GRUPPEN = [
-  ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch'], ['pakistanisch', 'Pakistanisch'], ['nepalesisch', 'Nepalesisch']]],
+  ['asiatisch', 'Asiatisch', [['japanisch', 'Japanisch'], ['koreanisch', 'Koreanisch'], ['chinesisch', 'Chinesisch'], ['thailaendisch', 'Thailändisch'], ['vietnamesisch', 'Vietnamesisch'], ['indonesisch', 'Indonesisch'], ['malaysisch', 'Malaysisch'], ['philippinisch', 'Philippinisch'], ['taiwanisch', 'Taiwanisch'], ['srilankisch', 'Sri-lankisch'], ['indisch', 'Indisch'], ['pakistanisch', 'Pakistanisch'], ['nepalesisch', 'Nepalesisch'], ['myanmarisch', 'Myanmarisch'], ['kambodschanisch', 'Kambodschanisch'], ['laotisch', 'Laotisch'], ['singapurisch', 'Singapurisch'], ['bangladeschisch', 'Bangladeschisch']]],
+  ['zentralasien', 'Zentralasien & Kaukasus', [['usbekisch', 'Usbekisch'], ['georgisch', 'Georgisch']]],
   ['orient', 'Türkei, Nahost & Nordafrika', [['tuerkisch', 'Türkisch'], ['levantinisch', 'Levantinisch'], ['persisch', 'Persisch'], ['nordafrikanisch', 'Nordafrikanisch']]],
   ['europaeisch', 'Europäisch', [['italienisch', 'Italienisch'], ['griechisch', 'Griechisch'], ['spanisch', 'Spanisch'], ['franzoesisch', 'Französisch'], ['deutsch', 'Deutsch'], ['oesterreichisch', 'Österreichisch'], ['britisch', 'Britisch']]],
   ['amerika', 'Amerika', [['mexikanisch', 'Mexikanisch'], ['texmex', 'Tex-Mex'], ['us_amerikanisch', 'US-amerikanisch'], ['peruanisch', 'Peruanisch'], ['kolumbianisch', 'Kolumbianisch'], ['venezolanisch', 'Venezolanisch'], ['argentinisch', 'Argentinisch'], ['chilenisch', 'Chilenisch'], ['karibisch', 'Karibisch'], ['brasilianisch', 'Brasilianisch']]],
@@ -19,7 +20,8 @@ function kuechenErweitert(auswahl) { const s = new Set(); auswahl.forEach(k => {
 
 /* ---------- Eigenschaften (UND-verknüpft) ---------- */
 function istProteinreich(r) { const p = r.naehrwerte.pro_portion; return p.kcal > 0 && p.protein != null && p.protein * 4 / p.kcal >= 0.2; }
-function istVegan(r) { const zs = r.zutaten.filter(z => z.zutat); return zs.length > 0 && zs.every(z => Z[z.zutat] && Z[z.zutat].vegan === true); }
+// Vegan: alle notwendigen Zutaten vegan; optionale nicht-vegane Zutaten werden im Hinweis genannt (rezeptInfo.veganOhne)
+function istVegan(r) { const zs = r.zutaten.filter(z => z.zutat && z.bedarf !== 'optional'); return zs.length > 0 && zs.every(z => Z[z.zutat] && Z[z.zutat].vegan === true); }
 const EIGENSCHAFTEN = [
   ['schnell', 'schnell (≤ 30 Min.)', (r, i) => i.gesamt != null && i.gesamt <= 30],
   ['proteinreich', 'proteinreich', r => istProteinreich(r)],
@@ -563,7 +565,8 @@ function passtDazuHtml(r) {
     ${mw ? `<p class="klein"><b>Mit deinen Ergänzungen</b> (${esc(begleit.map(x => kurztitel(x.titel)).join(', '))}): pro Person ${mw.unbekannt ? 'mind. ' : 'ca. '}${zahlDE(mw.kcal)} kcal · ${zahlDE(mw.protein)} g Protein · längste Gesamtzeit (inkl. Ruhe- und Kühlzeiten) ${mw.gesamt} Min. · Geräte: ${esc([...mw.geraete].map(g => GERAETE[g] || g).join(', '))}. Einkauf enthält alles. Ausgewählt heißt noch nicht gegessen.</p>` : ''}
     ${d.ausgeblendet ? `<p class="leise klein">${d.ausgeblendet} Vorschlag/Vorschläge wegen deiner persönlichen Ausschlüsse ausgeblendet.</p>` : ''}
     ${ohneAlk.length ? `<h4>Getränke</h4><ul class="klein">${ohneAlk.map(g => `<li><b>${esc(g.name)}</b> – ${esc(g.grund)}${g.quelle === 'quelle' ? ' <span class="chip gut">aus der Quelle</span>' : ''}</li>`).join('')}</ul>` : ''}
-    ${alk.length ? `<details class="klein"><summary>Alkoholische Begleitung (nur für Erwachsene, optional)</summary><ul>${alk.map(g => `<li><b>${esc(g.name)}</b> – ${esc(g.grund)}</li>`).join('')}</ul><p class="leise">Geschmackliche Ergänzung, kein gesundheitlicher Nutzen. Alkoholfreie Getränke oben passen genauso.</p></details>` : ''}
+    ${alk.length && (D.einstellungen.ausschluesse || []).includes('alkohol') ? `<p class="leise klein">${alk.length} Getränkevorschlag mit Alkohol ausgeblendet (deine Einstellung „kein Alkohol“). Er gehört nicht zum Rezept.</p>` : ''}
+    ${alk.length && !(D.einstellungen.ausschluesse || []).includes('alkohol') ? `<details class="klein"><summary>Alkoholische Begleitung (nur für Erwachsene, optional)</summary><ul>${alk.map(g => `<li><b>${esc(g.name)}</b> – ${esc(g.grund)}</li>`).join('')}</ul><p class="leise">Geschmackliche Ergänzung, kein gesundheitlicher Nutzen. Alkoholfreie Getränke oben passen genauso.</p></details>` : ''}
   </div>`;
 }
 
@@ -808,10 +811,12 @@ function lernBlockHtml(r) {
   const neu = lf.filter(t => !stand[t]);
   return `<div class="karte lernblock"><div class="zeile" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Das lernst du hier</h3>
     <button class="klein still" data-a="hilfen-umschalten" aria-pressed="${!kompakt}">${kompakt ? 'Kompakt · Hilfen zeigen' : 'Anfängerhilfen · kompakt anzeigen'}</button></div>
-    ${lf.length ? `<p class="chips" style="margin:.5rem 0">${lf.map(technikLink).join('')}</p>${Object.keys(stand).length ? `<p class="leise klein">${neu.length ? `Neu für dich: ${esc(neu.join(', '))}.` : 'Diese Techniken hast du schon in gekochten Rezepten geübt.'}</p>` : ''}` : ''}
+    ${lf.length ? `<p class="chips" style="margin:.5rem 0">${lf.map(t => { const nr = lernSchritte(r, t); return technikLink(t) + (nr.length ? `<span class="leise klein" style="margin-right:8px">${nr.length > 1 ? 'Schritte' : 'Schritt'} ${nr.join(', ')}</span>` : ''); }).join('')}</p>${Object.keys(stand).length ? `<p class="leise klein">${neu.length ? `Neu für dich: ${esc(neu.join(', '))}.` : 'Diese Techniken hast du schon in gekochten Rezepten geübt.'}</p>` : ''}` : ''}
     ${gz.length ? `<details class="garzeichen"${kompakt ? '' : ' open'}><summary><b>Woran erkenne ich, dass es passt?</b></summary><ol class="klein">${gz.map(g => `<li value="${esc(g.nr)}"><b>${esc(g.titel)}:</b> ${inline(g.text)}</li>`).join('')}</ol><p class="leise klein">Zeiten sind Orientierung – entscheidend sind diese Zeichen.</p></details>` : ''}</div>`;
 }
 // Technik → { n: Anzahl gekochter Rezepte mit dieser Technik, zuletzt, rezepte: [ids] }
+// In welchen Rezeptschritten die Technik vorkommt (Name oder Link im Schritttext) – verbindet Lernfokus und Anleitung
+function lernSchritte(r, t) { const n = String(t).toLowerCase(); const kern = n.replace(/\s*\(.*\)$/, '').split(/\s+/).filter(w => w.length > 4)[0] || n; return arr(r.schritte).map((s, i) => ({ nr: s.nr || i + 1, txt: (String(s.titel || '') + ' ' + String(s.md || '')).toLowerCase() })).filter(x => x.txt.includes(n) || x.txt.includes(kern)).map(x => x.nr).slice(0, 4); }
 function technikStand() {
   const st = {}; arr(D.kochprotokolle).slice().sort((a, b) => String(a.datum).localeCompare(String(b.datum))).forEach(p => { const r = R[p.rezept]; if (!r) return;
     rezeptTechniken(r).forEach(t => { const s = st[t] || (st[t] = { n: 0, zuletzt: null, rezepte: [] }); if (!s.rezepte.includes(r.id)) { s.rezepte.push(r.id); s.n++; } s.zuletzt = p.datum; }); });

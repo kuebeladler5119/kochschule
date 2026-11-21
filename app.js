@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.26.0';
-const APP_BUILD = '202611181314';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.27.0';
+const APP_BUILD = '202611211653';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -257,12 +257,19 @@ function faktor(r, portionen) { return portionen / (Number(r.meta.portionen) || 
 
 /* ---------- Ableitungen je Rezept ---------- */
 const istFleischFisch = z => z && (['fleisch', 'fisch'].includes(z.kategorie) || ['rind', 'gefluegel', 'schwein', 'fisch', 'gemischt'].includes(z.tier_herkunft));
+// Nicht vegetarisch: Fleisch/Fisch oder ausdrücklich gekennzeichnet (z. B. Käse mit tierischem Lab)
+const nichtVegetarisch = z => istFleischFisch(z) || (z && z.vegetarisch === false);
 function rezeptInfo(r) {
-  const m = r.meta; const zs = r.zutaten.filter(z => z.zutat).map(z => Z[z.zutat]).filter(Boolean);
-  const veg = !zs.some(istFleischFisch);
+  const m = r.meta; const zeilen = r.zutaten.filter(z => z.zutat && Z[z.zutat]); const zs = zeilen.map(z => Z[z.zutat]);
+  // Vegetarisch nach den notwendigen Zutaten; optionale nicht-vegetarische Zutaten werden genannt („vegetarisch ohne …“)
+  const nv = zeilen.filter(z => nichtVegetarisch(Z[z.zutat]));
+  const veg = !nv.some(z => z.bedarf !== 'optional');
+  const vegOhne = veg ? [...new Set(nv.map(z => Z[z.zutat].name))] : [];
+  const vegUnklar = veg ? [...new Set(zeilen.filter(z => z.bedarf !== 'optional' && Z[z.zutat].vegetarisch === 'unklar').map(z => Z[z.zutat].name))] : [];
+  const veganOhne = veg ? [...new Set(zeilen.filter(z => z.bedarf === 'optional' && Z[z.zutat].vegan !== true).map(z => Z[z.zutat].name))] : [];
   const pruefen = zs.filter(z => z.tier_herkunft === 'unbekannt' || /Gelatine|Schwein|tierisch|Herkunft|Fleisch|Alkohol/i.test(z.pruef_hinweis || ''));
   const kat = arr(m.kategorien);
-  return { veg, pruefen, kat, aktiv: Number(m.zeit_aktiv_min) || null, gesamt: Number(m.zeit_gesamt_min) || null, schwierigkeit: Number(m.schwierigkeit) || null };
+  return { veg, vegOhne, vegUnklar, veganOhne, pruefen, kat, aktiv: Number(m.zeit_aktiv_min) || null, gesamt: Number(m.zeit_gesamt_min) || null, schwierigkeit: Number(m.schwierigkeit) || null };
 }
 /* Harte Filter: Ausschlüsse, Ernährungsweise, Allergien, „esse ich nie“ (Logik in ernaehrung.js) */
 function ausgeschlossen(r) { return rezeptPruefung(r).hart; }
@@ -599,7 +606,7 @@ function vRezept(id) {
   ${bildHtml(r, 'hero')}
   <div class="rezept-kopf" style="margin-top:14px"><span class="ueber">${esc(BEREICH_NAME[m.bereich] || '')}${rezeptKuechen(r).length ? ' · ' + esc(rezeptKuechen(r).map(k => KUECHE_NAME[k]).join(', ')) : ''}</span><h1>${esc(r.titel)}</h1>
   <div class="eckdaten">${zeitDetailHtml(r)}${info.schwierigkeit ? `<span>${ico('flamme', 'klein')} Schwierigkeit ${info.schwierigkeit} von 5</span>` : ''}</div>
-  <div class="chips">${info.veg ? `<span class="chip gut">${istVegan(r) ? 'vegan' : 'vegetarisch'}</span>` : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div>
+  <div class="chips">${info.veg ? (() => { const vg = istVegan(r); const ohne = vg ? info.veganOhne : info.vegOhne; return `<span class="chip gut" title="${esc(ohne.length ? 'Nur ohne die optionalen Zutaten: ' + ohne.join(', ') : 'abgeleitet aus den notwendigen Zutaten')}">${vg ? 'vegan' : 'vegetarisch'}${ohne.length ? ' ohne ' + esc(ohne.join(', ')) : ''}</span>${info.vegUnklar.length ? `<span class="chip warn" title="Bei diesen Zutaten hängt es vom Produkt ab (z. B. tierisches Lab) – Etikett prüfen">${esc(info.vegUnklar.join(', '))}: Etikett prüfen</span>` : ''}`; })() : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div>
   <details class="herkunft-kurz"><summary><span class="chip">${pruefText(m.pruefstand)}</span> Herkunft und offene Punkte</summary>
     ${herkunftHtml(r)}<p class="klein">${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p>
     ${ein.herkunft.map(t => md(t)).join('')}
@@ -1002,8 +1009,8 @@ function vMehr() {
 }
 function vEinstellungen() {
   const e = D.einstellungen;
-  const gruppen = ['schwein', 'rind', 'gefluegel', 'fisch', ...new Set(K.zutaten.flatMap(z => z.ausschluss_gruppen || []))].filter((v, i, a) => a.indexOf(v) === i);
-  const gName = { schwein: 'nichts vom Schwein (auch Gelatine, Schmalz, Brühe)', rind: 'kein Rind', gefluegel: 'kein Geflügel', fisch: 'kein Fisch' };
+  const gruppen = ['schwein', 'rind', 'gefluegel', 'fisch', ...new Set(K.zutaten.flatMap(z => z.ausschluss_gruppen || [])), 'alkohol'].filter((v, i, a) => a.indexOf(v) === i);
+  const gName = { schwein: 'nichts vom Schwein (auch Gelatine, Schmalz, Brühe)', rind: 'kein Rind', gefluegel: 'kein Geflügel', fisch: 'kein Fisch', meeresfruechte: 'keine Meeresfrüchte', alkohol: 'kein Alkohol (auch keine Getränkevorschläge mit Alkohol)' };
   const geraete = [...new Set(K.rezepte.flatMap(r => [...arr(r.meta.geraete_noetig), ...arr(r.meta.geraete_optional)]))];
   const grund = [...new Set(K.rezepte.flatMap(r => r.zutaten.filter(z => z.bedarf === 'grundvorrat' && z.zutat).map(z => z.zutat)))];
   const z = e.ziele || {};
@@ -1031,6 +1038,37 @@ vEinstellungen.danach = () => { const f = $('#einst-form'); f.addEventListener('
     e.portionen = Number(f.portionen.value) || 2; e.hilfen_offen = f.hilfen.checked; }); }); };
 
 function exportDaten() { return { art: 'kochschule-export', schema: SCHEMA, app_version: APP_VERSION, katalog_version: K.version, exportiert_am: new Date().toISOString(), daten: D }; }
+/* ---------- Teilübertragung: einzelne Bereiche exportieren und gezielt zusammenführen oder ersetzen ----------
+   Es gibt keine automatische Synchronisation. Safari und die Home-Bildschirm-App können getrennte Speicher haben. */
+const DATEN_BEREICHE = [
+  ['einstellungen', 'Profil und Einstellungen', ['einstellungen'], true],
+  ['ernaehrung', 'Ernährung: Tagebuch, Tage, eigene Lebensmittel, Mahlzeiten', ['tagebuch', 'tage', 'mahlzeiten', 'lebensmittel', 'standardprodukte'], true],
+  ['kochen', 'Kochen: Kochbuch, Varianten, Kochprotokolle, Anpassungen', ['kochbuch', 'varianten', 'kochprotokolle', 'anpassungen', 'fortschritt', 'date'], true],
+  ['einkauf', 'Einkauf, Vorrat, Wochenplan, Reste', ['vorrat', 'auswahl', 'planung', 'einkauf', 'restportionen', 'wochenplan', 'stueckgewichte'], true],
+  ['preise', 'Preise', ['preise', 'preise_einst'], true],
+  ['training', 'Training: Pläne, Einheiten, Körpergewicht', ['training'], true],
+  ['mobility', 'Mobility', ['mobility'], true],
+  ['mentality', 'Mentality: Journal und Check-ins (privat – nur bewusst mitnehmen)', ['mentality'], false]
+];
+let teilImport = null;   // { obj, wahl: { bereich: 'zusammen' | 'ersetzen' | 'nein' } }
+function teilExport(bereiche) { const daten = { schema: D.schema }; DATEN_BEREICHE.filter(b => bereiche.includes(b[0])).forEach(b => b[2].forEach(k => { if (D[k] !== undefined) daten[k] = JSON.parse(JSON.stringify(D[k])); })); return { art: 'fitomat-teilexport', schema: SCHEMA, app_version: APP_VERSION, exportiert_am: new Date().toISOString(), bereiche, daten }; }
+// Zusammenführen ohne Datenverlust: Listen über id (sonst datum bzw. Inhalt) vereinigen, Objekte rekursiv; bei Konflikt bleibt der Wert auf diesem Gerät
+function datenSchluessel(x) { return x && typeof x === 'object' ? (x.id != null ? 'id:' + x.id : x.datum != null && Object.keys(x).length <= 4 ? 'datum:' + x.datum + ':' + (x.zeit || '') : 'j:' + JSON.stringify(x)) : 'w:' + JSON.stringify(x); }
+function zusammenfuehren(alt, neu, st) {
+  if (Array.isArray(alt) && Array.isArray(neu)) { const m = new Map(alt.map(x => [datenSchluessel(x), x])); const out = alt.slice();
+    neu.forEach(x => { const k = datenSchluessel(x); if (!m.has(k)) { out.push(x); st.neu++; } else if (JSON.stringify(m.get(k)) === JSON.stringify(x)) st.gleich++; else { st.konflikt++; if (x && typeof x === 'object' && !Array.isArray(x)) zusammenfuehren(m.get(k), x, { neu: 0, gleich: 0, konflikt: 0 }); } }); return out; }
+  if (alt && neu && typeof alt === 'object' && typeof neu === 'object' && !Array.isArray(alt) && !Array.isArray(neu)) { Object.keys(neu).forEach(k => { if (alt[k] === undefined || alt[k] === null || alt[k] === '') { if (neu[k] !== undefined && neu[k] !== null && neu[k] !== '') { alt[k] = neu[k]; st.neu++; } } else if (typeof alt[k] === 'object' && typeof neu[k] === 'object') alt[k] = zusammenfuehren(alt[k], neu[k], st); else if (JSON.stringify(alt[k]) === JSON.stringify(neu[k])) st.gleich++; else st.konflikt++; }); return alt; }
+  if (alt === undefined || alt === null) { st.neu++; return neu; } if (JSON.stringify(alt) !== JSON.stringify(neu)) st.konflikt++; else st.gleich++; return alt;
+}
+function teilVorschau(obj) { return DATEN_BEREICHE.filter(b => arr(obj.bereiche).includes(b[0])).map(b => { const st = { neu: 0, gleich: 0, konflikt: 0 }; const probe = JSON.parse(JSON.stringify(b[2].reduce((o, k) => (o[k] = D[k], o), {}))); b[2].forEach(k => { if (obj.daten[k] !== undefined) probe[k] = zusammenfuehren(probe[k], JSON.parse(JSON.stringify(obj.daten[k])), st); }); return { b, st, leer: b[2].every(k => obj.daten[k] === undefined) }; }); }
+function teilImportHtml() {
+  const t = teilImport; if (!t) return ''; const v = teilVorschau(t.obj); const z = t.obj.exportiert_am ? String(t.obj.exportiert_am).slice(0, 16).replace('T', ' ') : '?';
+  return `<div class="karte" id="teil-import"><h2 style="margin-top:0">Vorschau: Bereiche übernehmen</h2><p class="leise klein">Teilexport vom ${esc(z)} (App ${esc(t.obj.app_version || '?')}). Noch ist nichts geändert. „Zusammenführen“ ergänzt Fehlendes und behält bei Widersprüchen den Stand dieses Geräts; „Ersetzen“ überschreibt nur diesen Bereich.</p>
+    ${v.map(({ b, st, leer: l }) => `<fieldset class="teil-bereich"><legend><b>${esc(b[1])}</b></legend>${l ? '<p class="leise klein">In der Datei leer.</p>' : `<p class="klein">${st.neu} neu · ${st.gleich} gleich · ${st.konflikt ? `<b>${st.konflikt} unterschiedlich</b> (bleiben beim Zusammenführen wie auf diesem Gerät)` : '0 unterschiedlich'}</p>`}
+      <div class="chips-wrap">${[['zusammen', 'Zusammenführen'], ['ersetzen', 'Bereich ersetzen'], ['nein', 'Nicht übernehmen']].map(([k, n]) => `<label class="filterchip"><input type="radio" name="teil-${b[0]}" value="${k}" ${(t.wahl[b[0]] || (l ? 'nein' : 'zusammen')) === k ? 'checked' : ''}> ${n}</label>`).join('')}</div></fieldset>`).join('')}
+    <div class="knopfreihe"><button class="haupt" data-a="teil-import-ok">Auswahl übernehmen</button><button class="still" data-a="teil-import-ab">Abbrechen</button></div>
+    <p class="leise klein">Vorher wird automatisch ein Zwischenstand angelegt; direkt danach ist „Rückgängig“ möglich.</p></div>`;
+}
 function importiere(obj) {
   if (!obj || typeof obj !== 'object') throw new Error('Keine gültige Datei.');
   if (obj.art === 'kochschule-privat-import') { const e = obj.einstellungen || {}; const pe = obj.person || null; const alt = D.einstellungen.person || {};
@@ -1044,11 +1082,15 @@ function importiere(obj) {
   const x = aufSchemaBringen(JSON.parse(JSON.stringify(obj.daten))); if (!x) throw new Error('Unbekanntes Datenformat.'); return { text: `Sicherung vom ${String(obj.exportiert_am).slice(0, 16).replace('T', ' ')}: ${x.vorrat.length} Vorrat, ${x.restportionen.length} Restportionen, ${x.tagebuch.length} Tagebucheinträge, ${x.kochprotokolle.length} Kochprotokolle, ${x.auswahl.length} in Auswahl, ${arr((x.training || {}).einheiten).length} Trainingseinheiten, ${arr((x.training || {}).plaene).length} Trainingspläne, ${Object.values(x.varianten || {}).reduce((s, l) => s + arr(l).length, 0)} Rezeptvarianten, ${arr((x.kochbuch || {}).favoriten).length} Favoriten, ${arr(x.preise).length} Preise. Ersetzt alle Daten auf diesem Gerät.${(D.training && D.training.aktiv) || Object.keys(D.fortschritt || {}).length ? ' Achtung: Ein laufendes Training bzw. ein gespeicherter Kochfortschritt auf diesem Gerät wird dabei durch den Stand der Datei ersetzt.' : ''}`, anwenden: d => { Object.keys(d).forEach(k => delete d[k]); Object.assign(d, leer(), x); } };
 }
 function vDaten() {
-  return `<h1>Daten sichern</h1>
-  <div class="hinweis">Deine Daten liegen <b>nur auf diesem Gerät</b> im Browser. iPhone, iPad und Laptop gleichen sich nicht automatisch ab. Ein Export ist zugleich deine Sicherung.</div>
-  <div class="karte"><h2 style="margin-top:0">Exportieren</h2><p class="leise klein">Letzter Export: ${D.letzter_export ? esc(D.letzter_export.slice(0, 16).replace('T', ' ')) : 'noch nie'}</p>
+  return `<h1>Daten sichern und übertragen</h1>
+  <div class="hinweis">Deine Daten liegen <b>nur auf diesem Gerät</b> im Browser. Es gibt <b>keine automatische Synchronisation</b>: iPhone, iPad und Laptop gleichen sich nicht ab. Auf dem iPhone können <b>Safari und die Home-Bildschirm-App getrennte Speicher</b> haben – Daten dann per Datei oder Text übertragen. Ein Export ist zugleich deine Sicherung.</div>
+  ${teilImportHtml()}
+  <div class="karte"><h2 style="margin-top:0">Vollständige Sicherung</h2><p class="leise klein">Letzter Export: ${D.letzter_export ? esc(D.letzter_export.slice(0, 16).replace('T', ' ')) : 'noch nie'}. Enthält alles, auch Mentality-Einträge. Beim Einspielen werden <b>alle</b> Daten auf dem Zielgerät ersetzt.</p>
     <div class="knopfreihe"><button class="haupt" data-a="export">Export-Datei speichern</button><button data-a="export-kopie">Als Text kopieren</button></div></div>
-  <div class="karte"><h2 style="margin-top:0">Wiederherstellen / Importieren</h2><p class="leise klein">Export-Datei oder <code>privat-import.json</code> (aus dem Vault erzeugt) wählen. Vor dem Ersetzen wird gefragt; danach kannst du rückgängig machen.</p>
+  <div class="karte"><h2 style="margin-top:0">Einzelne Bereiche übertragen</h2><p class="leise klein">Nur die gewählten Bereiche. Auf dem Zielgerät siehst du vor der Übernahme je Bereich, was neu, gleich oder unterschiedlich ist, und wählst Zusammenführen oder Ersetzen. Trainingspläne gehen auch einzeln per QR-Code (Training → Plan → „Auf anderes Gerät übertragen“).</p>
+    <div class="teil-wahl">${DATEN_BEREICHE.map(([k, n, , std]) => `<label style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" name="teil-export" value="${k}" ${std ? 'checked' : ''}> ${esc(n)}</label>`).join('')}</div>
+    <div class="knopfreihe"><button data-a="teil-export">Ausgewählte Bereiche als Datei</button><button data-a="teil-export-kopie">… als Text kopieren</button></div></div>
+  <div class="karte"><h2 style="margin-top:0">Wiederherstellen / Importieren</h2><p class="leise klein">Vollständige Sicherung, Teilexport oder <code>privat-import.json</code> (aus dem Vault erzeugt) wählen. Vor jeder Änderung siehst du eine Vorschau; danach kannst du rückgängig machen.</p>
     <input type="file" id="import-datei" accept="application/json,.json">
     <details><summary class="leise">oder Text einfügen</summary><textarea id="import-text" rows="4" style="width:100%"></textarea><button data-a="import-text">Text importieren</button></details></div>
   <div class="karte"><h2 style="margin-top:0">Zwischenstände</h2><p class="leise klein">Automatisch angelegt: bei der ersten Änderung des Tages, vor jedem Import, vor „Alles löschen“ und vor einer Wiederherstellung (die letzten 6). Sie liegen im selben Browser-Speicher – wird der Browser-Speicher gelöscht oder die App entfernt, sind sie ebenfalls weg. Nur eine Export-Datei schützt davor.</p>
@@ -1061,7 +1103,15 @@ vDaten.danach = async () => {
   try { const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; const pers = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null;
     $('#speicher-info').textContent = `Belegt: ca. ${Math.round(JSON.stringify(D).length / 1024)} KB persönliche Daten. Dauerhafter Speicher: ${pers == null ? 'unbekannt' : pers ? 'ja' : 'nein (Browser darf bei Platzmangel löschen)'}.${est ? '' : ''}`; } catch (e) { /* */ }
 };
-function importAnwenden(obj) { const plan = importiere(obj); frageZeigen(plan.text + '\n\nFortfahren?', () => { zwischenstand('vor Import'); aendere('Import übernommen', plan.anwenden); }, { jaText: 'Ja, übernehmen' }); }
+function teilImportVorbereiten(obj) {
+  if (obj.schema > SCHEMA) throw new Error('Die Datei stammt von einer neueren App-Version – bitte zuerst die App aktualisieren (Mehr).');
+  if (!obj.daten || typeof obj.daten !== 'object' || !Array.isArray(obj.bereiche)) throw new Error('Teilexport unvollständig.');
+  // Ältere Datenformate über dieselben Updates bringen wie beim Laden; danach nur die Bereiche der Datei behalten
+  const x = aufSchemaBringen(Object.assign({}, obj.daten, { schema: Number(obj.daten.schema) || Number(obj.schema) || SCHEMA })); if (!x) throw new Error('Unbekanntes Datenformat.');
+  const keys = DATEN_BEREICHE.filter(b => obj.bereiche.includes(b[0])).flatMap(b => b[2]); const daten = {}; keys.forEach(k => { if (obj.daten[k] !== undefined) daten[k] = x[k]; });
+  teilImport = { obj: Object.assign({}, obj, { daten }), wahl: {} }; location.hash = '#/daten'; route(); setTimeout(() => { const el = $('#teil-import'); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
+}
+function importAnwenden(obj) { if (obj && obj.art === 'fitomat-teilexport') { teilImportVorbereiten(obj); return; } const plan = importiere(obj); frageZeigen(plan.text + '\n\nFortfahren?', () => { zwischenstand('vor Import'); aendere('Import übernommen', plan.anwenden); }, { jaText: 'Ja, übernehmen' }); }
 function vInfo() {
   const n = K.rezepte.length;
   return `<h1>Über diese App</h1><div class="karte"><p>Katalog ${esc(K.version)} (${esc(K.erstellt)}) · ${n} Rezepte · ${K.techniken.length} Techniken · ${K.zutaten.length} Zutaten · App ${APP_VERSION}</p>
@@ -1072,7 +1122,9 @@ function vInfo() {
   <h2>Bildnachweise</h2><p class="leise klein">Die Fotos sind <b>Beispielfotos</b> freier Lizenz von Wikimedia Commons, auf 800 px verkleinert. Sie zeigen ein ähnliches Gericht, nicht das Ergebnis dieses Rezepts. Rezepte ohne passendes freies Foto zeigen eine gestaltete Tellergrafik.</p>
   <ul class="klein">${K.rezepte.filter(r => r.meta.bild).map(r => `<li><a href="#/rezept/${esc(r.id)}">${esc(kurztitel(r.titel))}</a>: ${bildNachweisHtml(r.meta)}</li>`).join('') || '<li class="leise">keine</li>'}</ul>`;
 }
-function vTechnik(id) { const t = T[id]; if (!t) return '<p class="leer">Technik nicht gefunden.</p>'; return `<p class="leise klein"><a href="javascript:history.back()">← zurück</a></p><h1>${esc(t.titel)}</h1>${md(t.md.replace(/^# .*\n/, ''))}`; }
+// Herkunfts- und Quellenabschnitte eingeklappt: Nutzertext zuerst, Belege bleiben einen Tipp entfernt erreichbar
+function mdHintergrund(text) { return String(text || '').split(/(?=^## )/m).map(t => { const m = t.match(/^## (Herkunft[^\n]*|Quellen[^\n]*|Daten|Quellenlage[^\n]*)[ \t]*\r?\n/); return m ? `<details class="abschnitt-zu"><summary>${esc(m[1].trim())}</summary>${md(t.slice(m[0].length))}</details>` : md(t); }).join(''); }
+function vTechnik(id) { const t = T[id]; if (!t) return '<p class="leer">Technik nicht gefunden.</p>'; return `<p class="leise klein"><a href="javascript:history.back()">← zurück</a></p><h1>${esc(t.titel)}</h1>${mdHintergrund(t.md.replace(/^# .*\n/, ''))}`; }
 function vZutat(id) { const z = Z[id]; if (!z) return '<p class="leer">Zutat nicht gefunden.</p>'; const v = vorratMenge(id);
   return `<p class="leise klein"><a href="javascript:history.back()">← zurück</a></p><h1>${esc(z.name)}</h1>${v.vorhanden ? `<p class="chip gut">im Vorrat${v.unbekannt ? '' : ': ' + zahlDE(v.menge) + ' ' + esc(vorratEinheit(id) || '')}</p>` : ''}${z.pruef_hinweis ? `<div class="hinweis warn">Prüfen: ${inline(z.pruef_hinweis)}</div>` : ''}${md(z.md.replace(/^# .*\n/, ''))}
   <h2>In Rezepten</h2><ul>${K.rezepte.filter(r => r.zutaten.some(x => x.zutat === id)).map(r => `<li><a href="#/rezept/${esc(r.id)}">${esc(r.titel)}</a></li>`).join('') || '<li class="leise">–</li>'}</ul>`; }
@@ -1150,6 +1202,18 @@ document.addEventListener('click', ev => {
     case 'tb-weg': { const e0 = D.tagebuch.find(x => x.id === v); const rp = e0 && e0.restportion ? D.restportionen.find(x => x.id === e0.restportion) : null;
       aendere(rp ? 'Eintrag gelöscht – Restportion zurückgelegt' : 'Eintrag gelöscht', d => { d.tagebuch = d.tagebuch.filter(x => x.id !== v); if (rp) { const q = d.restportionen.find(x => x.id === rp.id); if (q && !q.verworfen) q.portionen = Math.round((q.portionen + (e0.portionen || 1)) * 100) / 100; } }); break; }
     case 'tb-kopie': { const ziel = (location.hash.startsWith('#/tagebuch') && typeof tbDatum === 'string' && tbDatum) ? tbDatum : heute(); aendere(ziel === heute() ? 'Erneut eingetragen (heute)' : 'Erneut eingetragen (' + datumDE(ziel) + ')', d => { const e = d.tagebuch.find(x => x.id === v); const n2 = JSON.parse(JSON.stringify(e)); Object.assign(n2, { id: uid('mz'), datum: ziel, zeit: new Date().toTimeString().slice(0, 5), quelle: 'kopie', mahlzeit: typeof neuerEintragSlot === 'function' ? neuerEintragSlot() : e.mahlzeit }); delete n2.restportion; delete n2.kochprotokoll; d.tagebuch.push(n2); }); break; }
+    case 'teil-export': case 'teil-export-kopie': { const w = [...document.querySelectorAll('input[name="teil-export"]:checked')].map(x => x.value); if (!w.length) { toast('Bitte mindestens einen Bereich wählen'); return; }
+      const obj = teilExport(w); const txt = JSON.stringify(obj, null, 1);
+      if (a === 'teil-export') { const url = URL.createObjectURL(new Blob([txt], { type: 'application/json' })); const l = document.createElement('a'); l.href = url; l.download = `fitomat-bereiche-${heute()}.json`; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); toast(`Teilexport erstellt (${w.length} Bereiche)`); }
+      else (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject(new Error('keine Zwischenablage'))).then(() => toast('Teilexport kopiert – auf dem anderen Gerät unter „Text einfügen“ importieren'), e => toast('Kopieren nicht möglich: ' + e.message));
+      break; }
+    case 'teil-import-ab': teilImport = null; route(); break;
+    case 'teil-import-ok': { const t = teilImport; if (!t) return; const wahl = {}; DATEN_BEREICHE.forEach(b => { const el = document.querySelector(`input[name="teil-${b[0]}"]:checked`); if (el) wahl[b[0]] = el.value; });
+      const aktiv = Object.entries(wahl).filter(([, w]) => w !== 'nein'); if (!aktiv.length) { toast('Nichts ausgewählt'); return; }
+      if (aktiv.some(([k, w]) => w === 'ersetzen') && !bestaetigt(`Bereich ersetzen: ${aktiv.filter(([, w]) => w === 'ersetzen').map(([k]) => DATEN_BEREICHE.find(b => b[0] === k)[1]).join(', ')}. Die bisherigen Daten dieses Bereichs auf diesem Gerät werden überschrieben (direkt danach rückgängig machbar).`)) return;
+      zwischenstand('vor Teilimport');
+      aendere(`Übernommen: ${aktiv.length} Bereich${aktiv.length === 1 ? '' : 'e'}`, d => { aktiv.forEach(([k, w]) => { const b = DATEN_BEREICHE.find(x => x[0] === k); b[2].forEach(key => { const neu = t.obj.daten[key]; if (neu === undefined) return; const kopie = JSON.parse(JSON.stringify(neu)); if (w === 'ersetzen') d[key] = kopie; else { const aktivVorher = key === 'training' && d.training ? d.training.aktiv : undefined; d[key] = zusammenfuehren(d[key], kopie, { neu: 0, gleich: 0, konflikt: 0 }); if (key === 'training') d.training.aktiv = aktivVorher || null; } }); }); });
+      teilImport = null; route(); break; }
     case 'export': { const blob = new Blob([JSON.stringify(exportDaten(), null, 1)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = url; l.download = `fitomat-sicherung-${heute()}.json`; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); aendere('Export erstellt', d => { d.letzter_export = new Date().toISOString(); }); break; }
     case 'export-kopie': navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(exportDaten())).then(() => { aendere('Export als Text kopiert', d => { d.letzter_export = new Date().toISOString(); }); }, () => toast('Kopieren nicht erlaubt')); break;
     case 'import-text': try { importAnwenden(JSON.parse($('#import-text').value)); } catch (e) { toast('Import fehlgeschlagen: ' + e.message); } break;

@@ -749,9 +749,10 @@ a.filterchip:hover { border-color: var(--rand); }
 .kopf-info { flex: 0 1 auto; min-width: 0; }
 .mk-ziel { font-size: .76rem; color: var(--leise); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Unterreiter: eine Zeile, auf schmalen Bildschirmen waagerecht scrollbar statt Umbruch */
-.unterreiter { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+/* 2.27: alle Unterbereiche sichtbar – Raster statt verstecktem Querscrollen (auf dem Handy 2 Zeilen) */
+.unterreiter { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); overflow: visible; }
 .unterreiter::-webkit-scrollbar { display: none; }
-.unterreiter > a { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+.unterreiter > a { white-space: nowrap; min-width: 0; }
 /* Auswahl-Listen (z. B. Mentality-Situationen): linksbündige Zeilen mit Pfeil */
 button[data-a="mt-situation"], button[data-a="mt-frage"] { justify-content: space-between; text-align: left; width: 100%; border-radius: var(--r); padding: 14px 16px; font-weight: 600; border-color: var(--linie); }
 button[data-a="mt-situation"]::after, button[data-a="mt-frage"]::after { content: '›'; font-size: 1.3rem; line-height: 1; color: var(--leise); margin-left: 12px; }
@@ -778,3 +779,26 @@ button[data-a="mt-situation"]::after, button[data-a="mt-frage"]::after { content
 .technik-liste a { color: var(--tinte); text-decoration: none; }
 .technik-liste a b::after { content: ' ›'; color: var(--leise); font-weight: 400; }
 .lern-start ol { margin: .3rem 0 0; padding-left: 1.2rem; } .lern-start li { margin: .25rem 0; }
+/* 2.27 – einseitige Sätze links/rechts in der Tabelle */
+.tr-lr { display: grid; gap: 4px; }
+.tr-lr-z { display: grid; grid-template-columns: 1.4em auto auto auto; gap: 4px; align-items: center; justify-content: start; }
+.tr-lr-z.leer { opacity: .45; }
+.tr-lr-k { font: 700 .8rem var(--sans); color: var(--leise); text-align: center; }
+.tr-lr-akt { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .8rem; }
+.tr-lr-akt button { min-height: 36px; }
+.tr-lr-nr { font: 600 .85rem var(--sans); }
+.tr-saetze tr.tr-lr-satz td { border-top: 1px solid var(--linie); }
+.tr-seiten-steuer { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.tr-seiten-steuer button { min-height: 40px; }
+/* 2.27 – Teilübertragung, Mobility-Stufen, geführte Entspannung */
+.teil-wahl { display: grid; gap: 8px; margin: 10px 0; }
+.teil-wahl label { min-height: 36px; align-items: center; }
+.teil-bereich { border: 1px solid var(--linie); border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+.teil-bereich legend { padding: 0 4px; }
+.teil-bereich .filterchip input { margin: 0 4px 0 0; }
+.mob-stufen { margin: 8px 0; }
+.mob-stufen .chips-wrap { margin-top: 6px; }
+.mt-bereich { font: 700 1.35rem var(--sans); margin: .4em 0 .1em; }
+.mt-phase { display: inline-block; font-weight: 700; padding: 4px 10px; border-radius: 999px; margin: .2em 0; }
+.mt-phase-anspannen { background: var(--bernstein-hell); color: var(--bernstein); }
+.mt-phase-loesen { background: var(--salbei-hell); color: var(--salbei); }

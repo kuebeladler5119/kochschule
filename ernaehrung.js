@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611181314 */
+/* Fitomat-Build 202611211653 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -105,6 +105,8 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
     `Alltag ohne Sport: PAL ${palA.toLocaleString('de-DE')} (${PAL_ALLTAG[p.alltag][1]}) → ${Math.round(ree)} × ${palA.toLocaleString('de-DE')} ≈ ${Math.round(alltagKcal)} kcal`,
     `Training: ${trText}.${tr.alt ? ' Hinweis: aus älteren Angaben übernommen (Einheiten/Minuten geschätzt) – bitte unter „Angaben ändern“ prüfen.' : ''} Training wird nur einmal angerechnet.`,
     `Geschätzter Erhaltungsbedarf ≈ ${Math.round(alltagKcal)} + ${Math.round(trKcal)} ≈ ${Math.round(gesamt)} kcal (entspricht PAL ${pal.toLocaleString('de-DE')}). Schon ±0,1 PAL verschieben das um etwa ±${Math.round(ree * 0.1)} kcal – realistisch ist eher eine Spanne von ${rund(gesamt - ree * 0.15, 50).toLocaleString('de-DE')} bis ${rund(gesamt + ree * 0.15, 50).toLocaleString('de-DE')} kcal.`,
+    ...(p.alltag === 'sitzend' && trKcal > 0 ? [`Warum andere Rechner oft höher liegen: Viele setzen bei Büroarbeit mit Sport pauschal PAL 1,6 an. Mit PAL 1,6 plus demselben Training wären es ≈ ${Math.round(ree * 1.6 + trKcal)} kcal – das Training stünde dann zum Teil doppelt drin (einmal im PAL, einmal als Zuschlag). Hier zählt es nur einmal.`] : []),
+    ...(() => { const pl = typeof trDaten === 'function' ? arr(trDaten().plaene).find(x => x.aktiv) : null; const n = pl ? pl.einheiten.length : 0; return pl && tr.art === 'kraft' && n && n !== tr.n ? [`Abgleich: Dein aktiver Trainingsplan „${pl.name}“ hat ${n} Einheiten pro Woche, gerechnet wird mit ${zahlDE(tr.n, 1)} (unter „Angaben ändern“ anpassen).`] : []; })(),
     p.ziel === 'halten' ? 'Ziel „Gewicht halten“: keine Anpassung.' : p.ziel === 'aufbau' ? 'Ziel „Muskelaufbau“: +10 % (unteres Ende der Spanne 10–20 % aus einer Übersichtsarbeit zur Aufbauphase).' : abbauKcal ? `Ziel „Fettabbau“: −${abbauKcal} kcal (selbst gewähltes kleines Defizit).` : `Ziel „Fettabbau“: −${Math.round(abbauStufe * 100)} % (vorsichtiger Startwert, eigener Vorschlag).`,
     `Energieziel ≈ ${kcal.toLocaleString('de-DE')} kcal (auf 50 gerundet – genauer lässt es sich nicht schätzen). Das ist ein berechneter Startwert; der tatsächliche Bedarf zeigt sich erst am Gewichtsverlauf.`,
     `Protein: ${gkg.toLocaleString('de-DE')} g/kg × ${Math.round(bezug)} kg (${bezugText}) ≈ ${protein} g – ${protQuelle}.`,
