@@ -802,3 +802,75 @@ button[data-a="mt-situation"]::after, button[data-a="mt-frage"]::after { content
 .mt-phase { display: inline-block; font-weight: 700; padding: 4px 10px; border-radius: 999px; margin: .2em 0; }
 .mt-phase-anspannen { background: var(--bernstein-hell); color: var(--bernstein); }
 .mt-phase-loesen { background: var(--salbei-hell); color: var(--salbei); }
+/* ===================== Designsystem 2.28 (verbindlich; Doku: Vault „70 App/Designsystem.md“) =====================
+   Abstände 4·8·12·16·24·32 · Text 13/15/16.5/19/24/30 px · Radien 8/12/16/999 · Berührungsziele ≥ 44 px · eine Hauptaktion je Ansicht. */
+:root { --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --r-s: 8px; --r-m: 12px; --r-l: 16px; --fokus: 0 0 0 3px color-mix(in srgb, var(--akzent) 45%, transparent); }
+/* Sichtbarer Tastatur-Fokus überall (WCAG 2.4.7/2.4.11), nicht bei Fingertipp */
+:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
+button:focus-visible, .knopf:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; box-shadow: none; }
+/* Berührungsziele: auch kleine Knöpfe und Chips mind. 44 px hoch */
+button, .knopf { min-height: 44px; }
+button.klein, .knopf.klein, .filterchip { min-height: 44px; }
+.chip { min-height: 0; }
+summary { min-height: 44px; display: flex; align-items: center; gap: 6px; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: '›'; display: inline-block; width: 1em; color: var(--leise); transition: transform .15s; }
+details[open] > summary::before { transform: rotate(90deg); }
+/* Listen: Titel als ruhiger Text statt unterstrichener Weblink; Unterstreichung bleibt nur für Links im Fließtext */
+.eintraege li a, .tr-liste a, .rk h3, .karte > .zeile b a, .plan-zeile a { color: var(--tinte); text-decoration: none; }
+.eintraege li a:hover, .tr-liste a:hover { text-decoration: underline; }
+/* Hinweise ruhiger: kein Kasten in Kasten */
+.karte .hinweis { margin: var(--s2) 0; }
+/* Feste Aktionsleiste über der Navigation – Hauptaktion ohne Scrollen erreichbar */
+.aktionsleiste { position: sticky; bottom: calc(var(--nav-h) + var(--timer-h, 0px) + env(safe-area-inset-bottom) + 8px); z-index: 5; display: flex; gap: var(--s2); padding: var(--s2); margin: var(--s4) calc(-1 * var(--s2)) 0; background: color-mix(in srgb, var(--papier) 88%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-radius: var(--r-l); }
+.aktionsleiste > .haupt { flex: 1 1 auto; min-height: 52px; font-size: 1.05rem; }
+.aktionsleiste > .still, .aktionsleiste > button:not(.haupt) { flex: 0 0 auto; }
+/* Zahlenfelder im geführten Training: großer Wert, klare Einheit */
+.fz-stepper { grid-template-columns: 56px minmax(0, 1fr) 56px; }
+.fz-stepper button { min-height: 56px; font-size: 1.6rem; font-weight: 500; }
+.fz-stepper input { min-height: 56px; font-size: 1.65rem; font-weight: 650; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.fz-stepper input::-webkit-outer-spin-button, .fz-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fz-feld label { font-weight: 600; color: var(--leise); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.fz-paar { grid-template-columns: 1fr; gap: var(--s3); }
+/* Geführtes Training: Kopfzeile mit Satzpunkten, Ziel in einer Zeile */
+.fz-satzpunkte { display: flex; gap: 6px; margin: var(--s2) 0 var(--s3); }
+.fz-satzpunkte i { width: 22px; height: 6px; border-radius: 3px; background: var(--linie); }
+.fz-satzpunkte i.a { background: var(--rand); opacity: .55; }
+.fz-satzpunkte i.fertig { background: var(--akzent); }
+.fz-satzpunkte i.jetzt { background: var(--akzent); opacity: .5; outline: 2px solid var(--akzent); outline-offset: 1px; }
+.fz-ziel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0 0 var(--s3); }
+.fz-ziel b { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.fz-ziel .leise { font-size: .9rem; }
+.fz-vorher { display: inline-flex; gap: 6px; align-items: center; background: var(--flaeche2); border-radius: 999px; padding: 4px 12px; font-size: .88rem; font-variant-numeric: tabular-nums; }
+/* Pause: großer Countdown, ruhige Knöpfe */
+.fz-pause .fz-countdown { font-size: clamp(3.4rem, 18vw, 5.2rem); font-weight: 700; letter-spacing: -.02em; text-align: center; font-variant-numeric: tabular-nums; margin: var(--s3) 0 var(--s2); }
+.fz-pausenknoepfe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); }
+.fz-pausenknoepfe > .haupt { grid-column: 1 / -1; min-height: 56px; font-size: 1.1rem; }
+.fz-naechst-wert { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+/* Training-Übersicht: eine Hauptkarte „Heute“ */
+.tr-heute { background: var(--flaeche); border-radius: var(--r-l); padding: var(--s4); margin: 0 0 var(--s4); box-shadow: var(--schatten); }
+.tr-heute .titel { font: 700 1.35rem/1.2 var(--sans); margin: 2px 0 4px; }
+.tr-heute .meta { color: var(--leise); font-size: .92rem; margin: 0 0 var(--s3); }
+.tr-heute .knopfreihe { margin: 0; }
+.tr-heute .knopfreihe .haupt { flex: 1 1 auto; min-height: 52px; font-size: 1.05rem; }
+.plan-zeilen { list-style: none; margin: 0; padding: 0; }
+.plan-zeilen li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: var(--s3); min-height: 56px; border-bottom: 1px solid var(--linie); }
+.plan-zeilen li:last-child { border-bottom: 0; }
+.plan-zeilen .tag { font-weight: 700; color: var(--leise); font-size: .85rem; text-align: center; }
+.plan-zeilen .tag.heute { color: var(--akzent); }
+.plan-zeilen a { color: var(--tinte); text-decoration: none; font-weight: 600; display: block; padding: 8px 0; }
+.plan-zeilen .unter { display: block; font-weight: 400; color: var(--leise); font-size: .84rem; }
+.plan-zeilen button { min-width: 44px; }
+.abschnitt-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); margin: var(--s5) 0 var(--s2); }
+.abschnitt-kopf h2 { margin: 0; }
+.abschnitt-kopf a { font-size: .9rem; }
+/* Profilanzeige im Kopf: wessen Daten gerade aktiv sind */
+.profil-marke { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--leise); max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Anleitungen: Belege gesammelt unter den Schritten statt mitten im Satz */
+.anl-belege { font-size: .82rem; color: var(--leise); margin: var(--s2) 0 0; }
+.anl-belege a { color: var(--leise); }
+/* Zahlen nie abschneiden */
+.fz-soll b, .kachel b, .tr-saetze td { font-variant-numeric: tabular-nums; }
+@media (max-width: 340px) { .fz-pausenknoepfe { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fz-stepper { grid-template-columns: 48px minmax(0, 1fr) 48px; } }
+.fz-optional > summary { justify-content: flex-start; flex-wrap: wrap; text-align: left; }
+.fz-feld label span { text-transform: none; letter-spacing: 0; font-weight: 400; }

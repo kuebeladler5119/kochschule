@@ -3,8 +3,8 @@
    Modul ernaehrung.js (vorher geladen): Profile, Ersteinrichtung, Ziele, Tagebuch, Bilder. */
 'use strict';
 const K = window.KATALOG || { rezepte: [], techniken: [], zutaten: [], quellen: {}, naehrstoffe: {} };
-const APP_VERSION = '2.27.0';
-const APP_BUILD = '202611211653';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
+const APP_VERSION = '2.28.0';
+const APP_BUILD = '202611251834';   // wird von tools/build-katalog.ps1 gesetzt (gleich der Version in sw.js)
 const SCHEMA = 3;                   // Datenformat der persönlichen Daten; Änderungen nur über MIGRATIONEN unten
 // Getrennte Profile nutzen eigene Speicherschlüssel: ?profil=test (Tests) oder ein unter „Profile“ gewähltes Profil.
 const PROFIL = (new URLSearchParams(location.search).get('profil') || aktivesProfilId()).replace(/[^a-z0-9-]/gi, '').slice(0, 20);
@@ -589,6 +589,7 @@ function schrittFelder(mdText, f, r) {
   const fertig = fw ? `<div class="fertig-wenn"><b>${esc(fw[0])}</b> ${inline(fw[1])}</div>` : '';
   return { dl, rest, felder, fertig };
 }
+const ZUB_NAME = { one_pot: 'One-Pot', one_pan: 'One-Pan', blech: 'Blechgericht', reiskocher: 'Reiskocher-Gericht' };
 function vRezept(id) {
   const r = R[id]; if (!r) return '<p class="leer">Rezept nicht gefunden.</p>';
   zuletztMerken(r.id);
@@ -606,7 +607,8 @@ function vRezept(id) {
   ${bildHtml(r, 'hero')}
   <div class="rezept-kopf" style="margin-top:14px"><span class="ueber">${esc(BEREICH_NAME[m.bereich] || '')}${rezeptKuechen(r).length ? ' · ' + esc(rezeptKuechen(r).map(k => KUECHE_NAME[k]).join(', ')) : ''}</span><h1>${esc(r.titel)}</h1>
   <div class="eckdaten">${zeitDetailHtml(r)}${info.schwierigkeit ? `<span>${ico('flamme', 'klein')} Schwierigkeit ${info.schwierigkeit} von 5</span>` : ''}</div>
-  <div class="chips">${info.veg ? (() => { const vg = istVegan(r); const ohne = vg ? info.veganOhne : info.vegOhne; return `<span class="chip gut" title="${esc(ohne.length ? 'Nur ohne die optionalen Zutaten: ' + ohne.join(', ') : 'abgeleitet aus den notwendigen Zutaten')}">${vg ? 'vegan' : 'vegetarisch'}${ohne.length ? ' ohne ' + esc(ohne.join(', ')) : ''}</span>${info.vegUnklar.length ? `<span class="chip warn" title="Bei diesen Zutaten hängt es vom Produkt ab (z. B. tierisches Lab) – Etikett prüfen">${esc(info.vegUnklar.join(', '))}: Etikett prüfen</span>` : ''}`; })() : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}</div>
+  <div class="chips">${info.veg ? (() => { const vg = istVegan(r); const ohne = vg ? info.veganOhne : info.vegOhne; return `<span class="chip gut" title="${esc(ohne.length ? 'Nur ohne die optionalen Zutaten: ' + ohne.join(', ') : 'abgeleitet aus den notwendigen Zutaten')}">${vg ? 'vegan' : 'vegetarisch'}${ohne.length ? ' ohne ' + esc(ohne.join(', ')) : ''}</span>${info.vegUnklar.length ? `<span class="chip warn" title="Bei diesen Zutaten hängt es vom Produkt ab (z. B. tierisches Lab) – Etikett prüfen">${esc(info.vegUnklar.join(', '))}: Etikett prüfen</span>` : ''}`; })() : ''}${istProteinreich(r) ? `<span class="chip gut" title="${esc(EIGENSCHAFT_ERKLAERUNG.proteinreich)}">proteinreich</span>` : ''}${m.kosten_klasse ? `<span class="chip" title="${esc(EIGENSCHAFT_ERKLAERUNG.guenstig)}">Kosten: ${esc({ guenstig: 'eher günstig', mittel: 'mittel', hoeher: 'eher höher' }[m.kosten_klasse] || m.kosten_klasse)} (Schätzung)</span>` : ''}${info.pruefen.length ? `<span class="chip warn">prüfen: ${esc(info.pruefen.map(z => z.name).join(', '))}</span>` : ''}${arr(m.zubereitung).map(z => ZUB_NAME[z] ? `<span class="chip info">${ZUB_NAME[z]}</span>` : '').join('')}</div>
+  ${m.zubereitung_hinweis ? `<p class="leise klein" style="margin:.3em 0 0">${esc(m.zubereitung_hinweis)}</p>` : ''}
   <details class="herkunft-kurz"><summary><span class="chip">${pruefText(m.pruefstand)}</span> Herkunft und offene Punkte</summary>
     ${herkunftHtml(r)}<p class="klein">${esc({ original_benannter_koch: 'Original eines benannten Kochs, angepasst', angepasste_variante: 'angepasste Variante', restaurantstil: 'Restaurantstil', eigener_entwurf: 'eigener quellenbasierter Entwurf' }[m.herkunftstyp] || '')}${m.koch ? ' · ' + esc(m.koch) : ''}${quelle ? '<br>' + quelle : ''}</p>
     ${ein.herkunft.map(t => md(t)).join('')}
@@ -619,6 +621,7 @@ function vRezept(id) {
   ${aus.length ? `<div class="hinweis gefahr">Passt nicht zu deinem Profil: ${esc(aus.join(', '))}</div>` : ''}
   ${pr.warn.length ? `<div class="hinweis warn"><b>Allergene:</b> ${esc(pr.warn.join(' · '))}. Die App kann Verträglichkeit nicht garantieren.</div>` : ''}
   ${ger && ger.length ? `<div class="hinweis warn">Laut deinen Einstellungen fehlt: ${esc(ger.map(g => GERAETE[g] || g).join(', '))}</div>` : ''}
+  ${(() => { const h = (D.einstellungen.rezept_geraetehinweise || {})[r.id]; return h ? `<div class="hinweis klein"><b>Für dein Gerät</b> <span class="leise">(privat, aus deinem Profil)</span>: ${[h.programm ? 'Programm ' + esc(h.programm) : '', h.reis_g ? esc(h.reis_g) + ' g Reis' : '', h.fluessigkeit_ml ? esc(h.fluessigkeit_ml) + ' ml Flüssigkeit' : ''].filter(Boolean).join(' · ')}${h.hinweis ? `<br>${esc(h.hinweis)}` : ''}</div>` : ''; })()}
   ${ein.sicherheit.map(t => md(t)).join('')}${ab.sicherheit.map(a => `<div class="callout c-danger"><div class="ct">${inline(a.titel)}</div><div class="cb">${mdAnl(a.md)}</div></div>`).join('')}
   ${fort ? `<div class="hinweis">Kochfortschritt gespeichert: Schritt ${fort.schritt + 1} von ${r.schritte.length} (${esc(fort.portionen)} Portionen). <a href="#/kochen/${esc(r.id)}">Weiter kochen</a> · <button class="klein" data-a="fortschritt-weg" data-v="${esc(r.id)}">verwerfen</button></div>` : ''}
   <div class="zweispaltig"><div class="seite">
@@ -1074,7 +1077,13 @@ function importiere(obj) {
   if (obj.art === 'kochschule-privat-import') { const e = obj.einstellungen || {}; const pe = obj.person || null; const alt = D.einstellungen.person || {};
     // Person: Alter, Geschlecht, Größe, Alltag, Training und Ziel werden übernommen; das Gewicht nur, wenn noch keins eingetragen ist (es ist eine frühere Angabe, kein neuer Messwert)
     const personText = pe ? ` Person: ${pe.alter} J., ${pe.geschlecht === 'm' ? 'männlich' : pe.geschlecht === 'w' ? 'weiblich' : '–'}, ${pe.groesse} cm, Alltag ${pe.alltag}, ${pe.training_einheiten} × ${pe.training_minuten} Min. ${pe.training_art === 'kraft' ? 'Krafttraining' : pe.training_art}, Ziel ${pe.ziel}${pe.defizit_kcal ? ' −' + pe.defizit_kcal + ' kcal' : ''}. Gewicht: ${alt.gewicht ? `bleibt bei deinem eingetragenen Wert (${alt.gewicht} kg)` : `${pe.gewicht} kg (${pe.gewicht_hinweis || 'frühere Angabe'})`}.` : '';
-    return { text: `Profil-Import: Ausschlüsse ${(e.ausschluesse || []).join(', ') || '–'}, ${(e.geraete || []).length} Geräte, ${Object.keys(e.geraete_hinweise || {}).length} Geräte-Hinweise.${personText} Vorrat, Tagebuch, manuelle Ziele und alle anderen Daten bleiben unverändert.`, anwenden: d => { if (e.ausschluesse) d.einstellungen.ausschluesse = e.ausschluesse; if (e.geraete) d.einstellungen.geraete = e.geraete; if (e.geraete_hinweise) d.einstellungen.geraete_hinweise = Object.assign({}, d.einstellungen.geraete_hinweise || {}, e.geraete_hinweise);
+    const rgh = e.rezept_geraetehinweise || null;
+    const teile = [e.ausschluesse ? `Ausschlüsse ${e.ausschluesse.join(', ') || '–'}` : '', e.geraete ? `${e.geraete.length} Geräte` : '', e.geraete_hinweise ? `${Object.keys(e.geraete_hinweise).length} Geräte-Hinweise` : '', rgh ? `${Object.keys(rgh).length} gerätespezifische Rezepthinweise (werden ergänzt)` : ''].filter(Boolean);
+    return { text: `Profil-Import: ${teile.join(', ') || 'keine Einstellungen'}.${personText} Vorrat, Tagebuch, Trainings, selbst festgelegte und bereits übernommene Ziele bleiben unverändert.`, anwenden: d => { if (e.ausschluesse) d.einstellungen.ausschluesse = e.ausschluesse; if (e.geraete) d.einstellungen.geraete = e.geraete; if (e.geraete_hinweise) d.einstellungen.geraete_hinweise = Object.assign({}, d.einstellungen.geraete_hinweise || {}, e.geraete_hinweise);
+      if (rgh) d.einstellungen.rezept_geraetehinweise = Object.assign({}, d.einstellungen.rezept_geraetehinweise || {}, rgh);
+      // Standardprofil: Einrichtung nicht erneut erzwingen; berechnete Ziele nur einschalten, wenn noch keine Ziele gewählt waren
+      if (d.einstellungen.einrichtung == null) d.einstellungen.einrichtung = 'importiert';
+      if (pe && pe.ziel && pe.ziel !== 'keins' && (!d.einstellungen.ziele || !d.einstellungen.ziele.modus || d.einstellungen.ziele.modus === 'keine')) d.einstellungen.ziele = { modus: 'auto' };
       if (pe) { const p = d.einstellungen.person = Object.assign({}, d.einstellungen.person || {}); ['alter', 'geschlecht', 'groesse', 'alltag', 'training_art', 'training_einheiten', 'training_minuten', 'kraft', 'ziel', 'defizit_kcal'].forEach(k => { if (pe[k] != null && pe[k] !== '') p[k] = pe[k]; }); if (!p.gewicht && pe.gewicht) p.gewicht = pe.gewicht; } } }; }
   if (obj.art === 'fitomat-trainingsplan') return trainingsplanImport(obj);
   if (obj.art !== 'kochschule-export' || !obj.daten || typeof obj.daten.schema !== 'number') throw new Error('Unbekanntes Format (erwartet: kochschule-export).');
@@ -1085,6 +1094,7 @@ function vDaten() {
   return `<h1>Daten sichern und übertragen</h1>
   <div class="hinweis">Deine Daten liegen <b>nur auf diesem Gerät</b> im Browser. Es gibt <b>keine automatische Synchronisation</b>: iPhone, iPad und Laptop gleichen sich nicht ab. Auf dem iPhone können <b>Safari und die Home-Bildschirm-App getrennte Speicher</b> haben – Daten dann per Datei oder Text übertragen. Ein Export ist zugleich deine Sicherung.</div>
   ${teilImportHtml()}
+  ${!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) ? '<div class="hinweis warn klein"><b>Du nutzt Fitomat im Browser-Tab.</b> Safari auf dem iPhone kann Daten einer Website löschen, wenn sie einige Tage nicht geöffnet wurde (WebKit-Speicherregel). Als App vom Home-Bildschirm wird anders gezählt. Empfehlung: Fitomat über „Teilen → Zum Home-Bildschirm“ hinzufügen und dort nutzen – und regelmäßig sichern.</div>' : ''}
   <div class="karte"><h2 style="margin-top:0">Vollständige Sicherung</h2><p class="leise klein">Letzter Export: ${D.letzter_export ? esc(D.letzter_export.slice(0, 16).replace('T', ' ')) : 'noch nie'}. Enthält alles, auch Mentality-Einträge. Beim Einspielen werden <b>alle</b> Daten auf dem Zielgerät ersetzt.</p>
     <div class="knopfreihe"><button class="haupt" data-a="export">Export-Datei speichern</button><button data-a="export-kopie">Als Text kopieren</button></div></div>
   <div class="karte"><h2 style="margin-top:0">Einzelne Bereiche übertragen</h2><p class="leise klein">Nur die gewählten Bereiche. Auf dem Zielgerät siehst du vor der Übernahme je Bereich, was neu, gleich oder unterschiedlich ist, und wählst Zusammenführen oder Ersetzen. Trainingspläne gehen auch einzeln per QR-Code (Training → Plan → „Auf anderes Gerät übertragen“).</p>
@@ -1123,7 +1133,10 @@ function vInfo() {
   <ul class="klein">${K.rezepte.filter(r => r.meta.bild).map(r => `<li><a href="#/rezept/${esc(r.id)}">${esc(kurztitel(r.titel))}</a>: ${bildNachweisHtml(r.meta)}</li>`).join('') || '<li class="leise">keine</li>'}</ul>`;
 }
 // Herkunfts- und Quellenabschnitte eingeklappt: Nutzertext zuerst, Belege bleiben einen Tipp entfernt erreichbar
-function mdHintergrund(text) { return String(text || '').split(/(?=^## )/m).map(t => { const m = t.match(/^## (Herkunft[^\n]*|Quellen[^\n]*|Daten|Quellenlage[^\n]*)[ \t]*\r?\n/); return m ? `<details class="abschnitt-zu"><summary>${esc(m[1].trim())}</summary>${md(t.slice(m[0].length))}</details>` : md(t); }).join(''); }
+// 2.28: Quellenverweise im Nutzertext werden gesammelt und als nummerierte „Belege“ am Ende gezeigt; Sicherheitsaussagen behalten ihren Beleg sichtbar in dieser Liste
+function mdHintergrund(text) { const belege = []; const ohne = s => s.replace(/\s*\[\[((?:Quellenverzeichnis|Mobility – Grundlagen)#[^\]|]+)(?:\|[^\]]+)?\]\]/g, (m0, z) => { if (!belege.includes(z)) belege.push(z); return ''; });
+  const html = String(text || '').split(/(?=^## )/m).map(t => { const m = t.match(/^## (Herkunft[^\n]*|Quellen[^\n]*|Daten|Quellenlage[^\n]*)[ \t]*\r?\n/); return m ? `<details class="abschnitt-zu"><summary>${esc(m[1].trim())}</summary>${md(t.slice(m[0].length))}</details>` : md(ohne(t)); }).join('');
+  return html + (belege.length ? `<p class="anl-belege">Belege im Text: ${belege.map((z, i) => linkHtml(z, String(i + 1))).join(' · ')}</p>` : ''); }
 function vTechnik(id) { const t = T[id]; if (!t) return '<p class="leer">Technik nicht gefunden.</p>'; return `<p class="leise klein"><a href="javascript:history.back()">← zurück</a></p><h1>${esc(t.titel)}</h1>${mdHintergrund(t.md.replace(/^# .*\n/, ''))}`; }
 function vZutat(id) { const z = Z[id]; if (!z) return '<p class="leer">Zutat nicht gefunden.</p>'; const v = vorratMenge(id);
   return `<p class="leise klein"><a href="javascript:history.back()">← zurück</a></p><h1>${esc(z.name)}</h1>${v.vorhanden ? `<p class="chip gut">im Vorrat${v.unbekannt ? '' : ': ' + zahlDE(v.menge) + ' ' + esc(vorratEinheit(id) || '')}</p>` : ''}${z.pruef_hinweis ? `<div class="hinweis warn">Prüfen: ${inline(z.pruef_hinweis)}</div>` : ''}${md(z.md.replace(/^# .*\n/, ''))}
@@ -1184,7 +1197,8 @@ document.addEventListener('click', ev => {
     case 'kochen-abbrechen': aendere('Kochvorgang abgebrochen – nichts gebucht, keine Zutaten abgezogen', d => { delete d.fortschritt[v]; }, { neuZeichnen: false }); location.hash = '#/rezept/' + encodeURIComponent(v); break;
     case 'timer': { const min = Number(b.dataset.min); if (b.dataset.quelle) timer = timer.filter(t => t.quelle !== b.dataset.quelle); timer.push({ id: uid('t'), name: b.dataset.name || 'Timer', quelle: b.dataset.quelle || '', ende: Date.now() + min * 60000 }); timerSpeichern(); zeichneTimer(); toast(`Timer ${min} Min. läuft (nur bei geöffneter App zuverlässig)`); break; }
     case 'timer-weg': timer = timer.filter(t => t.id !== v); timerSpeichern(); zeichneTimer(); break;
-    case 'timer-plus': { const t = timer.find(x => x.id === v); if (t) { const s = Number(b.dataset.s) || 30; if (t.pausiert != null) t.pausiert += s; else t.ende = Math.max(t.ende, Date.now()) + s * 1000; t.gemeldet = false; timerSpeichern(); zeichneTimer(); } break; }
+    // Verlängern (+) oder Verkürzen (−); nie unter „jetzt“
+    case 'timer-plus': { const t = timer.find(x => x.id === v); if (t) { const s = Number(b.dataset.s) || 30; if (t.pausiert != null) t.pausiert = Math.max(0, t.pausiert + s); else t.ende = Math.max(Date.now(), Math.max(t.ende, s > 0 ? Date.now() : t.ende) + s * 1000); t.gemeldet = false; timerSpeichern(); zeichneTimer(); if (location.hash.startsWith('#/training/fuehrung')) route(); } break; }
     case 'timer-halt': { const t = timer.find(x => x.id === v); if (t) { if (t.pausiert != null) { t.ende = Date.now() + t.pausiert * 1000; t.pausiert = null; } else t.pausiert = Math.max(0, Math.round((t.ende - Date.now()) / 1000)); timerSpeichern(); zeichneTimer(); } break; }
     case 'abhaken': aendere(null, d => { if (b.checked) d.einkauf.abgehakt[v] = true; else delete d.einkauf.abgehakt[v]; }); break;
     case 'gv': aendere(null, d => { d.einkauf.bestaetigt[b.dataset.k] = v; }); break;
@@ -1315,5 +1329,20 @@ document.addEventListener('input', ev => { const el = ev.target; if (el.closest 
 if (migriert) { speichern(); setTimeout(() => toast(`Datenformat aktualisiert – deine Daten sind übernommen (Sicherung unter Mehr › Daten sichern › Zwischenstände).`), 300); }
 if (ladeProblem) setTimeout(() => toast(ladeProblem), 500);
 window.KS = { D: () => D, exportDaten, importiere, einkaufsPosten, bewerte, R, Z };
-route();
+/* Privates Profil per Link-Fragment (#/profil-import/…), z. B. aus einem privaten QR-Code am Laptop: Der Teil nach „#“ wird nicht an den Server
+   gesendet und sofort aus der Adresse entfernt. Danach erscheint die übliche Vorschau – übernommen wird erst nach „Ja“. */
+function profilImportAusAdresse() {
+  const h = location.hash; if (!h.startsWith('#/profil-import/')) return false; const code = h.slice('#/profil-import/'.length);
+  try { history.replaceState(null, '', location.pathname + location.search + '#/mehr'); } catch (e) { location.hash = '#/mehr'; }
+  (async () => { try { if (!('DecompressionStream' in window)) throw new Error('Dieser Browser kann den Code nicht entpacken (iPhone ab iOS 16.4)');
+    const b = code.replace(/-/g, '+').replace(/_/g, '/'); const bin = Uint8Array.from(atob(b + '==='.slice((b.length + 3) % 4)), c => c.charCodeAt(0));
+    const obj = JSON.parse(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text());
+    if (!obj || obj.art !== 'kochschule-privat-import') throw new Error('kein Profil-Code'); route(); setTimeout(() => importAnwenden(obj), 200);
+  } catch (e) { route(); setTimeout(() => toast('Profil-Code nicht lesbar: ' + e.message), 300); } })();
+  return true;
+}
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#/profil-import/')) profilImportAusAdresse(); });
+if (!profilImportAusAdresse()) route();
+// Sobald persönliche Daten vorhanden sind, einmalig dauerhaften Speicher anfragen (der Browser entscheidet; kein Versprechen)
+try { if (!istNeu && navigator.storage && navigator.storage.persisted && navigator.storage.persist) navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist().catch(() => {}); }).catch(() => {}); } catch (e) { /* */ }
 requestAnimationFrame(() => setTimeout(logoIntro, 60));

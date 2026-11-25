@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611211653 */
+/* Fitomat-Build 202611251834 */
 /* Kochschule – Modul „Ernährung & Profil“ (ab v2.0)
    Profile auf einem Gerät, Ersteinrichtung, nachvollziehbare Ziele, Tagebuch, eigene Lebensmittel, Bilder.
    Wird VOR app.js geladen; nutzt deren Funktionen (D, aendere, esc, md …) erst zur Laufzeit. Keine Server, keine KI. */
@@ -65,7 +65,8 @@ const PAL_ALLTAG = { sitzend: [1.4, 'überwiegend sitzend (Büro), sonst wenig B
 const TRAINING = { keins: [0, 'kein regelmäßiger Sport'], wenig: [0.15, '1–3 Einheiten pro Woche (30–60 Min.)'], regelmaessig: [0.3, '4–5 Einheiten pro Woche (30–60 Min.)'], viel: [null, 'mehr als 5 Einheiten oder Leistungssport'] };
 const ZIELE = { aufbau: ['Muskelaufbau', 0.10], halten: ['Gewicht halten', 0], abbau: ['Fettabbau', -0.10], keins: ['Nur kochen, kein Ziel', null] };
 const rund = (x, s) => Math.round(x / s) * s;
-function zielBerechnung(p = D.einstellungen.person || {}) {
+function zielBerechnung(p0 = D.einstellungen.person || {}) {
+  const gw = gewichtAktuell(p0); const p = gw.kg ? Object.assign({}, p0, { gewicht: gw.kg }) : p0;
   const grund = [];
   if (!p.ziel || p.ziel === 'keins') grund.push('kein Ernährungsziel gewählt');
   if (!p.alter) grund.push('Alter fehlt (die DGE-Formel braucht es).'); else if (!(p.alter >= 19)) grund.push('Die automatische Formel gilt nur für Erwachsene ab 19 Jahren.');
@@ -115,7 +116,8 @@ function zielBerechnung(p = D.einstellungen.person || {}) {
     'Ballaststoffe: mindestens 30 g (DGE-Richtwert für Erwachsene).',
     ...(bmiWert && bmiWert >= 30 ? ['Grenze: Bei deutlichem Übergewicht (BMI ≥ 30) schätzen Formeln für den Energiebedarf erfahrungsgemäß ungenauer; der Verlauf des Körpergewichts über einige Wochen ist der bessere Maßstab. Ärztliche oder ernährungsfachliche Begleitung ist sinnvoll (Hinweis, ungeprüft).'] : [])
   ];
-  return { ok: true, ree, pal, gesamt, alltagKcal, trKcal, kcal, protein, fett, kh, ballaststoffe: 30, khAnteil, schritte, tr };
+  schritte.unshift(`Gewicht: ${zahlDE(p.gewicht, 1)} kg (${gw.quelle || 'Profilangabe'}).`);
+  return { ok: true, ree, pal, gesamt, alltagKcal, trKcal, kcal, protein, fett, kh, ballaststoffe: 30, khAnteil, schritte, tr, gewicht: p.gewicht, gewichtQuelle: gw.quelle };
 }
 /* Trainingsangaben; ältere Profile (nur Stufe „wenig/regelmäßig“) werden mit Annahmen übersetzt und als solche gekennzeichnet */
 function trainingAngaben(p) {
@@ -125,12 +127,25 @@ function trainingAngaben(p) {
   return { art: p.kraft ? 'kraft' : 'unklar', n: t === 'wenig' ? 2 : 4.5, min: 60, alt: true };
 }
 /* Wirksame Ziele: berechnet, manuell oder keine */
+/* 2.28: Berechnete Ziele werden beim Übernehmen festgehalten (Erhaltung, Alltag, Training, Ziel, Makros, Gewicht, Datum).
+   Ändern sich Gewicht, Angaben oder Formel, zeigt „Ziele“ eine Vorschau – überschrieben wird nur nach Bestätigung. */
+function zielSchnappschuss(b) { return { datum: heute(), kcal: b.kcal, protein: b.protein, fett: b.fett, kh: b.kh, ballaststoffe: b.ballaststoffe, erhaltung: Math.round(b.gesamt), alltag: Math.round(b.alltagKcal), training: Math.round(b.trKcal), ruhe: Math.round(b.ree), gewicht: b.gewicht, gewicht_quelle: b.gewichtQuelle }; }
 function aktuelleZiele() {
   const z = D.einstellungen.ziele || {};
   if (z.modus === 'manuell') { const m = z.manuell || {}; return Object.values(m).some(v => v != null && v !== '') ? Object.assign({ herkunft: 'manuell' }, m) : null; }
-  if (z.modus === 'auto') { const b = zielBerechnung(); return b.ok ? { herkunft: 'berechnet', kcal: b.kcal, protein: b.protein, fett: b.fett, kh: b.kh, ballaststoffe: b.ballaststoffe } : null; }
+  if (z.modus === 'auto' && !z.festgelegt) { const b0 = zielBerechnung(); if (b0.ok) z.festgelegt = zielSchnappschuss(b0); }   // bisherige automatische Ziele einmalig festhalten
+  if (z.modus === 'auto') { if (z.festgelegt && z.festgelegt.kcal) { const f = z.festgelegt; return { herkunft: 'berechnet', kcal: f.kcal, protein: f.protein, fett: f.fett, kh: f.kh, ballaststoffe: f.ballaststoffe, stand: f.datum }; }
+    const b = zielBerechnung(); return b.ok ? { herkunft: 'berechnet', kcal: b.kcal, protein: b.protein, fett: b.fett, kh: b.kh, ballaststoffe: b.ballaststoffe } : null; }
   return null;
 }
+// Abweichung der heutigen Berechnung vom übernommenen Stand (für die Vorschau)
+function zielAbweichung() { const z = D.einstellungen.ziele || {}; if (z.modus !== 'auto' || !z.festgelegt) return null; const b = zielBerechnung(); if (!b.ok) return null; const f = z.festgelegt;
+  if (f.verworfen_kcal === b.kcal) return null;   // genau diese neue Berechnung wurde schon abgelehnt
+  return Math.abs(b.kcal - f.kcal) >= 50 || Math.abs(b.protein - f.protein) >= 5 ? { b, f } : null; }
+// Gewicht für Berechnungen: neuester ausdrücklich erfasster Wert (Training › Körpergewicht) vor der früheren Profilangabe
+function gewichtAktuell(p) { const kg = arr((D.training || {}).koerpergewicht).filter(x => Number(x.kg) > 30).sort((a, b) => b.datum.localeCompare(a.datum))[0];
+  if (kg && (!p.gewicht_datum || kg.datum >= p.gewicht_datum)) return { kg: Number(kg.kg), quelle: `zuletzt erfasst am ${datumDE(kg.datum)}` };
+  return p.gewicht ? { kg: Number(p.gewicht), quelle: p.gewicht_hinweis || 'Profilangabe' } : { kg: null, quelle: '' }; }
 
 /* ---------- Bilder: Foto mit Nachweis oder gestaltete Alternative ---------- */
 function kurztitel(t) { return String(t).split(/ – | mit | und | aus /)[0]; }
@@ -235,6 +250,11 @@ function vZiele() {
     <label><input type="radio" name="modus" value="keine" ${(!z.modus || z.modus === 'keine') ? 'checked' : ''}><span>Keine Ziele<small>nur protokollieren</small></span></label></div>
   <p class="klein"><b>Gerade wirksam:</b> ${wirk ? `${wirk.herkunft === 'manuell' ? 'selbst festgelegtes Ziel' : 'berechnete Schätzung'} – ${wirk.kcal != null && wirk.kcal !== '' ? zahlDE(wirk.kcal) + ' kcal' : 'ohne kcal-Ziel'}` : 'keine Ziele'}. Unten getrennt: berechnete Schätzung, selbst festgelegtes Ziel und Schätzung aus deinem Verlauf – keiner überschreibt einen anderen automatisch.</p>
   ${trainingRueckfrageHtml(false)}
+  ${(() => { const f = (z.modus === 'auto' && z.festgelegt) || null; if (!f) return ''; const ab = zielAbweichung();
+    return `<div class="flaeche"><p class="klein" style="margin:0 0 6px"><b>Übernommen am ${esc(datumDE(f.datum))}</b> (bei ${esc(zahlDE(f.gewicht, 1))} kg)</p>
+      <div class="naehr"><div><b>${zahlDE(f.erhaltung)}</b><span>kcal Erhaltung (geschätzt)</span></div><div><b>${zahlDE(f.alltag)} + ${zahlDE(f.training)}</b><span>Alltag + Training</span></div><div><b>${zahlDE(f.kcal)}</b><span>kcal Ziel</span></div></div>
+      ${ab ? `<div class="hinweis warn klein" style="margin-top:10px"><b>Neue Berechnung:</b> ${zahlDE(ab.b.kcal)} kcal statt ${zahlDE(ab.f.kcal)} kcal, Protein ${ab.b.protein} statt ${ab.f.protein} g${ab.b.gewicht !== ab.f.gewicht ? ` – Gewicht jetzt ${zahlDE(ab.b.gewicht, 1)} kg (${esc(ab.b.gewichtQuelle || '')}) statt ${zahlDE(ab.f.gewicht, 1)} kg` : ' – geänderte Angaben oder Rechenweg'}. Erhaltung ${zahlDE(Math.round(ab.b.gesamt))} statt ${zahlDE(ab.f.erhaltung)} kcal.
+        <div class="knopfreihe"><button class="haupt klein" data-a="ziel-neu-ok">Neue Werte übernehmen</button><button class="klein" data-a="ziel-neu-nein">Bisherige behalten</button></div></div>` : '<p class="leise klein" style="margin:6px 0 0">Die heutige Berechnung stimmt damit überein. Ändern sich Gewicht oder Angaben, erscheint hier eine Vorschau – nichts wird still überschrieben.</p>'}</div>`; })()}
   <h2>1. Berechnete Schätzung</h2>
   ${eingabenHtml(p, b)}
   ${b.ok ? `<div class="flaeche"><div class="naehr"><div><b>${b.kcal.toLocaleString('de-DE')}</b><span>kcal</span></div><div><b>${b.protein}</b><span>g Protein</span></div><div><b>${b.kh}</b><span>g Kohlenh.</span></div><div><b>${b.fett}</b><span>g Fett</span></div></div>
@@ -254,7 +274,12 @@ vZiele.danach = () => { const f = $('#ziel-form'); if (!f) return; f.addEventLis
     // Vorherigen Stand im Zielverlauf aufbewahren (nachvollziehbar, wiederherstellbar)
     e.ziele_verlauf = [...arr(e.ziele_verlauf), { zeit: new Date().toISOString(), ziele: JSON.parse(JSON.stringify(e.ziele || {})), defizit: (e.person || {}).defizit ?? null, defizit_kcal: (e.person || {}).defizit_kcal ?? null }].slice(-10);
     e.ziele = { modus: fd.get('modus') || 'keine', manuell: { kcal: n('m_kcal'), protein: n('m_protein'), kh: n('m_kh'), fett: n('m_fett'), ballaststoffe: n('m_ballaststoffe') }, quelle: fd.get('m_quelle') || '', geaendert_am: heute() };
-    const df = fd.get('defizit'); if (df) { const pp = Object.assign({}, e.person); if (df.startsWith('k')) { pp.defizit_kcal = Number(df.slice(1)); } else { pp.defizit = Number(df); delete pp.defizit_kcal; } e.person = pp; } }, { mitUndo: true }); }); };
+    const df = fd.get('defizit'); if (df) { const pp = Object.assign({}, e.person); if (df.startsWith('k')) { pp.defizit_kcal = Number(df.slice(1)); } else { pp.defizit = Number(df); delete pp.defizit_kcal; } e.person = pp; }
+    // Speichern mit „Berechnen“ = die heutige Berechnung bewusst übernehmen
+    if (e.ziele.modus === 'auto') { const b = zielBerechnung(e.person || {}); if (b.ok) e.ziele.festgelegt = zielSchnappschuss(b); } }, { mitUndo: true }); }); };
+document.addEventListener('click', ev => { const b = ev.target.closest('[data-a="ziel-neu-ok"], [data-a="ziel-neu-nein"]'); if (!b) return;
+  if (b.dataset.a === 'ziel-neu-ok') aendere('Neue Zielwerte übernommen – Rückgängig möglich', d => { const e = d.einstellungen; const bb = zielBerechnung(); if (!bb.ok) return; e.ziele_verlauf = [...arr(e.ziele_verlauf), { zeit: new Date().toISOString(), ziele: JSON.parse(JSON.stringify(e.ziele || {})) }].slice(-10); e.ziele.festgelegt = zielSchnappschuss(bb); });
+  else aendere('Bisherige Ziele bleiben – die Vorschau erscheint wieder, wenn sich etwas ändert', d => { const z = d.einstellungen.ziele; const bb = zielBerechnung(); if (bb.ok) z.festgelegt = Object.assign({}, z.festgelegt, { verworfen_kcal: bb.kcal }); }); });
 /* Ältere Profile ohne Trainingsart (vor 2.19.0 still als Ausdauer gerechnet): sichtbar nachfragen, nichts ohne Bestätigung ändern */
 function trainingRueckfrageHtml(kurz) {
   const e = D.einstellungen || {}; const p = e.person || {}; if ((e.ziele || {}).modus !== 'auto') return '';
@@ -307,8 +332,15 @@ function vProfile() {
   <ul class="eintraege">${l.map(p => `<li><span><b>${esc(p.name)}</b>${p.id === akt ? ' <span class="chip gut">aktiv</span>' : ''}</span><span>${p.id === akt ? '' : `<button class="klein" data-a="profil-wechseln" data-v="${esc(p.id)}">Wechseln</button>`}</span>
     <span class="unter"><button class="still klein" data-a="profil-umbenennen" data-v="${esc(p.id)}">Umbenennen</button></span></li>`).join('')}</ul>
   <form id="profil-neu" class="zeile" style="margin-top:12px"><label class="feld" style="flex:1 1 200px"><span>Neues Profil (z. B. für eine Freundin)</span><input name="name" required maxlength="30"></label><button class="haupt" type="submit">${ico('plus', 'klein')} Anlegen</button></form>
-  ${PROFIL && !l.some(p => p.id === PROFIL) ? `<p class="leise klein">Du nutzt gerade ein Profil aus der Adresse (?profil=${esc(PROFIL)}), z. B. zum Testen.</p>` : ''}`;
+  ${PROFIL && !l.some(p => p.id === PROFIL) ? `<p class="leise klein">Du nutzt gerade ein Profil aus der Adresse (?profil=${esc(PROFIL)}), z. B. zum Testen.</p>` : ''}
+  ${l.filter(p => p.id && p.id !== akt).length ? `<details class="karte klein"><summary><b>Profil entfernen</b></summary><p class="leise">Löscht die Daten dieses Profils auf diesem Gerät endgültig (nicht rückgängig). Vorher ggf. unter „Daten sichern“ exportieren – dazu das Profil kurz aktivieren.</p>${l.filter(p => p.id && p.id !== akt).map(p => `<button class="klein" data-a="profil-entfernen" data-v="${esc(p.id)}">„${esc(p.name)}“ entfernen</button>`).join(' ')}</details>` : ''}
+  <p class="leise klein">Wer den öffentlichen Link zum ersten Mal öffnet, beginnt mit einer eigenen, leeren Einrichtung – deine Angaben liegen nur auf deinem Gerät und sind nicht Teil der App.</p>`;
 }
+// Profil entfernen: nur ein nicht aktives Zusatzprofil; Hauptprofil nie. Endgültig – deshalb ausdrückliche Rückfrage.
+document.addEventListener('click', ev => { const b = ev.target.closest('[data-a="profil-entfernen"]'); if (!b) return; const id = b.dataset.v; const p = profilListe().find(x => x.id === id); if (!p || !id || id === PROFIL) return;
+  if (!bestaetigt(`Profil „${p.name}“ mit allen Daten auf diesem Gerät endgültig löschen? Das kann nicht rückgängig gemacht werden.`, { jaText: 'Endgültig löschen' })) return;
+  try { const basis = 'kochschule.daten.v1.' + id; [basis, basis + '.zwischenstaende', 'kochschule.timer.v1.' + id, 'kochschule.filter.v1.' + id].forEach(k => localStorage.removeItem(k)); localStorage.setItem(PROFILE_SPEICHER, JSON.stringify(profilListe().filter(x => x.id !== id))); } catch (e) { toast('Entfernen nicht möglich'); return; }
+  toast(`Profil „${p.name}“ entfernt`); route(); });
 vProfile.danach = () => { const f = $('#profil-neu'); if (!f) return; f.addEventListener('submit', ev => { ev.preventDefault();
   const name = f.name.value.trim(); if (!name) return; const l = profilListe(); const id = 'p-' + Date.now().toString(36);
   l.push({ id, name }); try { localStorage.setItem(PROFILE_SPEICHER, JSON.stringify(l)); localStorage.setItem(AKTIV_SPEICHER, id); } catch (e) { toast('Speichern nicht möglich'); return; }
@@ -405,6 +437,9 @@ function mengenWahlHtml(id, typ, p) {
   if (Number(p.packung) > 0) { opt.push([`Packung (${packText})`, p.packung]); opt.push([`½ Packung`, Math.round(p.packung / 2)]); }
   if (Number(p.abtropf) > 0) opt.push([`abgetropft (${zahlDE(p.abtropf)} g)`, p.abtropf]);
   arr(p.portionen).forEach(x => opt.push([`${x.name} (${zahlDE(x.menge)} ${einh})`, x.menge]));
+  // 2.28: zuletzt gebuchte Menge desselben Lebensmittels/Produkts als erste Auswahl
+  const roh = String(id).replace(/^(lm|prod|eig|off|std)-/, ''); const letzt = [...arr(D.tagebuch)].reverse().find(e => Number(e.gramm) > 0 && [e.zutat, e.produkt, e.produkt_id, e.code, e.lebensmittel].some(x => x && (x === id || x === roh)));
+  if (letzt && !opt.some(o => Number(o[1]) === Number(letzt.gramm))) opt.unshift([`zuletzt (${zahlDE(letzt.gramm)} ${einh})`, letzt.gramm]);
   return opt.length ? `<span class="mengen-wahl">${opt.map(([n, m]) => `<button type="button" class="klein still" data-a="tb-menge-setzen" data-v="${esc(id)}" data-m="${m}">${esc(n)}</button>`).join('')}</span>` : '';
 }
 /* Wie sicher passen die Werte zu genau dieser Variante (Geschmack, Fettstufe, Packung)? */

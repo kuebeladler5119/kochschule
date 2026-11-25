@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611211653 */
+/* Fitomat-Build 202611251834 */
 /* Kochschule – Küchen, kombinierbare Filter und Mengen-Anpassung.
    Wird nach ernaehrung.js und vor app.js geladen; nutzt deren globale Funktionen erst zur Laufzeit.
    Datenmodell: Vault-Notiz „70 App/Küchen, Filter und Mengen-Anpassung – Datenmodell“. */
@@ -33,9 +33,11 @@ const EIGENSCHAFTEN = [
   ['fitness', 'fitnessgeeignet', (r, i) => i.kat.includes('fitness')],
   ['lernen', 'Neues lernen', (r, i) => i.kat.includes('lerngericht')],
   ['anspruchsvoll', 'anspruchsvoll', (r, i) => i.kat.includes('restaurant') || (i.schwierigkeit || 0) >= 3],
-  ['eine-pfanne', 'eine Pfanne', r => rezeptGefaesse(r).join() === 'pfanne'],
-  ['ein-topf', 'ein Topf', r => rezeptGefaesse(r).join() === 'topf'],
-  ['ein-blech', 'ein Blech', r => rezeptGefaesse(r).join() === 'backblech'],
+  // 2.28: aus dem geprüften Rezeptfeld `zubereitung` statt aus einer Gerätelisten-Schätzung (Beilage separat steht im Rezept)
+  ['ein-topf', 'One-Pot (ein Topf)', r => arr(r.meta.zubereitung).includes('one_pot')],
+  ['eine-pfanne', 'One-Pan (eine Pfanne)', r => arr(r.meta.zubereitung).includes('one_pan')],
+  ['ein-blech', 'Blechgericht', r => arr(r.meta.zubereitung).includes('blech')],
+  ['reiskocher', 'Reiskocher-Gericht', r => arr(r.meta.zubereitung).includes('reiskocher')],
   ['wenig-abwasch', 'wenig Abwasch', r => rezeptGefaesse(r).length <= 1 && arr(r.meta.geraete_noetig).length <= 5],
   ['wenige-zutaten', 'wenige Zutaten', r => r.zutaten.filter(z => z.bedarf !== 'grundvorrat' && z.bedarf !== 'optional').length <= 7],
   ['mehrere-portionen', 'gut für mehrere Portionen', r => Number(r.meta.portionen) >= 4 && r.meta.vorkochen_kuehlschrank === 'ja'],
@@ -72,7 +74,9 @@ const suchNorm = s => String(s || '').toLowerCase().replace(/ı/g, 'i').replace(
 const suchIndex = new Map();
 function rezeptSuchtext(r) {
   if (suchIndex.has(r.id)) return suchIndex.get(r.id);
-  const m = r.meta; const teile = [r.titel, BEREICH_NAME[m.bereich], ...arr(m.bereiche).map(b => BEREICH_NAME[b]), ...rezeptKuechen(r).map(k => KUECHE_NAME[k]), m.kueche, ...arr(m.kategorien), ...arr(m.techniken)];
+  const m = r.meta; const teile = [r.titel, BEREICH_NAME[m.bereich], ...arr(m.bereiche).map(b => BEREICH_NAME[b]), ...rezeptKuechen(r).map(k => KUECHE_NAME[k]), m.kueche, ...arr(m.kategorien), ...arr(m.techniken),
+    // Zubereitungsart als eindeutige Suchwörter (siehe sucheVorbereiten); Reis nur als Beilage im Reiskocher bewusst NICHT als „reiskocher“
+    ...arr(m.zubereitung).map(z => ({ one_pot: 'onepot', one_pan: 'onepan', blech: 'blechgericht', reiskocher: 'reiskocher' }[z] || ''))];
   r.zutaten.forEach(z => { teile.push(z.text); const zz = z.zutat && Z[z.zutat]; if (zz) teile.push(zz.name, ...arr(zz.aliases)); });
   const t = suchNorm(teile.filter(Boolean).join(' | ')); suchIndex.set(r.id, t); return t;
 }
@@ -88,12 +92,15 @@ const SUCH_SYNONYME = [['honey', 'honig'], ['chicken', 'hahnchen', 'huhn', 'huhn
   ['spicy', 'scharf'], ['sweet', 'suss'], ['sour', 'sauer'], ['quick', 'schnell'], ['easy', 'einfach'], ['breakfast', 'fruhstuck'], ['dessert', 'nachtisch', 'nachspeise'], ['protein', 'eiweiss'], ['meal prep', 'mealprep', 'vorkochen']];
 const SYN_MAP = new Map(); SUCH_SYNONYME.forEach(g => g.forEach(w => { if (!w.includes(' ')) SYN_MAP.set(w, g.filter(x => !x.includes(' '))); }));
 const suchVarianten = w => SYN_MAP.get(w) || [w];
-function suchePasst(r, q) { const w = suchNorm(q).split(/\s+/).filter(Boolean); if (!w.length) return true; const t = rezeptSuchtext(r); return w.every(x => suchVarianten(x).some(v => t.includes(v))); }
+/* Schreibweisen der Zubereitungsarten zusammenführen: „One Pot“, „One-Pot“, „onepot“, „ein Topf“, „in einem Topf“ → onepot usw.
+   Bewusst NICHT „Eintopf“ (eine Gerichtsart) – das bleibt ein normales Suchwort. */
+function sucheVorbereiten(q) { return suchNorm(q).replace(/\bone[\s-]*pot\b|\b(?:in\s+)?(?:einem|ein)\s+topf\b/g, ' onepot ').replace(/\bone[\s-]*pan\b|\b(?:in\s+)?(?:einer|eine)\s+pfanne\b/g, ' onepan ').replace(/\bsheet[\s-]*pan\b|\btray[\s-]*bake\b|\bblech(?:gerichte?|essen)?\b|\bvom\s+blech\b/g, ' blechgericht ').replace(/\brice[\s-]*cooker\b|\breiskocher(?:[\s-]*gerichte?|[\s-]*rezepte?)?\b/g, ' reiskocher ').replace(/\s+/g, ' ').trim(); }
+function suchePasst(r, q) { const w = sucheVorbereiten(q).split(/\s+/).filter(Boolean); if (!w.length) return true; const t = rezeptSuchtext(r); return w.every(x => suchVarianten(x).some(v => t.includes(v))); }
 const titelTreffer = (r, q) => suchNorm(r.titel).includes(suchNorm(q).trim());
 /* Rangfolge: Titel vor ganzem Wort (z. B. Zutat „Huhn“) vor Wortanfang vor Wortteil (z. B. „Hühnerei“) */
 function suchRang(r, q) {
   const t = rezeptSuchtext(r), ti = suchNorm(r.titel);
-  return suchNorm(q).split(/\s+/).filter(Boolean).reduce((s, w0) => s + Math.max(...suchVarianten(w0).map(w => {
+  return sucheVorbereiten(q).split(/\s+/).filter(Boolean).reduce((s, w0) => s + Math.max(...suchVarianten(w0).map(w => {
     const wort = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)'), anfang = new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     return ti.includes(w) ? 8 : wort.test(t) ? 4 : anfang.test(t) ? 2 : t.includes(w) ? 1 : 0;
   })), 0);
@@ -202,7 +209,9 @@ const SAMMLUNGEN = [
   ['vorkochen', 'Gut vorzukochen', { richtung: ['vorkochen'] }],
   ['guenstig', 'Günstig (Schätzung)', { richtung: ['guenstig'] }],
   ['anspruchsvoll', 'Anspruchsvoller kochen', { richtung: ['anspruchsvoll'] }],
-  ['vegetarisch', 'Vegetarisch', { richtung: ['vegetarisch'] }]
+  ['vegetarisch', 'Vegetarisch', { richtung: ['vegetarisch'] }],
+  ['one-pot', 'One-Pot', { richtung: ['ein-topf'] }],
+  ['reiskocher', 'Aus dem Reiskocher', { richtung: ['reiskocher'] }]
 ];
 const SCHNELLFILTER = ['schnell', 'proteinreich', 'vegetarisch', 'vorkochen'];
 function aktiveFilter(f) {

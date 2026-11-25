@@ -1,4 +1,4 @@
-/* Fitomat-Build 202611211653 */
+/* Fitomat-Build 202611251834 */
 /* Fitomat – Trainingsprotokoll (eigenständig, lokal, ohne Gewichtsautomatik).
    Daten in D.training: uebungen (eigene), routinen, einheiten, aktiv, koerpergewicht.
    Übungsbibliothek aus dem Katalog (K.uebungen), sobald vorhanden. */
@@ -8,6 +8,13 @@ function trDaten() {
   const t = D.training; if (!t.plaene) t.plaene = []; if (!t.einstellungen) t.einstellungen = { auto_pause: true, ton: true };
   // Einmalig (2.27): ältere einseitige Sätze ohne getrennte Seiten kennzeichnen – keine Seite wird nachträglich „bestätigt“
   if (!t.seiten_v) { arr(t.einheiten).forEach(e => arr(e.uebungen).forEach(u => { if (u.je_seite) arr(u.saetze).forEach(s => { if (s.erledigt && !s.seiten && s.art === 'arbeit') s.seiten_gemeinsam = true; }); })); t.seiten_v = 1; }
+  // Einmalig (2.28): „je Seite“, das nur aus einem Alias-Namen stammte (z. B. Körpergewichts-Kniebeuge wegen „Chair Pistol Squat“), in Routinen
+  // und noch nicht begonnenen Übungen der laufenden Einheit zurücknehmen. Abgeschlossene Einheiten bleiben unverändert.
+  if (t.seiten_v < 2 && (K.uebungen || []).length) { const alt = u => /einarmig|einbeinig|einseitig|ausfallschritt|step-up|pistol|seitstütz|kickback|konzentrationscurl|split squat/i.test(String(u.name) + ' ' + arr(u.alias).join(' '));
+    const falsch = x => { const u = (K.uebungen || []).find(y => y.id === x.uebung); return u && x.je_seite && alt(u) && !istEinseitig(u, x.variante); }; const geaendert = new Set();
+    arr(t.routinen).forEach(r => arr(r.uebungen).forEach(x => { if (falsch(x)) { delete x.je_seite; geaendert.add(ueb(x.uebung).name); } }));
+    const akt = t.aktiv && arr(t.einheiten).find(e => e.id === t.aktiv); if (akt) arr(akt.uebungen).forEach(x => { if (falsch(x) && !arr(x.saetze).some(s => s.erledigt)) { delete x.je_seite; geaendert.add(ueb(x.uebung).name); } });
+    if (geaendert.size) t.hinweis_seitenlogik = [...geaendert]; t.seiten_v = 2; }
   return t;
 }
 /* ---------- Pläne: mehrere Einheiten (Routinen), optional mit Wochentag, oder flexibel „nächste Einheit“ ---------- */
@@ -126,35 +133,36 @@ function vTraining(teil, id) {
   const ap = t.plaene.find(p => p.aktiv) || null;
   const rn = rid => (t.routinen.find(r => r.id === rid) || { name: 'Einheit fehlt' }).name;
   const naechste = ap ? planNaechste(ap) : null; const heutig = ap ? ap.einheiten.findIndex(x => x.tag === heuteTag()) : -1;
-  const startKnopf = (i, haupt) => { const pe = ap.einheiten[i]; return `<button class="${haupt ? 'haupt ' : ''}klein" data-a="tr-start" data-v="${esc(pe.routine)}" data-plan="${esc(ap.id)}" data-pe="${i}" ${akt ? 'disabled' : ''}>Starten</button>`; };
-  return `<div class="seitenkopf"><h1>Training</h1><a class="knopf klein" href="#/training/uebungen">Übungen</a></div>
+  const startKnopf = (i, haupt) => { const pe = ap.einheiten[i]; return `<button class="${haupt ? 'haupt' : ''}" data-a="tr-start" data-v="${esc(pe.routine)}" data-plan="${esc(ap.id)}" data-pe="${i}" ${akt ? 'disabled' : ''} aria-label="${esc(rn(pe.routine))} starten">${haupt ? 'Training starten' : '▶'}</button>`; };
+  // 2.28: eine Hauptkarte „Heute“ mit der einen wichtigsten Aktion; Plan als ruhige Liste; keine doppelten Start-Listen
+  const fokus = !akt && ap ? (heutig >= 0 ? heutig : naechste) : null; const fr = fokus != null ? t.routinen.find(r => r.id === ap.einheiten[fokus].routine) : null;
+  const letzteVon = rid => t.einheiten.filter(e => e.ende && e.routine === rid).sort((a, b) => b.start.localeCompare(a.start))[0];
+  const heuteKarte = akt ? (() => { const ar = akt.uebungen.flatMap(u => u.saetze.filter(s => s.art === 'arbeit')); return `<section class="tr-heute"><p class="leise klein" style="margin:0">Training läuft seit ${esc(new Date(akt.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))}</p><p class="titel">${esc(akt.name)}</p><p class="meta">${ar.filter(s => s.erledigt).length} von ${ar.length} Arbeitssätzen bestätigt</p><div class="knopfreihe"><a class="knopf haupt" href="#/training/${akt.fuehrung ? 'fuehrung' : 'einheit'}">Fortsetzen</a></div></section>`; })()
+    : fr ? `<section class="tr-heute"><p class="leise klein" style="margin:0">${fokus === heutig ? 'Heute laut Plan' : 'Als Nächstes im Plan'}</p><p class="titel">${esc(fr.name)}</p><p class="meta">${fr.uebungen.length} Übungen · ${esc(routineDauerText(fr))}${(() => { const l = letzteVon(fr.id); return l ? ' · zuletzt ' + esc(datumDE(l.start.slice(0, 10))) : ''; })()}</p><div class="knopfreihe">${startKnopf(fokus, true)}<a class="knopf" href="#/training/routine/${esc(fr.id)}">Übungen</a></div></section>`
+    : `<section class="tr-heute"><p class="titel">${ap ? 'Plan ohne Einheiten' : 'Noch kein Plan aktiv'}</p><p class="meta">Ein Plan fasst deine Einheiten zusammen – mit Wochentagen oder flexibel in Reihenfolge.</p><div class="knopfreihe"><a class="knopf haupt" href="#/training/plaene">Plan übernehmen oder anlegen</a><button data-a="tr-start" data-v="">Freie Einheit</button></div></section>`;
+  const inPlan = new Set(ap ? ap.einheiten.map(pe => pe.routine) : []); const andere = t.routinen.filter(r => !inPlan.has(r.id)); const weitere = t.plaene.filter(p => !p.aktiv && !p.archiviert);
+  const planArt = p => p.art === 'historisch' ? 'Original (historische Vorlage)' : /variante/i.test(p.name) ? 'Variante' : (PLAN_ART[p.art] || '');
+  return `<div class="seitenkopf"><h1>Training</h1></div>
+  ${t.hinweis_seitenlogik ? `<div class="hinweis klein"><b>Seitenlogik korrigiert:</b> ${esc(t.hinweis_seitenlogik.join(', '))} werden in deinen Routinen wieder beidseitig erfasst (das „je Seite“ stammte aus dem Namen einer einseitigen Variante). Bereits gespeicherte Einheiten sind unverändert. <button class="klein still" data-a="tr-hinweis-ok">Verstanden</button></div>` : ''}
+  ${heuteKarte}
   ${trWochenKachelnHtml(t, kg)}
-  ${akt ? `<div class="hinweis"><b>Einheit läuft</b> seit ${esc(new Date(akt.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))} · ${esc(akt.name)} <a class="knopf haupt klein" href="#/training/${akt.fuehrung ? 'fuehrung' : 'einheit'}">Fortsetzen</a></div>` : ''}
-  <h2>Plan</h2>
-  ${ap ? `<div class="karte"><div class="zeile" style="justify-content:space-between;align-items:baseline"><b><a href="#/training/plan/${esc(ap.id)}">${esc(ap.name)}</a></b><span class="leise klein">${esc(PLAN_ART[ap.art] || '')}</span></div>
-      ${heutig >= 0 ? `<p style="margin:.4em 0">Heute laut Wochentag: <b>${esc(rn(ap.einheiten[heutig].routine))}</b> ${startKnopf(heutig, true)}</p>` : ''}
-      ${naechste != null && naechste !== heutig ? `<p style="margin:.4em 0">Nächste in der Reihenfolge: <b>${esc(rn(ap.einheiten[naechste].routine))}</b> ${startKnopf(naechste, heutig < 0)}</p>` : ''}
-      <ul class="eintraege">${ap.einheiten.map((pe, i) => `<li><span>${pe.tag ? `<span class="chip">${esc((WOCHENTAGE.find(w => w[0] === pe.tag) || [])[1] || '')}</span> ` : ''}<a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}</a></span><span>${startKnopf(i, false)}</span></li>`).join('')}</ul>
-      <p class="leise klein">Verpasste Einheiten zählen nicht als erledigt – du startest einfach die passende als Nächstes.</p></div>`
-    : `<p class="leise">Kein Plan aktiv. Ein Plan fasst mehrere Einheiten zusammen – mit Wochentagen oder flexibel in Reihenfolge.</p>${t.plaene.some(p => p.art === 'historisch') ? '' : '<p><a class="knopf haupt" href="#/training/plaene">Eigenen Plan übernehmen (QR-Code oder Plan-Code)</a></p>'}`}
-  ${t.plaene.filter(p => !p.aktiv).length ? `<p class="klein">Weitere Pläne: ${t.plaene.filter(p => !p.aktiv).map(p => `<a href="#/training/plan/${esc(p.id)}">${esc(p.name)}</a>`).join(' · ')}</p>` : ''}
-  <div class="knopfreihe"><button data-a="tr-plan-neu">${ico('plus', 'klein')} Neuer Plan</button><a class="knopf still" href="#/training/einrichtung">Einrichtung und Planvorschläge</a><a class="knopf still" href="#/training/cardio">Cardio</a></div>
-  <details class="karte klein"><summary><b>Pausentimer und Vorschläge</b></summary>
+  ${ap ? `<div class="abschnitt-kopf"><h2>${esc(ap.name)}</h2><a href="#/training/plan/${esc(ap.id)}">Bearbeiten</a></div><p class="leise klein" style="margin:0 0 6px">${esc(planArt(ap))} · aktiv</p>
+    <ul class="plan-zeilen">${ap.einheiten.map((pe, i) => { const r = t.routinen.find(x => x.id === pe.routine); return `<li><span class="tag ${pe.tag && pe.tag === heuteTag() ? 'heute' : ''}">${pe.tag ? esc((WOCHENTAGE.find(w => w[0] === pe.tag) || [])[1] || '') : i + 1}</span><a href="#/training/routine/${esc(pe.routine)}">${esc(rn(pe.routine))}<span class="unter">${r ? `${r.uebungen.length} Übungen · ${esc(routineDauerText(r))}` : ''}</span></a>${startKnopf(i, false)}</li>`; }).join('')}</ul>
+    <p class="leise klein">Verpasste Einheiten zählen nicht als erledigt – starte einfach die passende als Nächstes.</p>` : ''}
+  ${weitere.length ? `<div class="abschnitt-kopf"><h2>Weitere Pläne</h2><a href="#/training/plaene">Alle Pläne</a></div><ul class="eintraege">${weitere.map(p => `<li><span><a href="#/training/plan/${esc(p.id)}"><b>${esc(p.name)}</b></a><br><span class="leise klein">${esc(planArt(p))} · ${p.einheiten.length} Einheiten</span></span><span><button class="klein" data-a="tr-plan-aktiv" data-v="${esc(p.id)}">Aktivieren</button></span></li>`).join('')}</ul>` : ''}
+  ${andere.length ? `<details class="karte"><summary><b>Weitere Routinen (${andere.length})</b></summary><ul class="eintraege">${andere.map(r => `<li><span><a href="#/training/routine/${esc(r.id)}"><b>${esc(r.name)}</b></a><br><span class="leise klein">${r.uebungen.length} Übungen · ${esc(routineDauerText(r))}</span></span><span><button class="klein" data-a="tr-start" data-v="${esc(r.id)}" ${akt ? 'disabled' : ''} aria-label="${esc(r.name)} starten">▶</button></span></li>`).join('')}</ul></details>` : ''}
+  <div class="knopfreihe"><button data-a="tr-routine-neu">${ico('plus', 'klein')} Neue Routine</button><button class="still" data-a="tr-start" data-v="" ${akt ? 'disabled' : ''}>Freie Einheit</button>${!t.routinen.length && (K.uebungen || []).length ? `<button class="still" data-a="tr-beispiele">Beispielroutinen</button>` : ''}</div>
+  <div class="abschnitt-kopf"><h2>Letzte Einheiten</h2><a href="#/training/verlauf">Verlauf</a></div>
+  ${fertig.length ? `<ul class="eintraege">${fertig.slice(0, 5).map(e => { const n = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => x.art === 'arbeit' && x.erledigt).length, 0); const beschw = e.uebungen.filter(u => u.beschwerde).length;
+    return `<li><span><a href="#/training/zusammenfassung/${esc(e.id)}"><b>${esc(e.name)}</b></a><br><span class="leise klein">${esc(datumDE(e.start.slice(0, 10)))} · ${n} Arbeitssätze · ${Math.round((new Date(e.ende) - new Date(e.start)) / 60000)} Min.${beschw ? ` · <span class="chip warn">Beschwerden notiert</span>` : ''}</span></span></li>`; }).join('')}</ul>` : '<p class="leise">Noch keine abgeschlossene Einheit.</p>'}
+  <p class="klein">Körpergewicht: ${kg ? `${esc(zahlDE(kg.kg, 1))} kg (${esc(datumDE(kg.datum))})` : 'noch nicht erfasst'} · <a href="#/training/gewicht">eintragen</a> <span class="leise">– getrennt von Trainingsgewichten gespeichert.</span></p>
+  <details class="karte klein"><summary><b>Einstellungen: Pausentimer und Vorschläge</b></summary>
     <label><input type="checkbox" data-tr-einst="auto_pause" ${t.einstellungen.auto_pause !== false ? 'checked' : ''}> Tabellenansicht: Pause nach jedem abgeschlossenen Arbeitssatz automatisch starten</label>
     <label><input type="checkbox" data-tr-einst="auto_weiter" ${t.einstellungen.auto_weiter !== false ? 'checked' : ''}> Geführt: nach Ablauf der Pause automatisch zur Ansicht des nächsten Satzes wechseln (sonst mit Bestätigung)</label>
     <label><input type="checkbox" data-tr-einst="vorschlag_vorausfuellen" ${t.einstellungen.vorschlag_vorausfuellen ? 'checked' : ''}> Geführt: Gewichtsvorschläge (Steigern/Senken) automatisch als Sollwert vorausfüllen – die tatsächliche Leistung bestätigst du weiterhin selbst</label>
     <label><input type="checkbox" data-tr-einst="ton" ${t.einstellungen.ton !== false ? 'checked' : ''}> Ton/Vibration am Ende (wenn das Gerät es unterstützt)</label>
-    <p class="leise klein">Die Restzeit wird aus dem Startzeitpunkt berechnet und stimmt auch nach einem App-Wechsel. Ein Signal bei geschlossener oder im Hintergrund laufender App ist auf dem iPhone <b>nicht zuverlässig</b> (nicht geprüft) – beim Zurückkehren steht die Pause richtig da. Der Timer ist eine Hilfe: Weitertrainieren erst, wenn du dich bereit fühlst.</p></details>
-  <h2>Routinen</h2>
-  ${t.routinen.length ? `<ul class="eintraege">${t.routinen.map(r => `<li><span><b><a href="#/training/routine/${esc(r.id)}">${esc(r.name)}</a></b><br><span class="leise klein">${r.uebungen.length} Übungen · ${esc(r.uebungen.map(x => ueb(x.uebung).name).slice(0, 4).join(', '))}${r.uebungen.length > 4 ? ' …' : ''}</span></span><span><button class="haupt klein" data-a="tr-start" data-v="${esc(r.id)}" ${akt ? 'disabled' : ''}>Starten</button></span></li>`).join('')}</ul>`
-    : `<div class="leer">${ico('leer')}Noch keine Routine.<br><span class="klein">Lege eine Routine mit deinen Übungen an – zum Beispiel aus deinem Trainingsplan.</span></div>`}
-  <div class="knopfreihe"><button data-a="tr-routine-neu">${ico('plus', 'klein')} Neue Routine</button>${(K.uebungen || []).length ? `<button class="still" data-a="tr-beispiele">Beispielroutinen übernehmen</button>` : ''}<button class="still" data-a="tr-start" data-v="" ${akt ? 'disabled' : ''}>Freie Einheit ohne Routine</button></div>
-  <h2>Letzte Einheiten</h2>
-  ${fertig.length ? `<ul class="eintraege">${fertig.map(e => { const n = e.uebungen.reduce((s, u) => s + u.saetze.filter(x => x.art === 'arbeit' && x.erledigt).length, 0); const beschw = e.uebungen.filter(u => u.beschwerde).length;
-    return `<li><span><b>${esc(e.name)}</b><br><span class="leise klein">${esc(datumDE(e.start.slice(0, 10)))} · ${n} Arbeitssätze · ${Math.round((new Date(e.ende) - new Date(e.start)) / 60000)} Min.${beschw ? ` · <span class="chip warn">Beschwerden notiert</span>` : ''}</span></span></li>`; }).join('')}</ul>` : '<p class="leise">Noch keine abgeschlossene Einheit.</p>'}
-  <h2>Körpergewicht</h2>
-  <p>${kg ? `Zuletzt ${esc(zahlDE(kg.kg, 1))} kg am ${esc(datumDE(kg.datum))}` : 'Noch nicht erfasst.'} · <a href="#/training/gewicht">Verlauf und Eintrag</a></p>
-  <p class="leise klein">Körpergewicht wird getrennt von Trainingsgewichten gespeichert. Gewichtsvorschläge je Übung entstehen aus deinen eigenen bestätigten Sätzen an derselben Übung und Variante (ab der zweiten vergleichbaren Einheit); historische Referenzgewichte sind nur Startwerte.</p>`;
+    <p class="leise klein">Die Restzeit wird aus dem Startzeitpunkt berechnet und stimmt auch nach einem App-Wechsel. Ein Signal bei geschlossener oder im Hintergrund laufender App ist auf dem iPhone nicht zuverlässig – beim Zurückkehren steht die Pause richtig da. Gewichtsvorschläge entstehen nur aus deinen eigenen bestätigten Sätzen an derselben Übung und Variante; historische Referenzgewichte sind nur Startwerte.</p>
+    <p class="klein"><a href="#/training/einrichtung">Einrichtung und Planvorschläge</a> · <a href="#/training/cardio">Cardio</a></p></details>`;
 }
 
 /* Wochenüberblick als Kacheln: nur abgeschlossene Einheiten und bestätigte Arbeitssätze zählen (keine offenen/übersprungenen) */
@@ -303,7 +311,7 @@ function zeitStart(id) { const zb = zeitBereich(id); return zb ? { von: zb.von, 
 // Neuer Routineneintrag mit passender Messart (Wiederholungen oder Sekunden aus der Bibliothek); einseitige Übungen je Seite
 function neuerEintrag(id, extra) {
   const u = ueb(id); const zb = zeitBereich(id); const zeit = ZEIT_UEBUNGEN.includes(id) || !!zb; const von = String(u.wdh_bereich_vorschlag || '').match(/(\d+)\D+(\d+)/); const zs = zeitStart(id);
-  return Object.assign({ uebung: id, aufwaerm: zeit ? 0 : 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zs.von, sek_bis: zs.bis, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, (u.einseitig === true || istEinseitig(u)) ? { je_seite: true } : {}, extra || {});
+  return Object.assign({ uebung: id, aufwaerm: zeit ? 0 : 1, saetze: 3 }, zeit ? { messung: 'zeit', sek_von: zs.von, sek_bis: zs.bis, wdh_von: null, wdh_bis: null } : { wdh_von: von ? Number(von[1]) : 8, wdh_bis: von ? Number(von[2]) : 12 }, { pause_s: 120 }, istEinseitig(u, extra && extra.variante) ? { je_seite: true } : {}, extra || {});
 }
 // Sekundenziel: eigene Angabe, sonst die Spanne aus der Bibliothek (z. B. „20–45 s“), sonst offen
 function sekZiel(x) { if (x.sek_von || x.sek_bis) return { von: x.sek_von, bis: x.sek_bis }; const z = zeitBereich(x.uebung); return z || { von: null, bis: null }; }
@@ -370,8 +378,12 @@ function tageVerteilen(verf, m) {
 function uebVerfuegbar(u, ger) {
   if (!arr(u.voraussetzung).every(req => vorausErfuellt(req, ger))) return false;   // notwendige Ausstattung (z. B. Stuhl für Bankdips)
   const roh = arr(u.geraet); const spezial = roh.filter(x => ['klimmzugstange', 'rack', 'maschine', 'kabel'].includes(x));
-  if (spezial.length) return spezial.some(x => x === 'rack' ? ger.includes('langhantel') : ger.includes(x));   // Spezialgeräte sind untereinander Alternativen
-  const frei = roh.filter(x => x !== 'bank'); return !frei.length || frei.includes('koerpergewicht') || frei.some(x => ger.includes(x));
+  const spezialOk = spezial.some(x => x === 'rack' ? ger.includes('langhantel') : ger.includes(x));
+  const frei = roh.filter(x => x !== 'bank' && !spezial.includes(x));
+  // 2.28: `geraet` sind Alternativen – Spezialgeräte sind nur Pflicht, wenn daneben keine freien Gewichte stehen (Langhantel braucht ihr Rack)
+  if (spezial.length && !frei.filter(x => x !== 'koerpergewicht').length) return spezialOk || (frei.includes('koerpergewicht') && !spezial.includes('klimmzugstange'));
+  if (roh.includes('langhantel') && roh.includes('rack')) return spezialOk || frei.filter(x => x !== 'langhantel').some(x => ger.includes(x));
+  return spezialOk || !frei.length || frei.includes('koerpergewicht') || frei.some(x => ger.includes(x));
 }
 function slotUebung(slot, ger, nein, schon, versatz, ohneTechnik) {
   const iso = { 'iso:arme': ['bizeps', 'trizeps'], 'iso:bizeps': ['bizeps'], 'iso:trizeps': ['trizeps'], 'iso:schultern': ['seitliche_schulter', 'hintere_schulter'], 'iso:hintere': ['hintere_schulter'], 'iso:gesaess': ['gesaess'], 'iso:beinbeuger': ['beinbeuger'] }[slot];
@@ -970,6 +982,8 @@ function mobStufenHtml(u, imLauf) {
     ${vs ? `<p class="${vs.richtung < 0 ? 'hinweis warn' : 'hinweis'} klein" style="margin:.4em 0 0">${esc(vs.text)}${vs.richtung ? ` <button class="klein" data-a="mob-stufe" data-u="${esc(u.id)}" data-v="${i + vs.richtung}">${esc(st[i + vs.richtung].name)} wählen</button>` : ''}</p>` : ''}
     ${imLauf ? '' : '<p class="leise" style="margin:.3em 0 0">Die Stufe gilt für alle Routinen mit dieser Übung. Sie steigt nie automatisch.</p>'}</section>`;
 }
+// Laufansicht: Belege nicht mitten im Schritt (sie stehen gesammelt in der Anleitung)
+const inlineOhneBeleg = s => inline(String(s).replace(/\s*\[\[(?:Quellenverzeichnis|Mobility – Grundlagen)#[^\]]+\]\]/g, ''));
 /* Geführter Ablauf: Übung für Übung, Zeitangaben aus der Routine; Timer nur als Hilfe */
 function mobLaufHtml() {
   const mobLauf = mobDaten().lauf; const r = mobLauf && mobRoutine(mobLauf.id);
@@ -981,7 +995,7 @@ function mobLaufHtml() {
   <div class="seitenkopf"><h1>${esc(u.name)}</h1>${anleitungsKnopf('mob', u.id, '')}</div><p class="klein"><b>${esc(dText.trim())}</b> · ${esc(MOB_ART[u.art] || '')}${arr(u.hilfsmittel).includes('matte') ? ' · auf Matte, Teppich oder Handtuch' : ''}</p>${MOB_ART_ERKL[u.art] ? `<p class="leise klein" style="margin-top:-.4em">${esc(MOB_ART[u.art])}: ${esc(MOB_ART_ERKL[u.art])}</p>` : ''}
   ${mobStufenHtml(u, true)}
   ${sek ? `<div class="knopfreihe">${seiten ? tKnopf(`${sek} s links`, u.name + ' links') + tKnopf(`${sek} s rechts`, u.name + ' rechts') : tKnopf(`${sek} s`, u.name)}</div><p class="leise klein">Timer nur als Hilfe; er stoppt bei „Weiter“ und beim Abbrechen. Bei gesperrtem iPhone kann der Ton ausbleiben.</p>` : ''}
-  ${(() => { const b = arr(u.anleitung)[0]; return b ? `<section class="karte"><p><b>Start:</b> ${inline(String(b.start || ''))}</p><ol class="anl-schritte">${arr(b.schritte).map(x => `<li>${inline(String(x))}</li>`).join('')}</ol>${b.intensitaet ? `<p class="klein"><b>Intensität:</b> ${inline(String(b.intensitaet))}</p>` : ''}<p class="leise klein">Fehler, Kontrolle, Varianten und „Dehngefühl oder Schmerz?“ unter „ⓘ Anleitung“.</p></section>` : u.md ? mdHintergrund(String(u.md).replace(/^\s*# .*\n/, '')) : ''; })()}
+  ${(() => { const b = arr(u.anleitung)[0]; return b ? `<section class="karte"><p><b>Start:</b> ${inlineOhneBeleg(String(b.start || ''))}</p><ol class="anl-schritte">${arr(b.schritte).map(x => `<li>${inlineOhneBeleg(String(x))}</li>`).join('')}</ol>${b.intensitaet ? `<p class="klein"><b>Intensität:</b> ${inline(String(b.intensitaet))}</p>` : ''}<p class="leise klein">Fehler, Kontrolle, Varianten und „Dehngefühl oder Schmerz?“ unter „ⓘ Anleitung“.</p></section>` : u.md ? mdHintergrund(String(u.md).replace(/^\s*# .*\n/, '')) : ''; })()}
   <p class="hinweis warn klein">Deutliches Ziehen ist in Ordnung, Schmerz nicht: bei Schmerz, Taubheit oder Kribbeln diese Übung beenden.</p>
   ${(() => { const rk = (mobLauf.rueck || {})[u.id]; return `<div class="klein"><p style="margin:.2em 0"><b>Wie war es?</b> <span class="leise">(freiwillig – für den Stufenvorschlag beim nächsten Mal)</span></p><div class="chips-wrap" role="group" aria-label="Rückmeldung">${MOB_URTEIL.map(([k, n]) => `<button class="filterchip" data-a="mob-rueck" data-u="${esc(u.id)}" data-v="${k}" aria-pressed="${!!rk && rk.urteil === k}">${n}</button>`).join('')}</div></div>`; })()}
   <div style="height:80px"></div>
@@ -1332,7 +1346,8 @@ function trSoll(e, ui, si) {
   const von = Number(u.wdh_von) || null, bis = Number(u.wdh_bis) || von; let ziel = von && bis && von !== bis ? `${von}–${bis}` : String(bis || von || ''); let wdh = bis || von || '';
   let kg = basis; let zusatz = '';
   if (s.art === 'arbeit') { const vor = u.saetze.slice(0, si).filter(x => x.art === 'arbeit' && x.erledigt && x.kg !== '' && x.kg != null).pop(); if (vor) { kg = Number(vor.kg); herkunft = 'wie dein letzter Satz heute'; } }
-  else { const k = u.saetze.slice(0, si + 1).filter(x => x.art === 'aufwaerm').length - 1; const sch = arr(u.aufwaerm_schema)[k];
+  if (s.plan_kg != null && s.plan_kg !== '') { kg = Number(s.plan_kg); herkunft = 'in der Pause für diesen Satz geändert'; }
+  else if (s.art !== 'arbeit') { const k = u.saetze.slice(0, si + 1).filter(x => x.art === 'aufwaerm').length - 1; const sch = arr(u.aufwaerm_schema)[k];
     if (sch) { kg = basis ? trRund(basis * sch.pct / 100, u) : null; ziel = String(sch.wdh); wdh = Number((String(sch.wdh).match(/\d+/) || [''])[0]) || ''; zusatz = `ca. ${sch.pct} % des Arbeitsgewichts, auf ${zahlDE(trSchritt(u), 2)}-kg-Schritte gerundet`; }
     else { kg = basis ? trRund(basis * 0.5, u) : null; ziel = '6–8'; wdh = 6; zusatz = 'leichter Aufwärmsatz (ca. 50 %)'; } }
   const idx = u.saetze.slice(0, si + 1).filter(x => x.art === s.art).length - 1;
@@ -1386,7 +1401,6 @@ function trFuehrungHtml() {
   const uebersicht = trFUebersicht ? `<section class="karte fz-uebersicht"><div class="zeile" style="justify-content:space-between"><h2 style="margin:0">Übersicht</h2><button class="klein" data-a="tr-f-uebersicht">✕ schließen</button></div><ol>${e.uebungen.map((u, i) => { const ar = u.saetze.filter(s => s.art === 'arbeit'); const ok = ar.filter(s => s.erledigt).length; return `<li class="${i === f.ui ? 'aktuell' : ''}"><span><b>${esc(ueb(u.uebung).name)}</b>${u.variante ? ` <span class="leise klein">· ${esc(u.variante)}</span>` : ''}<br><span class="leise klein">${u.heute_ausgelassen ? 'übersprungen' : `${ok} von ${ar.length || '?'} Arbeitssätzen`}</span></span>${u.saetze.some(trOffen) || (u.saetze_offen && !ar.length) ? `<button class="klein" data-a="tr-f-spring" data-u="${i}">hierhin</button>` : ''}</li>`; }).join('')}</ol><a class="klein" href="#/training/einheit">Tabellenansicht aller Sätze</a></section>` : '';
   const weitere = `<details class="fz-mehr"><summary>Weitere Aktionen</summary><div class="fz-aktionen">
     ${f.letzter ? `<button data-a="tr-f-korr">Letzten Satz korrigieren</button>` : ''}
-    ${f.phase === 'satz' && f.si >= 0 ? `<button data-a="tr-f-skip-satz">Satz überspringen</button>` : ''}
     <button data-a="tr-f-satz-plus">Zusätzlicher Satz</button>
     <button data-a="tr-f-skip-uebung">Übung überspringen</button>
     <button data-a="tr-f-uebersicht">Übersicht aller Übungen</button>
@@ -1408,10 +1422,11 @@ function trFuehrungHtml() {
     const nso = nx && nx.si >= 0 ? trSoll(e, nx.ui, nx.si) : null; const block = nu && wechsel ? arr(ueb(nu.uebung).anleitung)[anlBlockWahl(arr(ueb(nu.uebung).anleitung), nu.variante).i] : null;
     return `<div class="fz fz-pause">${uebersicht}<p class="fz-kopf">${wechsel ? 'Pause und Wechsel zur nächsten Übung' : 'Pause'}</p>
       <div class="fz-countdown${rest === 0 ? ' fertig' : ''}" id="fz-countdown" aria-live="off">${rest === 0 ? 'Pause vorbei' : `${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')}`}${t && t.pausiert != null ? '<small>angehalten</small>' : ''}</div>
-      <div class="fz-pausenknoepfe"><button class="haupt" data-a="tr-f-pause-ende">${rest === 0 ? 'Weiter zum nächsten Satz' : 'Pause beenden'}</button>${t && rest > 0 ? `<button data-a="timer-plus" data-v="${esc(t.id)}" data-s="30">+30 s</button><button data-a="timer-plus" data-v="${esc(t.id)}" data-s="60">+60 s</button><button data-a="timer-halt" data-v="${esc(t.id)}">${t.pausiert != null ? '▶ fortsetzen' : 'Ⅱ anhalten'}</button>` : ''}</div>
+      <div class="fz-pausenknoepfe"><button class="haupt" data-a="tr-f-pause-ende">${rest === 0 ? 'Weiter zum nächsten Satz' : 'Pause überspringen – weiter'}</button>${t && rest > 0 ? `<button data-a="timer-plus" data-v="${esc(t.id)}" data-s="-15" aria-label="Pause 15 Sekunden kürzer">−15 s</button><button data-a="timer-plus" data-v="${esc(t.id)}" data-s="30" aria-label="Pause 30 Sekunden länger">+30 s</button><button data-a="timer-plus" data-v="${esc(t.id)}" data-s="60" aria-label="Pause 60 Sekunden länger">+60 s</button><button data-a="timer-halt" data-v="${esc(t.id)}" aria-label="${t.pausiert != null ? 'Pause fortsetzen' : 'Pause anhalten'}">${t.pausiert != null ? '▶' : 'Ⅱ'}</button>` : ''}</div>
       ${ls ? `<p class="klein">Bestätigt: <b>${esc(ueb(lu.uebung).name)}</b>, ${esc(satzLabel(lu, f.letzter.si))}: ${esc(satzText(ls))} <button class="still klein" data-a="tr-f-korr">korrigieren</button></p>` : ''}
       ${nx ? `<section class="karte fz-naechst"><p class="leise klein" style="margin:0">Als Nächstes – noch nicht begonnen</p><h2 style="margin:.2em 0">${esc(ueb(nu.uebung).name)}</h2>${nu.variante ? `<p class="klein" style="margin:0">${esc(nu.variante)}</p>` : ''}
         <p style="margin:.4em 0">${nx.si >= 0 ? `${esc(satzLabel(nu, nx.si))}: <b>${nso.kg !== '' ? esc(zahlDE(Number(nso.kg), 2)) + ' kg' : istZeit(nu) ? 'Haltezeit' : 'Gewicht selbst wählen'}</b> · ${istZeit(nu) ? (nso.ziel === 'Haltezeit' ? 'selbst wählen' : esc(nso.ziel)) : esc(nso.ziel || 'Wdh. offen') + ' Wdh.'}${nu.je_seite ? ' je Seite' : ''}` : 'Satzanzahl festlegen'}</p>
+        ${nx.si >= 0 && !istZeit(nu) ? `<div class="fz-naechst-wert"><span class="klein">Gewicht für diesen Satz:</span><button class="klein" data-a="tr-f-naechst-kg" data-u="${nx.ui}" data-s="${nx.si}" data-d="${-trSchritt(nu)}" aria-label="Nächstes Gewicht ${zahlDE(trSchritt(nu), 2)} kg leichter">−${esc(zahlDE(trSchritt(nu), 2))}</button><button class="klein" data-a="tr-f-naechst-kg" data-u="${nx.ui}" data-s="${nx.si}" data-d="${trSchritt(nu)}" aria-label="Nächstes Gewicht ${zahlDE(trSchritt(nu), 2)} kg schwerer">+${esc(zahlDE(trSchritt(nu), 2))}</button>${nu.saetze[nx.si].plan_kg != null ? '<span class="leise klein">geändert</span>' : ''}</div>` : ''}
         ${block && block.einstellung ? `<p class="klein"><b>Einstellung:</b> ${inline(String(block.einstellung))}</p>` : ''}${wechsel ? anleitungsKnopf('tr', nu.uebung, nu.variante, true) : ''}</section>` : '<p>Das war der letzte Satz.</p>'}
       <label class="klein"><input type="checkbox" data-tr-einst="auto_weiter" ${trDaten().einstellungen.auto_weiter !== false ? 'checked' : ''}> Nach Ablauf automatisch zur Ansicht des nächsten Satzes wechseln</label>
       ${weitere}</div>`; }
@@ -1423,12 +1438,17 @@ function trFuehrungHtml() {
   // Einseitig: nur Arbeitssätze werden je Seite erfasst; Aufwärmsätze gelten für beide Seiten
   const lrModus = !!u.je_seite && s.art === 'arbeit'; const lrGetrennt = lrModus && (ent.getrennt || (ent.umfang || 'beide') !== 'beide');
   const vsKurz = s.art === 'arbeit' && u.saetze.filter(x => x.art === 'arbeit').indexOf(s) === 0 && so.vs && so.vs.art !== 'start' ? `<details class="vorschlag v-${esc(so.vs.art)} klein"><summary><b>Vorschlag:</b> ${esc(so.vs.titel)}</summary><p class="klein">${esc(so.vs.begruendung)}</p>${so.vs.daten ? `<p class="leise klein">Daten: ${esc(so.vs.daten)}</p>` : ''}${so.vs.unsicherheit ? `<p class="leise klein">Unsicher: ${esc(so.vs.unsicherheit)}</p>` : ''}${so.vs.kg != null && ['steigern', 'reduzieren'].includes(so.vs.art) ? `<button class="klein" data-a="tr-f-vorschlag" data-v="${esc(so.vs.kg)}">${esc(kgText(so.vs.kg))} für heute übernehmen</button>` : ''}</details>` : '';
-  const hinw = [u.gewicht_hinweis, u.plan_notiz, /kabel/.test(arr(info.geraet).join()) ? 'Kabelgewichte nur am selben Turm vergleichen.' : ''].filter(Boolean);
+  // 2.28: Ziel und letzte vergleichbare Leistung in einer Zeile; Hinweise nur, wenn sie zu dieser Übung gehören
+  const hinw = [u.gewicht_hinweis, u.plan_notiz].filter(Boolean);
+  const punkte = `<div class="fz-satzpunkte" aria-label="${esc(satzLabel(u, f.si))}">${u.saetze.map((x, i) => `<i class="${x.art === 'aufwaerm' ? 'a ' : ''}${x.erledigt ? 'fertig' : i === f.si ? 'jetzt' : ''}"></i>`).join('')}</div>`;
+  const zielKg = so.kg !== '' ? zahlDE(Number(so.kg), 2) + ' kg' : istZeit(u) ? '' : 'Gewicht frei';
   return `<div class="fz">${uebersicht}${kopf}
     <h1 class="fz-titel">${esc(info.name)}</h1>${u.variante ? `<p class="fz-var">${esc(u.variante)}</p>` : ''}
     <div class="fz-zeile"><span class="fz-satz">${esc(satzLabel(u, f.si))}</span>${anleitungsKnopf('tr', u.uebung, u.variante)}</div>
-    <div class="fz-soll"><div><span>${istZeit(u) ? 'Zusatzgewicht' : 'Soll Gewicht'}</span><b>${so.kg !== '' ? esc(zahlDE(Number(so.kg), 2)) + ' kg' : '–'}</b></div><div><span>${istZeit(u) ? 'Ziel Zeit' : 'Ziel Wdh.'}</span><b>${esc(so.ziel || '–')}${u.je_seite ? ' <small>je Seite</small>' : ''}</b></div>${so.rir ? `<div><span>Ziel-RIR</span><b>${esc(so.rir)}</b></div>` : ''}</div>
-    <p class="leise klein fz-herkunft">${esc(so.herkunft || (istZeit(u) ? 'Haltezeit selbst wählen – nur so lange die Ausführung sauber bleibt; Zusatzgewicht nur, wenn du eins nutzt' : so.kg === '' ? 'Kein Startwert – Gewicht selbst wählen' : ''))}${so.letzter ? ` · Letztes Mal dieser Satz: ${esc(satzText(so.letzter))}` : so.letzte ? ` · Zuletzt ${esc(datumDE(so.letzte.datum))}: ${esc(so.letzte.saetze.map(satzText).join(', '))}` : ''}</p>
+    ${punkte}
+    <div class="fz-ziel"><span class="leise">Ziel</span><b>${esc([zielKg, istZeit(u) ? (so.ziel || '') : (so.ziel ? '× ' + so.ziel : '')].filter(Boolean).join(' '))}</b><span class="leise">${u.je_seite ? 'je Seite' : ''}${so.rir ? `${u.je_seite ? ' · ' : ''}RIR ${esc(so.rir)}` : ''}</span></div>
+    ${s.art !== 'arbeit' ? '' : so.letzter ? `<span class="fz-vorher">Letztes Mal: ${esc(satzText(so.letzter))}</span>` : so.letzte ? `<span class="fz-vorher">${esc(datumDE(so.letzte.datum))}: ${esc(so.letzte.saetze.slice(0, 3).map(satzText).join(', '))}</span>` : ''}
+    <p class="leise klein fz-herkunft">${esc(so.herkunft || (istZeit(u) ? 'Haltezeit selbst wählen – nur so lange die Ausführung sauber bleibt' : so.kg === '' ? 'Kein Startwert – Gewicht selbst wählen' : ''))} · ${esc(so.einheit)}${/kabel/.test(arr(info.geraet).join()) ? ' · Kabelgewichte nur am selben Turm vergleichen' : ''}</p>
     ${hinw.length ? `<p class="hinweis klein">${hinw.map(esc).join('<br>')}</p>` : ''}${vsKurz}
     <div class="fz-eingabe"><p class="fz-ist">Tatsächlich – bestätigen oder ändern:</p>
       ${lrModus ? `${seitenSteuerHtml(u, f.ui)}<p class="klein fz-label"><b>Absolviert</b></p>${chipsHtml('umfang', [['beide', 'beide Seiten'], ['l', 'nur links'], ['r', 'nur rechts']], ent.umfang || 'beide')}
@@ -1449,7 +1469,7 @@ function trFuehrungHtml() {
         <label class="klein fz-label"><input type="checkbox" data-a="tr-f-beschwerde" ${ent.beschwerde ? 'checked' : ''}> Schmerzen oder Beschwerden in diesem Satz</label>
         ${ent.beschwerde ? `${lrModus ? `<p class="klein fz-label"><b>Seite</b></p>${chipsHtml('beschwerde_seite', [['l', 'links'], ['r', 'rechts'], ['beide', 'beide']], ent.beschwerde_seite, '–')}` : ''}<label class="feld"><span>Was und wo?</span><input data-tr-f-feld="beschwerde_text" value="${esc(ent.beschwerde_text || '')}"></label><p class="hinweis warn klein">Nicht durchziehen: Übung beenden, leichter oder eine schmerzfreie Alternative wählen. Halten Beschwerden an, ärztlich oder physiotherapeutisch abklären lassen. Bei Beschwerden schlägt die App keine Steigerung vor.</p>` : ''}</details>
     </div>
-    <button class="haupt fz-ok" data-a="tr-f-ok" data-k="${esc(ent.key)}">${ico('haken', 'klein')} Satz abschließen & Pause</button>
+    <div class="aktionsleiste"><button class="haupt fz-ok" data-a="tr-f-ok" data-k="${esc(ent.key)}">${ico('haken', 'klein')} Satz bestätigen</button><button class="still" data-a="tr-f-skip-satz" aria-label="Diesen Satz überspringen – zählt nicht">Überspringen</button></div>
     ${weitere}</div>`;
 }
 function trFEntwurfLesen(f) {
@@ -1504,6 +1524,9 @@ document.addEventListener('click', ev => {
         if (ent.technik === 'unsauber') u2.qualitaet = 'unsauber'; else if (ent.technik && !u2.qualitaet) u2.qualitaet = ent.technik;
         f2.letzter = { ui: f2.ui, si: f2.si }; f2.entwurf = null; f2.phase = 'pause'; }, { neuZeichnen: false });
       trFPauseStarten(trEinheit(), e.uebungen[f.ui], e.uebungen[f.ui].saetze[f.si]); window.scrollTo(0, 0); route(); break; }
+    // In der Pause das Gewicht des nächsten Satzes anpassen (nur dieser Satz; Leistung wird erst beim Bestätigen gespeichert)
+    case 'tr-f-naechst-kg': { const ui = Number(b.dataset.u), si = Number(b.dataset.s), dd = Number(b.dataset.d); const so = trSoll(e, ui, si);
+      trSpeichernStill(() => { const s = e.uebungen[ui].saetze[si]; const basis = s.plan_kg != null ? Number(s.plan_kg) : Number(so.kg) || 0; s.plan_kg = Math.max(0, Math.round((basis + dd) * 100) / 100); if (f.entwurf && f.entwurf.key === ui + '-' + si) f.entwurf = null; }); route(); break; }
     case 'tr-f-pause-ende': timer = timer.filter(t0 => t0.art !== 'pause'); timerSpeichern(); zeichneTimer(); aendere(null, () => { const l = f.letzter || { ui: f.ui, si: f.si }; f.ui = l.ui; f.si = l.si; trFWeiter(f, e); }, { neuZeichnen: false }); window.scrollTo(0, 0); route(); break;
     case 'tr-f-korr': if (f.letzter) { f.korrektur = { ui: f.letzter.ui, si: f.letzter.si }; route(); window.scrollTo(0, 0); } break;
     case 'tr-f-korr-ab': delete f.korrektur; route(); break;
@@ -1599,6 +1622,9 @@ let anlZustand = null;
 function anleitungInhalt() {
   const { art, id, variante, wahl } = anlZustand; const mob = art === 'mob'; const u = mob ? mobUeb(id) : ueb(id); const bl = arr(u.anleitung);
   const w = wahl != null ? { i: wahl, treffer: true } : anlBlockWahl(bl, variante); const b = bl[w.i];
+  // 2.28: Quellenverweise aus dem Fließtext lösen und gesammelt als nummerierte Belege unter der Anleitung zeigen – die Schritte bleiben lesbar
+  const belege = []; const ohneBeleg = s => String(s).replace(/\s*\[\[((?:Quellenverzeichnis|Mobility – Grundlagen)#[^\]|]+)(?:\|[^\]]+)?\]\]/g, (m, z) => { if (!belege.includes(z)) belege.push(z); return ''; });
+  const inline = s => window.inline(ohneBeleg(s));
   const li = l => arr(l).map(x => `<li>${inline(String(x))}</li>`).join('');
   const zeile = (titel, text) => text ? `<p><b>${titel}:</b> ${inline(String(text))}</p>` : '';
   const quellen = arr(u.quellen).map(x => { const k = String(x).replace(/^\^/, ''); if (mob) { const e = (MOB().quellen || {})[k]; return e ? (e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(String(e.titel).slice(0, 90))} ↗</a>` : esc(e.titel)) : esc(k); } const q = K.quellen && K.quellen[k]; return q ? linkHtml('Quellenverzeichnis#' + k, String(q.titel || k).slice(0, 90)) : esc(k); });
@@ -1616,6 +1642,7 @@ function anleitungInhalt() {
     ${arr(b.kontrolle).length ? `<h3>So prüfst du die Bewegung</h3><ul>${li(b.kontrolle)}</ul>` : ''}
     ${mob ? `<h3>Dehngefühl oder Schmerz?</h3>${b.gefuehl ? `<p>${inline(String(b.gefuehl))}</p>` : ''}<p class="klein">${DEHN_SCHMERZ()}</p>` : ''}
     <div class="hinweis warn klein"><b>Abbrechen:</b> ${arr(b.abbruch).map(x => inline(String(x))).join(' ')}</div>
+    ${belege.length ? `<p class="anl-belege">Belege zu dieser Anleitung: ${belege.map((z, i) => linkHtml(z, String(i + 1))).join(' · ')}</p>` : ''}
     ${u.demo_link ? `<p><a href="${esc(u.demo_link)}" target="_blank" rel="noopener">Demonstration ansehen ↗</a> <span class="leise klein">(externe Seite: ${esc(u.demo_link_quelle || 'ohne Angabe')}; öffnet sich in einem neuen Tab, nichts startet automatisch)</span></p>` : ''}
     ${u.md ? `<details class="anl-mehr"><summary>Vertiefung: Varianten, Hintergründe, Sicherheit</summary>${mdHintergrund(String(u.md).replace(/^\s*# .*\n/, ''))}</details>` : ''}
     ${quellen.length ? `<details class="anl-mehr"><summary>Quellen (${quellen.length})</summary><ul class="klein anl-quellen">${quellen.map(q => `<li>${q}</li>`).join('')}</ul><p class="leise klein">Kennzeichnung: Quellenlink = belegt; <i>(abgeleitet)</i> = übertragen; <i>(Vorschlag, ungeprüft)</i> = eigener Vorschlag ohne direkte Quelle.</p></details>` : ''}
@@ -1653,7 +1680,10 @@ function trUebungHtml(id) {
 }
 /* Bibliothek: Suche + Filter (Muskelgruppe, Bewegungsmuster, Ausstattung, einseitig). Einseitig = Feld `einseitig` oder am Namen erkennbar. */
 const MUSTER_NAME = { horizontal_druecken: 'Drücken nach vorn', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern', vertikal_ziehen: 'Ziehen von oben', kniebeuge: 'Kniebeuge', ausfallschritt: 'Ausfallschritt', hueftbeuge: 'Hüftstreckung', isolation: 'Isolation', rumpf: 'Rumpf' };
-const istEinseitig = u => u.einseitig === true || /einarmig|einbeinig|einseitig|ausfallschritt|step-up|pistol|seitstütz|kickback|konzentrationscurl|split squat/i.test(String(u.name) + ' ' + arr(u.alias).join(' '));
+/* Einseitig: Feld `einseitig` der Übung, sonst Name der Übung oder der GEWÄHLTEN Variante.
+   Nicht mehr aus Alias-Namen – dort stehen oft einseitige Varianten (z. B. „Single-Leg Glute Bridge“), die nicht für die Grundform gelten (2.28). */
+const EINSEITIG_RE = /einarmig|einbeinig|einseitig|ausfallschritt|step-up|pistol|seitstütz|kickback|konzentrationscurl|split squat|single[- ]leg|single[- ]arm/i;
+const istEinseitig = (u, variante) => u.einseitig === true || (u.einseitig !== false && EINSEITIG_RE.test(String(u.name || ''))) || (!!variante && EINSEITIG_RE.test(String(variante)));
 let trBib = { q: '', gruppe: '', muster: '', ger: '', seite: '' };
 // Geräte lesbar (Zuordnung GERAET_LESBAR oben bei den Ersatzvorschlägen): Alternativen mit „oder“
 function geraetText(u) { const g = arr(u.geraet); const mitRack = g.includes('rack') && g.includes('langhantel');
@@ -1756,6 +1786,7 @@ document.addEventListener('click', ev => {
       if (routineProbleme(r).length) { location.hash = '#/training/start/' + encodeURIComponent(v); route(); return; } const w = trStartWahl && trStartWahl.rid === v ? trStartWahl : { plan: null, pe: null };
       aendere(null, d => { trEinheitAnlegen(d, r, w.plan, w.pe, a === 'tr-f-start'); }, { neuZeichnen: false }); trStartWahl = null;
       location.hash = a === 'tr-f-start' ? '#/training/fuehrung' : '#/training/einheit'; break; }
+    case 'tr-hinweis-ok': aendere(null, d => { delete d.training.hinweis_seitenlogik; }); break;
     case 'tr-vz-zeit': trVZeit = v; route(); break;
     case 'tr-vz-var': trVVar[b.dataset.u] = v; route(); break;
     case 'tr-tausch': { if (!v) return; aendere(`Ersetzt durch ${ueb(v).name} – Gewichte nicht übernommen`, d => { trTausche(d, ui, v); }); break; }
@@ -1899,5 +1930,7 @@ document.addEventListener('submit', ev => {
   if (f.id === 'tr-cardio') { ev.preventDefault(); const m = Number(f.minuten.value); if (!(m > 0)) return;
     aendere('Cardio eingetragen', d => { trDaten(); (d.training.cardio = d.training.cardio || []).push({ id: uid('car'), datum: f.datum.value || heute(), art: f.art.value.trim().slice(0, 40), minuten: m, intensitaet: f.intensitaet.value }); }); return; }
   if (f.id === 'tr-kg') { ev.preventDefault(); const kg = Number(String(f.kg.value).replace(',', '.')); if (!(kg > 20)) return;
-    aendere('Körpergewicht eingetragen', d => { trDaten(); d.training.koerpergewicht = d.training.koerpergewicht.filter(x => x.datum !== f.datum.value); d.training.koerpergewicht.push({ datum: f.datum.value || heute(), kg }); }); }
+    aendere('Körpergewicht eingetragen', d => { trDaten(); d.training.koerpergewicht = d.training.koerpergewicht.filter(x => x.datum !== f.datum.value); d.training.koerpergewicht.push({ datum: f.datum.value || heute(), kg }); });
+    // Auswirkung auf berechnete Ziele nur anzeigen – übernommen wird erst unter „Ziele“
+    if (typeof zielAbweichung === 'function') { const ab = zielAbweichung(); if (ab) setTimeout(() => toast(`Mit ${zahlDE(kg, 1)} kg ergäbe die Berechnung ${zahlDE(ab.b.kcal)} statt ${zahlDE(ab.f.kcal)} kcal – unter Ziele prüfen und ggf. übernehmen.`), 1500); } }
 });
